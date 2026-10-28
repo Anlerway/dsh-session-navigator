@@ -13,41 +13,56 @@ import assert from "node:assert/strict";
 
 import { sessionStateOf } from "../lib/domain/session-state.js";
 
-const annotations = (sessions) => ({ sessions });
+// The sidecar stores shortcuts as a plain map, keyed by node id.
+const shortcuts = (entries) => entries;
 const trash = (entries) => ({ entries });
+/** One session shortcut in one container, the way the tree sidecar stores it. */
+const pointer = (targetId, parent) => ({ kind: "session", targetId, parent });
 
-test("a live session with no annotations reads as all-false", () => {
+test("a live session with no shortcuts reads as all-false", () => {
   const state = sessionStateOf(
-    { annotations: annotations({}), trash: trash({}), sessions: [{ id: "session-1" }] },
+    { shortcuts: shortcuts({}), trash: trash({}), sessions: [{ id: "session-1" }] },
     "session-1",
   );
-  assert.deepEqual(state, { id: "session-1", favorite: false, todo: false, archived: false, trashed: false, subagent: false });
+  assert.deepEqual(state, {
+    id: "session-1",
+    favorite: false,
+    todo: false,
+    favoriteShortcut: null,
+    todoShortcut: null,
+    archived: false,
+    trashed: false,
+    subagent: false,
+  });
 });
 
-test("the two annotation flags come from the entry, and only a real true counts", () => {
-  const state = sessionStateOf(
-    {
-      annotations: annotations({
-        "session-1": { favorite: true, todo: "yes" },
-        "session-2": { favorite: "true", todo: true },
-      }),
-      trash: trash({}),
-      sessions: [{ id: "session-1" }, { id: "session-2" }],
-    },
-    "session-1",
-  );
-  assert.equal(state.favorite, true, "favorite: true is a favorite");
-  assert.equal(state.todo, false, "a truthy string is not the flag");
-  assert.equal(
-    sessionStateOf({ annotations: annotations({ "session-2": { favorite: "true" } }), trash: trash({}), sessions: [] }, "session-2")
-      .favorite,
-    false,
-    'the string "true" must not read as a favorite',
-  );
+test("membership is the shortcut: the container and the kind both have to match", () => {
+  const documents = {
+    shortcuts: shortcuts({
+      "s-fav0001": pointer("session-1", "f-favorites"),
+      "s-todo0001": pointer("session-2", "f-todos"),
+      // A folder shortcut that happens to name this session is not membership.
+      "s-fold": { kind: "folder", targetId: "session-1", parent: "f-favorites" },
+      // A session shortcut living in an ordinary folder is a pointer, not a flag.
+      "s-loose": { kind: "session", targetId: "session-1", parent: "d-1" },
+    }),
+    trash: trash({}),
+    sessions: [{ id: "session-1" }, { id: "session-2" }],
+  };
+  const one = sessionStateOf(documents, "session-1");
+  assert.equal(one.favorite, true, "a session shortcut in 收藏 is a favorite");
+  assert.equal(one.favoriteShortcut, "s-fav0001", "the id travels so 取消收藏 can delete it");
+  assert.equal(one.todo, false, "a 待办 shortcut is not a 收藏");
+  assert.equal(one.todoShortcut, null);
+
+  const two = sessionStateOf(documents, "session-2");
+  assert.equal(two.todo, true);
+  assert.equal(two.todoShortcut, "s-todo0001");
+  assert.equal(two.favorite, false, "another session's 收藏 must not leak");
 });
 
 test("archived is what the reader says about the session", () => {
-  const documents = { annotations: annotations({}), trash: trash({}), sessions: [{ id: "session-1", archived: true }] };
+  const documents = { shortcuts: shortcuts({}), trash: trash({}), sessions: [{ id: "session-1", archived: true }] };
   assert.equal(sessionStateOf(documents, "session-1").archived, true);
   assert.equal(
     sessionStateOf({ ...documents, sessions: [{ id: "session-1", archived: "yes" }] }, "session-1").archived,
@@ -59,21 +74,23 @@ test("archived is what the reader says about the session", () => {
 test("either layer can say trashed, and neither one alone can be ignored", () => {
   // The bin holds the payload: a session whose reader row is already gone still
   // reads as trashed while a restore settles.
-  const inBin = { annotations: annotations({}), trash: trash({ "session-1": { path: "x" } }), sessions: [] };
+  const inBin = { shortcuts: shortcuts({}), trash: trash({ "session-1": { path: "x" } }), sessions: [] };
   assert.equal(sessionStateOf(inBin, "session-1").trashed, true);
   // And the reader can report it before the bin document is written.
-  const reported = { annotations: annotations({}), trash: trash({}), sessions: [{ id: "session-1", trashed: true }] };
+  const reported = { shortcuts: shortcuts({}), trash: trash({}), sessions: [{ id: "session-1", trashed: true }] };
   assert.equal(sessionStateOf(reported, "session-1").trashed, true);
   // A bin entry for somebody else must not leak.
-  const other = { annotations: annotations({}), trash: trash({ "session-2": {} }), sessions: [{ id: "session-1" }] };
+  const other = { shortcuts: shortcuts({}), trash: trash({ "session-2": {} }), sessions: [{ id: "session-1" }] };
   assert.equal(sessionStateOf(other, "session-1").trashed, false);
 });
 
 test("an unknown session answers all-false rather than throwing", () => {
-  assert.deepEqual(sessionStateOf({ annotations: null, trash: null, sessions: null }, "nope"), {
+  assert.deepEqual(sessionStateOf({ shortcuts: null, trash: null, sessions: null }, "nope"), {
     id: "nope",
     favorite: false,
     todo: false,
+    favoriteShortcut: null,
+    todoShortcut: null,
     archived: false,
     trashed: false,
     subagent: false,
@@ -85,7 +102,7 @@ test("subagent is the reader's own flag, and a fork is not one", () => {
   // come from the reader (which knows origin/delegationDepth), never from
   // `parentSession` — a fork also carries a parent and is a session of its own.
   const documents = {
-    annotations: annotations({}),
+    shortcuts: shortcuts({}),
     trash: trash({}),
     sessions: [
       { id: "child", isSubagent: true },

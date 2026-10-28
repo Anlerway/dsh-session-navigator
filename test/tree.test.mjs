@@ -372,12 +372,16 @@ test("ancestorsOf and nearestWorkspace follow the chain", () => {
 // A badge has to match the number of rows the list actually renders, or the
 // number is a lie the user can see. The three cases below were all wrong.
 
-test("收藏 / 待办 count their shortcut rows as well as the flagged sessions", () => {
+test("收藏 counts each favorite once, and a folder shortcut is a row of its own", () => {
+  // s2 is flagged in the fixture; s1 is flagged here because a shortcut to it is
+  // what *makes* it a favorite — the reader derives the flag that way.
+  const flagged = sessions.map((session) => (session.id === "s1" ? { ...session, favorite: true } : session));
   const tree = buildAutoTree({
     registry,
-    sessions,
+    sessions: flagged,
     userTree: {
-      // Two references into 收藏 (one session, one folder) next to s2's flag.
+      // Two references into 收藏: one session (whose row is the session itself,
+      // reached through the flag) and one folder (a row of its own).
       shortcuts: {
         "s-one": { kind: "session", targetId: "s1", parent: FIXED_NODES.favorites, order: 0 },
         "s-two": { kind: "folder", targetId: "d-work", parent: FIXED_NODES.favorites, order: 1 },
@@ -385,9 +389,10 @@ test("收藏 / 待办 count their shortcut rows as well as the flagged sessions"
       folders: { "d-work": { id: "d-work", name: "工作", parent: FIXED_NODES.root, order: 0 } },
     },
   });
-  // 1 flagged session + 2 rows pointing into the container = 3 rows on screen.
+  // 2 favorite sessions + 1 folder shortcut = 3 rows on screen. The session
+  // shortcut is not a fourth: it is how s1 got counted in the first place.
   assert.equal(tree.counts[FIXED_NODES.favorites], 3);
-  assert.equal(tree.children[FIXED_NODES.favorites].length, 2, "two shortcut rows");
+  assert.equal(tree.children[FIXED_NODES.favorites].length, 2, "two shortcut rows in the tree");
   assert.equal(tree.counts[FIXED_NODES.todos], 1, "待办 has no shortcuts here");
 });
 

@@ -490,13 +490,11 @@ if (findAll(trashList, hasClass("frow")).length !== 0) {
   throw new Error("the bin must not list containers");
 }
 
-// ── a shortcut that points at a session ────────────────────────────────────
-// Two failures met here. A session shortcut was invisible in the list: its node
-// was neither folder nor workspace nor 特殊文件夹, so it fell out of every group
-// and the list rendered nothing at all while the tree kept drawing the row —
-// the "新建了快捷方式，左边栏有、主列表没有" report. And the only thing marking a
-// row as a reference was a swapped arrow glyph; it is now a text tag beside the
-// name, with the target's own kind of icon and nothing to click away.
+// ── a session shortcut: membership, not a second row ───────────────────────
+// 收藏 / 待办 are shortcut containers. A session shortcut is *the* way a
+// session appears on those pages: one row, the session's own, and no extra
+// pointer row beside it. Deleting that row takes the shortcut away and leaves
+// the session file alone (that is the 移出 wording, asserted on the panel side).
 const refTree = {
   ...tree,
   nodes: {
@@ -512,35 +510,36 @@ const refTree = {
   counts: { ...tree.counts, "f-favorites": 1 },
 };
 decorateTree(refTree);
-const refList = listPaneWith({ tree: refTree, scope: "f-favorites", sessionsById: new Map([[session.id, session]]) });
-const refRows = findAll(refList, hasClass("scrow"));
+const refList = listPaneWith({
+  tree: refTree,
+  scope: "f-favorites",
+  sessionsById: new Map([[session.id, { ...session, favorite: true }]]),
+});
+// The shortcut node must not be painted as a row of its own: the session row is
+// the membership, and a second 快捷方式 row would say the same thing twice.
+const shortcutRows = findAll(refList, hasClass("scrow"));
+if (shortcutRows.length !== 0) {
+  throw new Error("a session shortcut must not draw a row beside its session, got " + shortcutRows.length);
+}
+const refRows = findAll(refList, hasClass("row")).filter((node) => node.props?.["data-id"] === session.id);
 if (refRows.length !== 1) {
-  throw new Error("a session shortcut must be listed in its container, got " + refRows.length);
+  throw new Error("收藏 must list the favorited session exactly once, got " + refRows.length);
 }
 const refRow = refRows[0];
-// The label comes from the target, so the row carries the session's own title —
-// a live reference must never read 失效的快捷方式.
 if (!textOf(refRow).includes(session.displayTitle)) {
-  throw new Error("a live reference must show the target's title, got " + JSON.stringify(textOf(refRow)));
+  throw new Error("a favorited row must show the session's own title, got " + JSON.stringify(textOf(refRow)));
 }
-if (textOf(refRow).includes("失效")) throw new Error("a resolvable reference must not be called 失效的快捷方式");
-// The tag is text, not a glyph swap: the row says 快捷方式 in words.
-if (findAll(refRow, hasClass("scmark")).length !== 0) throw new Error("no badge marker is drawn any more");
-// The row's tag is the 快捷方式 caption itself, and it carries the lifecycle
-// rule: deleting it removes the pointer, the payload stays where it lives.
-const refTag = findAll(refRow, hasClass("wstag"))[0] ?? null;
-if (!refTag) throw new Error("a shortcut row keeps its 快捷方式 caption");
-if (!String(refTag.props.title ?? "").includes("只移除标注")) {
-  throw new Error("the shortcut caption must state the rule, got " + JSON.stringify(refTag.props.title));
-}
-// The glyph is the target's own kind of icon: a session is a chat, not an arrow.
+if (textOf(refRow).includes("失效")) throw new Error("a resolvable shortcut must not be called 失效的快捷方式");
+// The glyph is the session's own: a favorited session is still a chat.
 if (mod.__test.iconOfNode?.(refTree.nodes["s-1"], refTree) !== "chat") {
   throw new Error("a session shortcut must borrow the session icon, got " + mod.__test.iconOfNode?.(refTree.nodes["s-1"], refTree));
 }
 if (mod.__test.nodeLabel?.(refTree.nodes["s-1"], refTree, () => session) !== session.displayTitle) {
-  throw new Error("a live reference must resolve to its target's title");
+  throw new Error("a live shortcut must resolve to its target's title");
 }
-// The tree draws the same row with the same treatment.
+// The six fixed entries are a rail of buttons, not a branch: even with 收藏
+// marked expanded the tree must not grow a subtree under it. The page (the list
+// above) is how its contents are reached, never a chevron in the sidebar.
 const refTreePane = render({
   type: TreePane,
   props: {
@@ -549,13 +548,17 @@ const refTreePane = render({
     sessionsById: new Map([[session.id, session]]),
   },
 });
-const refTreeRow = findAll(refTreePane, hasClass("sc"))[0] ?? null;
-if (!refTreeRow) throw new Error("the tree must draw the reference row");
-if (!textOf(refTreeRow).includes("快捷方式")) throw new Error("the tree row must carry the same 快捷方式 tag");
-if (!textOf(refTreeRow).includes(session.displayTitle)) throw new Error("the tree row names its target");
-// A session shortcut resolves to its session, so a row that points at nothing
-// is the only thing that may be called 失效的快捷方式.
-console.log("reference row ok: tag + target icon, tree and list agree");
+const railRow = findAll(refTreePane, hasClass("trow")).find((node) => textOf(node).includes("收藏")) ?? null;
+if (!railRow) throw new Error("the rail must still draw 收藏");
+const railCaret = findAll(railRow, hasClass("caret"))[0] ?? null;
+if (!railCaret) throw new Error("every tree row keeps a caret slot");
+if (!hasClass("hidden")(railCaret.props.className)) {
+  throw new Error("a rail entry is a button: it must not offer a chevron");
+}
+if (findAll(refTreePane, hasClass("sc")).length !== 0) {
+  throw new Error("a rail entry must not expand its contents into the tree");
+}
+console.log("reference row ok: one row per favorited session; the rail entry stays a button");
 
 const detailProps = {
   now: Date.now(), onClose: noop, onHint: noop, width: 320, parent: null, children: [], forks: [],
