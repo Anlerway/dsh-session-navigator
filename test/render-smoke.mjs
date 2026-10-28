@@ -560,6 +560,73 @@ if (findAll(refTreePane, hasClass("sc")).length !== 0) {
 }
 console.log("reference row ok: one row per favorited session; the rail entry stays a button");
 
+// ── a folder / workspace member is drawn as the container itself ───────────
+// 收藏 holds memberships, and a membership of a folder *is* that folder: the
+// page draws one row with the container's own glyph, name and 文件夹 tag. Two
+// things must stay true while it does:
+//   1. the row's data-id is the *shortcut's* id, because 移出收藏 deletes the
+//      membership and nothing else;
+//   2. opening the row lands on the original node, so the double-click carries
+//      the target id rather than the pointer's.
+const mappedTree = {
+  ...tree,
+  nodes: {
+    ...tree.nodes,
+    "s-f": {
+      id: "s-f", type: "shortcut", kind: "shortcut", name: "", fixed: false,
+      parent: "f-favorites", order: 0, shortcutKind: "folder", targetId: "d-1",
+    },
+    "s-w": {
+      id: "s-w", type: "shortcut", kind: "shortcut", name: "", fixed: false,
+      parent: "f-favorites", order: 1, shortcutKind: "workspace", targetId: "ws-1",
+    },
+  },
+  children: { ...tree.children, "f-favorites": ["s-f", "s-w"] },
+  counts: { ...tree.counts, "f-favorites": 2 },
+};
+decorateTree(mappedTree);
+const opened = [];
+const mappedList = listPaneWith({
+  tree: mappedTree,
+  scope: "f-favorites",
+  onOpenWorkspace: (id) => opened.push(id),
+});
+const mappedFolder = findAll(mappedList, hasClass("folderrow")).find((node) => node.props?.["data-id"] === "s-f") ?? null;
+const mappedWorkspace = findAll(mappedList, hasClass("wsrow")).find((node) => node.props?.["data-id"] === "s-w") ?? null;
+if (!mappedFolder) throw new Error("a folder member of 收藏 must be drawn as a folder row");
+if (!mappedWorkspace) throw new Error("a workspace member of 收藏 must be drawn as a workspace row");
+for (const [row, what] of [[mappedFolder, "文件夹"], [mappedWorkspace, "工作区"]]) {
+  if (!textOf(row).includes(what)) throw new Error("a mapping row must carry the " + what + " tag, got " + JSON.stringify(textOf(row)));
+  if (textOf(row).includes("快捷方式")) throw new Error("a mapping row must not call itself 快捷方式, got " + JSON.stringify(textOf(row)));
+}
+// The pointer keeps its own id: that is what the menu deletes.
+if (findAll(mappedList, hasClass("scrow")).length !== 0) {
+  throw new Error("a mapping must not also draw a 快捷方式 row");
+}
+const clickEvent = { stopPropagation() {}, preventDefault() {} };
+mappedFolder.props.onDoubleClick(clickEvent);
+mappedWorkspace.props.onDoubleClick(clickEvent);
+if (opened[0] !== "d-1" || opened[1] !== "w-ws-1") {
+  throw new Error("a mapping must open its target, got " + JSON.stringify(opened));
+}
+// …and the menu must address the membership, not the container.
+const menuKinds = [];
+const menuList = listPaneWith({
+  tree: mappedTree,
+  scope: "f-favorites",
+  onNodeContextMenu: (event, descriptor) => menuKinds.push(descriptor?.kind),
+});
+for (const row of findAll(menuList, hasClass("mapped-row"))) row.props.onContextMenu(clickEvent);
+if (menuKinds.join(",") !== "mapping,mapping") {
+  throw new Error("a mapping row must open the mapping menu, got " + JSON.stringify(menuKinds));
+}
+// No pencil and no drop target: the row stands for a container but may only be
+// taken out of this page.
+if (findAll(mappedFolder, hasClass("nm-editbtn")).length !== 0) {
+  throw new Error("a mapping row must not offer a rename pencil");
+}
+console.log("mapping row ok: drawn as the container, opens the original, acts on the membership");
+
 const detailProps = {
   now: Date.now(), onClose: noop, onHint: noop, width: 320, parent: null, children: [], forks: [],
   forkSource: null, onOpen: noop, onEnterNode: noop, onOpenSession: noop, tagLibrary: [{ tag: "release", count: 1, preset: true }],
