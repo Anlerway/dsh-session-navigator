@@ -501,7 +501,20 @@ test("copying writes a second session with a fresh id and the same events", asyn
     const duplicated = await readArtifact(copy.artifactTo);
     assert.equal(duplicated.header.id, copy.sessionId);
     assert.equal(duplicated.header.cwd, targetPath);
-    assert.deepEqual(duplicated.events, original.events, "the event stream is copied verbatim");
+    // The copy is named, so the two rows can be told apart in the list without
+    // opening either: the source's history verbatim, then one session/title.
+    assert.deepEqual(
+      duplicated.events.slice(0, original.events.length),
+      original.events,
+      "the source's event stream is copied verbatim",
+    );
+    assert.equal(duplicated.events.length, original.events.length + 1, "plus a single title event");
+    const titled = duplicated.events.at(-1);
+    assert.equal(titled.type, "session/title");
+    assert.equal(titled.seq, original.events.at(-1).seq + 1, "the title continues the sequence");
+    // This stub has no snapshot, so there is no source title to build on and the
+    // fallback name is used; with a real snapshot it becomes "<title>（副本）".
+    assert.equal(titled.data.title, "副本", "the copy gets a name of its own");
     assert.deepEqual(registry.find("w-target").record.sessionIds, [copy.sessionId]);
     assert.deepEqual(registry.find("w-source").record.sessionIds, ["s1"]);
   } finally {
