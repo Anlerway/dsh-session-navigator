@@ -357,6 +357,23 @@ test("deleteFolder refuses a non-empty folder unless the caller lifts the conten
   assert.equal(draft.placement.wa, undefined);
 });
 
+test("deleting a folder takes its pin and its bookmark with it", () => {
+  // Both maps outlive the node either way — the tree filters ids it cannot
+  // resolve — but a map that only ever grows is a leak, and the stale entry
+  // silently reappears if a folder is ever created with the same id.
+  const draft = {
+    folders: { "d-a": { id: "d-a", name: "A", parent: FIXED_NODES.root, order: 0 } },
+    placement: {},
+    workspaceOrder: {},
+    pins: { "d-a": 1, "d-keep": 2 },
+    quickAccess: { "d-a": 3, "d-keep": 4 },
+  };
+  const tree = treeWith(draft);
+  deleteFolder(draft, "d-a", tree);
+  assert.deepEqual(draft.pins, { "d-keep": 2 });
+  assert.deepEqual(draft.quickAccess, { "d-keep": 4 });
+});
+
 test("reorderNode accepts folders and workspaces only", () => {
   const draft = { folders: { "d-a": { id: "d-a", name: "A", parent: FIXED_NODES.root } }, workspaceOrder: {} };
   assert.deepEqual(reorderNode(draft, "d-a", 5), { nodeId: "d-a", order: 5 });

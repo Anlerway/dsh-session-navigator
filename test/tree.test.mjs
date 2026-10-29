@@ -548,3 +548,33 @@ test("a reference does not make its folder carry a workspace", () => {
   assert.equal(canMove("s-w", "w-wb", tree).ok, true, "a reference may sit in its own target");
   assert.equal(canMove("s-w", "d-box", tree).ok, true, "and in any other container");
 });
+test("快速访问 and 置顶 are two lists: a bookmark adds a strip row, a pin only ranks", () => {
+  // They shared one map, so pinning a folder also fixed it to the top of the
+  // sidebar and removing it from 快速访问 un-pinned it. The projections have to
+  // stay independent even when both are set on the same node.
+  const tree = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: { "d-box": { id: "d-box", name: "盒子", parent: FIXED_NODES.root, order: 0 } },
+      pins: { "d-box": 5 },
+      quickAccess: { [workspaceNodeId("wa")]: 10, "d-box": 20, "d-gone": 30, [FIXED_NODES.root]: 40 },
+    },
+  });
+  // Newest first, and only real containers: a missing node and a fixed rail
+  // entry have no row to point at, so they are dropped instead of drawn dead.
+  assert.deepEqual(tree.quickAccessNodes, ["d-box", workspaceNodeId("wa")]);
+  // The pin list is untouched by the bookmark and vice versa.
+  assert.deepEqual(tree.pinnedNodes, ["d-box"]);
+  assert.deepEqual(tree.pins, { "d-box": 5 });
+  assert.deepEqual(tree.quickAccess, { [workspaceNodeId("wa")]: 10, "d-box": 20, "d-gone": 30, [FIXED_NODES.root]: 40 });
+  // A folder that is only pinned is not bookmarked: 置顶 must not leak into the
+  // strip, which is the half of the old behaviour that made the band confusing.
+  const pinOnly = buildAutoTree({
+    registry,
+    sessions,
+    userTree: { pins: { [workspaceNodeId("wb")]: 1 } },
+  });
+  assert.deepEqual(pinOnly.quickAccessNodes, []);
+  assert.deepEqual(pinOnly.pinnedNodes, [workspaceNodeId("wb")]);
+});

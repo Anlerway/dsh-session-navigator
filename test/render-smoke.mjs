@@ -560,6 +560,59 @@ if (findAll(refTreePane, hasClass("sc")).length !== 0) {
 }
 console.log("reference row ok: one row per favorited session; the rail entry stays a button");
 
+// ── 快速访问 is a strip of buttons; 置顶 is a ranking inside 目录 ────────────
+// The two used to be one map: pinning a container hoisted it into the 快速访问
+// band and out of 目录, so the feature read as "the folder moved". They are
+// separate lists now (m03020), and this block pins both halves:
+//   1. a bookmark draws a row above 目录, with a caret slot but no chevron and
+//      no subtree — a button, not a branch;
+//   2. a pin leaves the hierarchy alone and only sorts the row first among the
+//      siblings it already has, still inside 目录.
+const quickTree = {
+  ...tree,
+  quickAccessNodes: ["w-ws-1"],
+  quickAccess: { "w-ws-1": 1 },
+  pins: { "d-1": 5 },
+};
+const quickPane = render({
+  type: TreePane,
+  props: {
+    tree: quickTree, scope: "f-root", onSelect: noop, expanded: new Set(["f-root"]),
+    onToggle: noop, width: 260, onMove: noop, rename: null, onBeginRename: noop,
+    pins: quickTree.pins, quickAccess: quickTree.quickAccessNodes, onNodeContextMenu: noop,
+  },
+});
+// findAll's predicate receives a className string, not a node, so the node-level
+// helpers below read the class off the node once and reuse the same test.
+const flat = findAll(quickPane, () => true);
+const clsOf = (node) => node.props?.className ?? "";
+const scopeOf = (node) => node.props?.["data-scope"] ?? null;
+const isCap = (node, text) => hasClass("tcap")(clsOf(node)) && textOf(node).includes(text);
+const capQuick = flat.findIndex((node) => isCap(node, "快速访问"));
+const capDir = flat.findIndex((node) => isCap(node, "目录"));
+if (capQuick < 0) throw new Error("a bookmark must give the tree its 快速访问 caption");
+if (!(capQuick < capDir)) throw new Error("快速访问 belongs above 目录");
+const isRow = (node, scope) => hasClass("trow")(clsOf(node)) && scopeOf(node) === scope;
+const quickRowIdx = flat.findIndex((node, index) => index < capDir && isRow(node, "w-ws-1"));
+if (quickRowIdx < 0) throw new Error("the bookmarked workspace must draw a row in 快速访问");
+const quickRow = flat[quickRowIdx];
+const quickCaret = findAll(quickRow, hasClass("caret"))[0] ?? null;
+if (!quickCaret || !hasClass("hidden")(quickCaret.props.className)) {
+  throw new Error("a bookmark is a button: it must not offer a chevron");
+}
+if (findAll(quickRow, hasClass("sc")).length !== 0) {
+  throw new Error("a bookmark must not expand into the tree");
+}
+// The pinned folder is the last child in the fixture and still leads the band.
+const dirRowIdx = (scope) => flat.findIndex((node, index) => index > capDir && isRow(node, scope));
+const pinnedIdx = dirRowIdx("d-1");
+const wsIdx = dirRowIdx("w-ws-1");
+if (pinnedIdx < 0 || wsIdx < 0) throw new Error("both containers must stay listed in 目录");
+if (!(pinnedIdx < wsIdx)) throw new Error("a pinned row must sort first among its siblings, not leave the band");
+if (!hasClass("pinned")(flat[pinnedIdx].props.className)) throw new Error("a pinned row must keep its pin marker");
+if (hasClass("pinned")(quickRow.props.className)) throw new Error("a bookmark is not a pin: it must not draw the pin marker");
+console.log("quick access ok: a strip of buttons above 目录; 置顶 only reorders 目录");
+
 // ── a folder / workspace member is drawn as the container itself ───────────
 // 收藏 holds memberships, and a membership of a folder *is* that folder: the
 // page draws one row with the container's own glyph, name and 文件夹 tag. Two
