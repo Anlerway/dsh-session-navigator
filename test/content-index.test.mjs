@@ -288,20 +288,38 @@ test("a changed log invalidates its cached entry instead of trusting it", async 
   }
 });
 
-test("with the cache switched off nothing is written, and nothing is restored", async () => {
+test("a store that was handed in is always written to (m01916 removed the switch)", async () => {
+  // 缓存 is not a choice any more: the index file is a derived artefact, and the
+  // fast answer after a restart is the whole point of keeping it. The only thing
+  // left to decide is *when* the reading happens (允许空闲时自动建立).
   const { root, store } = await cacheStore();
   try {
-    const off = fixture(cachedLogs, { store, cacheEnabled: () => false });
-    await off.index.open();
-    off.index.sync([session("a")]);
-    await off.index.work();
-    const info = await off.index.cacheInfo();
-    assert.equal(info.enabled, false);
-    assert.equal(info.exists, false, "no file on disk");
-    assert.deepEqual(off.index.search("beta").map((hit) => hit.id), ["a"], "search still works");
+    const on = fixture(cachedLogs, { store });
+    await on.index.open();
+    on.index.sync([session("a")]);
+    await on.index.work();
+    const info = await on.index.cacheInfo();
+    assert.equal(info.enabled, true, "no settings read decides this");
+    assert.equal(info.exists, true, "the file is on disk");
+    assert.ok(info.bytes > 0);
+    assert.deepEqual(on.index.search("beta").map((hit) => hit.id), ["a"], "search still works");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("no store means memory only: the same index, no file", async () => {
+  // The escape hatch that is left, and it is for tests and alternate roots —
+  // not something the settings page exposes.
+  const { index } = fixture(cachedLogs);
+  await index.open();
+  index.sync([session("a")]);
+  await index.work();
+  const info = await index.cacheInfo();
+  assert.equal(info.enabled, false);
+  assert.equal(info.exists, false, "no file on disk");
+  assert.deepEqual(index.search("beta").map((hit) => hit.id), ["a"], "search still works");
+  assert.equal((await index.clear()).freedBytes ?? 0, 0, "nothing to delete");
 });
 
 test("clear() deletes the file and reports the bytes it freed", async () => {

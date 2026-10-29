@@ -167,6 +167,37 @@ test("with 会话名 out of range a folder answers by holding a hit, not by its 
   assert.deepEqual(ids(holding), ["d-proj", "w-wa"]);
 });
 
+test("搜索位置=当前目录 keeps the folder list local too (m01916)", () => {
+  // The whole-tree widening above is exactly what 当前目录 switches off: a search
+  // that promises to stay here and then lists a folder from two levels down has
+  // broken its promise. 范围=全部 is unaffected — it is the filter own switch.
+  const local = (needle) =>
+    api.listContainers({
+      tree,
+      scope: FIXED_NODES.root,
+      needle,
+      local: true,
+      filterActive: false,
+      filterAll: true,
+      sessions: [],
+    });
+  assert.deepEqual(ids(local("beta")), ["w-wb"], "a root-level folder still answers");
+  assert.deepEqual(ids(local("alpha")), [], "wa lives inside 项目, so it is not here");
+
+  // …and with 会话名 out of range it falls back to holding a hit, still locally.
+  const holding = api.listContainers({
+    tree,
+    scope: FIXED_NODES.root,
+    needle: "beta",
+    local: true,
+    matchNames: false,
+    filterActive: false,
+    filterAll: true,
+    sessions: rows("wa"),
+  });
+  assert.deepEqual(ids(holding), ["d-proj"], "项目 holds wa, so it stays; w-wb holds nothing");
+});
+
 test("the bin lists no container: there is nothing to navigate out of", () => {
   const listed = api.listContainers({
     tree,

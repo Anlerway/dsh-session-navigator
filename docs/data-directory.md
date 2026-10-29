@@ -96,8 +96,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
             "hideBlank": true,           // 过滤空会话：开关，默认过滤
             "dateFormat": "date",        // date | relative，详细日期 vs 距今时间
             "sizeFormat": "auto" },      // auto | kb，自动转换 vs 固定 KB
-  "search": { "indexCache": true,        // 会话内容索引落盘复用：开关，默认开
-              "indexIdle": false },      // 空闲时自动建立索引：开关，默认关
+  "search": { "indexIdle": false },      // 空闲时自动建立索引：唯一的搜索索引开关，默认关
   "dataDir": { "current": null }
 }
 ```
@@ -116,6 +115,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 两者的默认值都等于改造之前的样子，所以升级不会改变任何人的列表。
 
 `mergeSettings()` 只认已知键，未知键在归一化时被丢掉，而不是落盘等下个版本困惑。
+`search` 现在只剩 `indexIdle` 一个键：1.0.6 的 `indexCache` 控制的那份派生缓存已经恒开（见 §3.1）。
 
 ### 3.1 派生的那份不是侧车：`content-index.v1.json`
 
@@ -124,7 +124,9 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 "删了只损失时间"：下次打开会话内容搜索时重读日志重建一遍，答案一模一样。所以
 
 - 它不进 `DOCUMENT_NAMES`，没有 revision、没有乐观锁，写入走同一个 `writeAtomic`。
-- 设置里关掉「搜索索引缓存」时 `PUT /settings` 顺手删掉它——开关的语义是"不要这份缓存"。
+- 它**没有开关**（1.0.6 的 `search.indexCache` 已被 `normalizeSettings` 当未知键丢掉）：派生文件删掉
+  只花一次重建，而"不写缓存"只会让每次启动都重读一百多 MB 日志。删它的入口是设置页的「删除索引缓存」、
+  搜索范围弹窗里跳过去的那一组，以及「清除数据」。
 - `version` 不匹配就当没有（不回写迁移）；文件坏了、临时目录不可写，搜索照常工作，只是每次重读。
 - 「清除数据」也会删它，并且不把它算进四份侧车那份清单里。
 
@@ -254,7 +256,7 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 | `lib/store/sidecar.js` | 原子写、revision、损坏隔离、`codedError` |
 | `lib/store/documents.js` | 四份文档的初始形状与迁移函数 |
 | `lib/domain/settings.js` | 设置形状的唯一出处、`mergeSettings`、`normalizeSettings` |
-| `lib/sources/content.js` | 会话内容索引：内存 + 可选落盘、按签名失效、`flush` / `clear` / `rebuild` |
+| `lib/sources/content.js` | 会话内容索引：内存 + 恒落盘、按签名失效、`flush` / `clear` / `rebuild` |
 | `lib/host/datadir.js` | `describeDataDir` / `inspectDataDir` / `migrateDataDir` |
 | `lib/host/trash.js` | 移动字节、维持索引、对账、恢复阶梯 |
 | `lib/host/move.js` | 跨工作区移动/复制、回滚、`reconcileMoves` |

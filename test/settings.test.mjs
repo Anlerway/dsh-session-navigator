@@ -265,25 +265,29 @@ test("a percentage preset follows the viewport", () => {
   assert.deepEqual(modalSizeOf({ sizing: "percent" }), { width: "70vw", height: "70vh" });
 });
 
-test("the 会话内容 index caches on disk and does not build itself by default", () => {
-  // Two different costs: keeping the cache is cheap, building it is 6.5 s of log
-  // reads, so only the first is on out of the box (m00561).
-  assert.deepEqual(defaultSettings().search, { indexCache: true, indexIdle: false });
+test("the 会话内容 index keeps its file and does not build itself by default", () => {
+  // Only the timing is a setting (m01916). Keeping the index file is not: it is
+  // derived, it lives in the plugin's own data directory, and the whole reason
+  // it exists is the fast answer after a restart.
+  assert.deepEqual(defaultSettings().search, { indexIdle: false });
 });
 
-test("a search patch merges one switch without disturbing the other", () => {
+test("a search patch merges without disturbing the rest of the document", () => {
   const merged = mergeSettings(defaultSettings(), { search: { indexIdle: true } });
-  assert.deepEqual(merged.search, { indexCache: true, indexIdle: true });
+  assert.deepEqual(merged.search, { indexIdle: true });
   assert.equal(merged.list.dateFormat, "date", "the list group is untouched");
 });
 
 test("a search value that is not a boolean falls back to the default", () => {
-  assert.deepEqual(normalizeSettings({ search: { indexCache: "on", indexIdle: 1 } }).search, {
-    indexCache: true,
-    indexIdle: false,
-  });
-  assert.deepEqual(normalizeSettings({ search: { indexCache: false, indexIdle: true } }).search, {
-    indexCache: false,
-    indexIdle: true,
-  });
+  assert.deepEqual(normalizeSettings({ search: { indexIdle: 1 } }).search, { indexIdle: false });
+  assert.deepEqual(normalizeSettings({ search: { indexIdle: true } }).search, { indexIdle: true });
+});
+
+test("the removed 会话内容索引缓存 switch is dropped, not honoured", () => {
+  // A document written by 1.0.6 or earlier still carries `search.indexCache`. It
+  // has to fall out here: leaving it in the normalised document would let a stale
+  // `false` travel back out through PUT /settings and read as a live setting.
+  const kept = normalizeSettings({ search: { indexCache: false, indexIdle: true } });
+  assert.deepEqual(kept.search, { indexIdle: true });
+  assert.equal("indexCache" in kept.search, false);
 });

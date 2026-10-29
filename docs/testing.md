@@ -27,8 +27,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme.test.mjs` | 104 | 主题 store 只交出窗口用的 token，且拒绝注入 |
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
-| `test/settings.test.mjs` | 289 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的两个开关都是封闭词表 |
-| `test/settings-page.test.mjs` | 759 | 设置页真实渲染：打开方式、搜索索引组（两个开关、进度、重建/删除、失败文案）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
+| `test/settings.test.mjs` | 293 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
+| `test/settings-page.test.mjs` | 749 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
@@ -41,9 +41,9 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，而不是别人的 |
 | `test/row-rail.test.mjs` | 169 | 子会话引导线的几何：必须落在上面那个折叠箭头的中心（深度 0 与非 0 是两条式子） |
-| `test/list-containers.test.mjs` | 180 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来 |
-| `test/content-index.test.mjs` | 429 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；磁盘缓存写盘后重启不再读日志、坏版本与写不进去都不阻断搜索；空闲构建器只在开关打开时动手 |
-| `test/search-scope.test.mjs` | 245 | 搜索范围的四个字段与弹窗：默认三项、会话内容只看 host 命中、搜索是整库范围、面板确实把范围传给了列表 |
+| `test/list-containers.test.mjs` | 211 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来；「当前目录」时放宽整棵树这件事也不做 |
+| `test/content-index.test.mjs` | 447 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
+| `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
 | `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上而不是屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
 | `test/double-press.test.mjs` | 48 | 双击时限：同一行两次按下都在 `DOUBLE_CLICK_MS` 内才算、慢一拍就是两次单击（而且那次慢按成为新的一对的开始）、换一行不配对、一次双击用掉这一对所以第三下重新开始、没有名字的目标永远不算 |
 | `test/drag-set.test.mjs` | 67 | 多选拖动的那一次拆分：容器与会话按树和索引分流而不是按 id 前缀、陌生 id 丢掉而不是猜、重复 id 只走一次、容器永远不会被当会话、没有索引时非容器都算会话、空集拆成空集 |
@@ -58,7 +58,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/locale-parity.test.mjs` | 88 | 中英两份字典键集合一致、占位符一致、英文标签放得下；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：字典覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/reset.test.mjs` | 208 | 清除数据：一个字都没动之前先验 `DELETE`、四份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
-| `test/render-smoke.mjs` | 1268 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中） |
+| `test/render-smoke.mjs` | 1274 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中） |
 
 ## 2. 为什么是这些
 

@@ -86,7 +86,18 @@ const session = (extra = {}) => ({
 const scopes = (extra = {}) => ({ ...api.DEFAULT_SEARCH_SCOPES, ...extra });
 
 test("the default range is the three fields the box always read", () => {
-  assert.deepEqual(api.DEFAULT_SEARCH_SCOPES, { name: true, tags: true, note: true, content: false });
+  // 位置 defaults to 所有位置 (m01916): the fields are what the box reads, and the
+  // default must not quietly turn "where I stand" into part of the question.
+  assert.deepEqual(api.DEFAULT_SEARCH_SCOPES, {
+    place: "all",
+    name: true,
+    tags: true,
+    note: true,
+    content: false,
+  });
+  assert.equal(api.normalizeSearchScopes({ place: "here" }).place, "here");
+  assert.equal(api.normalizeSearchScopes({ place: "everywhere" }).place, "all", "only two places exist");
+  assert.equal(api.normalizeSearchScopes({}).place, "all");
   assert.deepEqual(api.normalizeSearchScopes(undefined), api.DEFAULT_SEARCH_SCOPES);
   assert.deepEqual(api.normalizeSearchScopes(null), api.DEFAULT_SEARCH_SCOPES);
   // 会话内容 is the expensive one: only an explicit true turns it on.
@@ -216,6 +227,57 @@ test("回收站 keeps its own rows: 清空 has to stay aimable", () => {
   assert.equal(base("登录", "trash"), ownRows);
 });
 
+test("搜索位置 当前目录 keeps the search where the user stands (m01916)", () => {
+  // The same needle, the same library — only the question changes. 当前目录 is
+  // the narrowing the user asked for, so it outranks the 整库 default.
+  const here = (needle, scope) =>
+    searchBaseSessions({ needle, place: "here", scope, trashScope: "trash", own: ownRows, library });
+  assert.equal(here("登录", "d-proj"), ownRows);
+  assert.equal(here("登录", "favorites"), ownRows);
+  // 所有位置 is the default and behaves exactly as before this existed.
+  const all = (needle, scope) =>
+    searchBaseSessions({ needle, place: "all", scope, trashScope: "trash", own: ownRows, library });
+  assert.equal(all("登录", "d-proj"), library);
+  // An empty box lists the container either way: the place is not a filter.
+  assert.equal(here("", "d-proj"), ownRows);
+});
+
+test("the dialog offers the two places above the fields", () => {
+  const tree = api.SearchScopeDialog({ open: true, value: scopes(), onApply: () => {}, onClose: () => {} });
+  const group = elements(tree).find((node) => node.props?.role === "radiogroup");
+  assert.ok(group, "搜索位置 is a segmented control, not a checkbox");
+  assert.equal(group.props["aria-label"], "搜索位置");
+  const options = elements(group).filter((node) => node.type === "button");
+  assert.deepEqual(options.map(textOf), ["所有位置", "当前目录"]);
+  assert.equal(options[0].props["aria-checked"], true, "所有位置 is the default");
+});
+
+test("clicking 当前目录 changes the place in the draft only", () => {
+  drafts.length = 0;
+  const tree = api.SearchScopeDialog({ open: true, value: scopes(), onApply: () => {}, onClose: () => {} });
+  button(tree, "当前目录").props.onClick();
+  assert.deepEqual(drafts, [{ ...api.DEFAULT_SEARCH_SCOPES, place: "here" }]);
+});
+
+test("搜索索引设置 is one click from the dialog, and only when it is wired", () => {
+  const managed = [];
+  const tree = api.SearchScopeDialog({
+    open: true,
+    value: scopes(),
+    onApply: () => {},
+    onClose: () => {},
+    onManage: () => managed.push(true),
+  });
+  const link = button(tree, "搜索索引设置");
+  assert.ok(link, "the footer links to the index settings");
+  link.props.onClick();
+  assert.deepEqual(managed, [true]);
+  // A caller that has nowhere to send the user (the smoke test) gets no button
+  // rather than a dead one.
+  const bare = api.SearchScopeDialog({ open: true, value: scopes(), onApply: () => {}, onClose: () => {} });
+  assert.equal(button(bare, "搜索索引设置"), undefined);
+});
+
 test("the panel hands the range to the list and mounts the dialog", () => {
   // The wiring is the part no unit case covers: every piece above can be right
   // while the panel forgets to pass it down, and then 会话内容 silently does
@@ -230,7 +292,7 @@ test("the panel hands the range to the list and mounts the dialog", () => {
   const dialogAt = source.indexOf("h(SearchScopeDialog, {");
   assert.ok(dialogAt > 0, "the dialog is mounted");
   const dialog = source.slice(dialogAt, dialogAt + source.slice(dialogAt).indexOf("})"));
-  for (const prop of ["open: scopeOpen", "value: searchScopes", "onApply", "onClose"]) {
+  for (const prop of ["open: scopeOpen", "value: searchScopes", "onApply", "onClose", "onManage"]) {
     assert.ok(dialog.includes(prop), "SearchScopeDialog is not receiving " + prop);
   }
   // And the way in: a funnel button next to the search box.

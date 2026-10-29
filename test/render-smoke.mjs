@@ -931,9 +931,15 @@ console.log("FilterDialog open ok:", Boolean(render({
 console.log("FilterDialog closed ok:", render({ type: FilterDialog, props: { open: false, value: { favorite: "all", archived: "all", todo: "all", tags: [] }, library: [], onApply: noop, onClose: noop } }) === null);
 const scopeOpen = render({
   type: SearchScopeDialog,
-  props: { open: true, value: { name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop },
+  props: { open: true, value: { place: "here", name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop, onManage: noop },
 });
 console.log("SearchScopeDialog open ok:", Boolean(scopeOpen));
+// 搜索位置 (m01916): two radio options above the field checkboxes, and the footer
+// link to the index settings. A dialog that silently lost either is still a valid
+// tree, so the smoke test has to look for them by role and by text.
+const scopeText = textOf(scopeOpen);
+console.log("SearchScopeDialog place ok:", scopeText.includes("所有位置") && scopeText.includes("当前目录"));
+console.log("SearchScopeDialog manage ok:", scopeText.includes("搜索索引设置"));
 const scopeClosed = render({
   type: SearchScopeDialog,
   props: { open: false, value: { name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop },

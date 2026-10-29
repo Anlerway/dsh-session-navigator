@@ -36,7 +36,7 @@ lib/
   domain/             纯规则：tree-rules / tree / folders / shortcuts / sessions /
                       annotations / settings / trash / export / session-state
   sources/            读管道：heads（zstd 扫描）、projcache、reader、artifact、workspaces、
-                      content（会话内容索引，可落盘复用）
+                      content（会话内容索引，落盘复用）
   store/              sidecar（原子写 + revision）、documents（四份文档）
   host/               actions、trash、move、datadir、bridge、theme、
                       update（更新检查）、open-link（链接白名单）、maintenance（缓存清理）、

@@ -539,10 +539,12 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
   `snippet` 取命中前后 30 / 70 字符、折成一行、两端带省略号。
 - 检索是**纯读**：不产生 revision，读不出的日志只记一次空文本、不无限重试。
 
-索引默认还会落盘一份（`content-index.v1.json`），进程重启后不必重读日志；缓存开关、重建与删除见 §4.14。
+索引总是落盘一份（`content-index.v1.json`），进程重启后不必重读日志；它没有开关（m01916 去掉了），重建与删除见 §4.14。
 
-搜索的**位置**与字段是两件事：字段由客户端上的「搜索范围」决定，位置恒为整个库——站在任何目录里搜，
-答案都不该是"这个目录里没有"（唯一例外是回收站，它按自己的行回答）。
+搜索的**位置**与字段是两件事，两者都在客户端的「搜索范围」弹窗里选：**位置**是「所有位置」（缺省）
+或「当前目录」，**字段**是会话名 / 标签 / 备注 / 会话内容。缺省搜整个库——站在任何目录里搜，答案都
+不该是"这个目录里没有"；只有用户明确选了「当前目录」，才收窄到脚下这一层（文件夹列表也一起收窄，
+不再把命中的兄弟目录列出来）。回收站按自己的行回答，不受位置影响。
 
 ### 4.14 搜索索引（缓存 / 重建 / 删除）
 
@@ -552,20 +554,23 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 | `POST /search/index/rebuild` | — | `{ ...state, cache, building }` |
 | `POST /search/index/clear` | — | `{ freedBytes, sessions, cache, building }` |
 
-对应设置文档（`lib/domain/settings.js`）里的两组开关，缺省值就在 `defaultSettings()`：
+对应设置文档（`lib/domain/settings.js`）里的一个开关，缺省值就在 `defaultSettings()`：
 
 | 键 | 缺省 | 含义 |
 |---|---|---|
-| `search.indexCache` | `true` | 把建好的索引落成 `<数据目录>/content-index.v1.json`（原子写）；关掉后不写，启动时也不读 |
 | `search.indexIdle` | `false` | 允许空闲时自动建立：`bootstrap` 之后等 `idleDelayMs = 1200`，再按 `idleSliceMs = 250` 的小步推进 |
+
+索引文件本身**没有**开关。1.0.6 及更早的文档里有个 `search.indexCache`，它控制的缓存现在恒开：
+派生文件删掉只花一次重建，而"不写缓存"这条路只会让每次启动都重读一百多 MB 日志。旧文档带来的
+`indexCache` 在 `normalizeSettings` 里按未知键丢弃，不报错也不生效。
 
 - `state` 是 `{ indexed, total, pending, ready }`，与 `GET /search/content` 同源；`cache` 是
   `{ enabled, bytes, exists, sessions }`（`bytes` 是磁盘文件的真实大小，`exists` 只说明文件在不在）；
   `building` 是后台构建器的忙闲。
 - `rebuild` 先清空内存与磁盘条目（旧缓存不再命中任何日志），再从头构建；构建期间搜索照常可用，
   只是答案逐步变全。`clear` 让构建器停下、删文件、清内存，`freedBytes` 只累加真正回来了的字节。
-- 关掉 `search.indexCache` 时 `PUT /settings` 会顺带 `dropDisk()`：开关的语义是「不要这份缓存」，
-  留着一百多 MB 的旧文件等下一个人来读没有意义。只关 `indexIdle` 不删文件。
+- `PUT /settings` 只在 `search.indexIdle` 为真时 `indexBuilder.resume()`：那是"现在就慢慢建"的
+  意愿表达，关掉不代表要删掉已经建好的文件——删文件是 `POST /search/index/clear` 与清除数据的事。
 - 缓存条目按 `path\u0000sizeBytes\u0000activityAt` 组成的签名判失效，文件里写着 `version: 1`；
   版本不符就当没有，不做迁移。文件损坏、临时目录不可写都只让 `flush` 返回 `{ written: false }`，
   搜索仍然可用——缓存是加速手段，不是正确性的前提。

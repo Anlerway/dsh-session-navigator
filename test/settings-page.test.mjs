@@ -172,7 +172,7 @@ function settingsDocument(mode, component) {
       list: { autoCollapse: false, showArchived: true },
       // 搜索索引 (m00561): the index cache is on and the idle build is off, the
       // same defaults a fresh install gets.
-      search: { indexCache: true, indexIdle: false },
+      search: { indexIdle: false },
       dataDir: { current: null },
     },
     revision: 4,
@@ -671,32 +671,22 @@ test("a refused reset shows the host's reason and keeps the box open", async () 
 const indexGroup = (tree) =>
   collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupSearch"));
 
-test("搜索索引 keeps the cache and the idle build as two separate switches", async () => {
-  const { tree, calls, driver, api, t } = await renderSettings();
+test("搜索索引 has one switch left: building while idle", async () => {
+  const { tree, calls } = await renderSettings();
   const group = indexGroup(tree);
   assert.ok(group, "the group is on the page");
   const switches = collect(group, byClass("se-set-switch"));
-  assert.equal(switches.length, 2);
-  // 缓存缺省开（省下每次重启的重读），空闲建立缺省关（那是一次 6.5 秒的日志读）。
-  assert.match(switches[0].props.className, /\bon\b/, "the cache is on by default");
-  assert.doesNotMatch(switches[1].props.className, /\bon\b/, "the idle build is off by default");
+  // 会话内容索引缓存 is gone (m01916): the file is always kept, so the only thing
+  // left to choose is when the reading happens — and that is off by default,
+  // because it is a 6.5 s read of the logs.
+  assert.equal(switches.length, 1);
+  assert.doesNotMatch(switches[0].props.className, /\bon\b/, "the idle build is off by default");
+  assert.match(textOf(group), /setIndexIdle/);
+  assert.doesNotMatch(textOf(group), /setIndexCache|setIndexOff/, "the cache switch is gone");
 
   switches[0].props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 10));
-  const cacheWrite = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
-  assert.ok(cacheWrite, "the click writes immediately");
   // 只写这一个键：一个开了很久的设置页不该把整份文档盖回去。
-  assert.deepEqual(cacheWrite.body, { search: { indexCache: false } });
-
-  const after = await driver.settle(() => page(driver, api, t));
-  const offGroup = indexGroup(after);
-  const offSwitches = collect(offGroup, byClass("se-set-switch"));
-  assert.doesNotMatch(offSwitches[0].props.className, /\bon\b/);
-  // 关掉不是静静地关掉：还能搜，只是每次都要重读日志。
-  assert.match(textOf(offGroup), /setIndexOff/);
-
-  offSwitches[1].props.onClick();
-  await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(calls.filter((call) => call.method === "PUT").at(-1).body, { search: { indexIdle: true } });
 });
 
