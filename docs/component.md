@@ -159,7 +159,7 @@ staging 里就把 app 写好，跟着树一起 rename 发布；每次 `launch()`
 继承它，于是"窗口"变成一个跑完就退的纯 Node 进程。`launch()` 里 `delete env.ELECTRON_RUN_AS_NODE`。
 
 窗口通过 `onEvent` 把 `hello` / `closed` 报告给 host，host 再转成总线上的 `window-open` /
-`window-closed`（`lib/index.js:157-158`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
+`window-closed`（`lib/index.js:177-178`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
 面板不需要第二条通道。
 
 ## 7. 相关文件

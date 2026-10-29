@@ -170,6 +170,9 @@ function settingsDocument(mode, component) {
         header: { style: "auto" },
       },
       list: { autoCollapse: false, showArchived: true },
+      // 搜索索引 (m00561): the index cache is on and the idle build is off, the
+      // same defaults a fresh install gets.
+      search: { indexCache: true, indexIdle: false },
       dataDir: { current: null },
     },
     revision: 4,
@@ -192,7 +195,18 @@ const interpolating = (key, vars = {}) =>
   (Object.keys(vars).length ? `(${Object.values(vars).join(", ")})` : "");
 
 /** Render the page against a document, and hand back the tree and the calls. */
-async function renderSettings({ mode = "panel", component = "absent", update = null, clear = null, interpolate = false } = {}) {
+async function renderSettings({
+  mode = "panel",
+  component = "absent",
+  update = null,
+  clear = null,
+  interpolate = false,
+  // 搜索索引 (m00561): what GET /search/index answers, and what the two buttons
+  // are answered with. An object with ok: false makes the button fail.
+  index = null,
+  rebuildIndex = null,
+  clearIndex = null,
+} = {}) {
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
     if (path === "/settings" && call.method === "GET") {
@@ -204,11 +218,53 @@ async function renderSettings({ mode = "panel", component = "absent", update = n
       const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component);
       if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
       if (call.body.list) Object.assign(doc.settings.list, call.body.list);
+      if (call.body.search) Object.assign(doc.settings.search, call.body.search);
       return { ok: true, result: { settings: doc.settings, revision: 5 } };
     }
     // The component group re-probes on mount and reports the phase upward, so
     // the launch chips have to agree with it — a stub that answered nothing
     // would leave 独立弹窗 disabled however the document was written.
+    // 搜索索引: a page that reports the index and has two buttons that change it.
+    if (path === "/search/index") {
+      return {
+        ok: true,
+        result: index ?? {
+          indexed: 63,
+          total: 63,
+          pending: 0,
+          cache: { enabled: true, bytes: 4096, exists: true, sessions: 63 },
+          building: false,
+        },
+      };
+    }
+    if (path === "/search/index/rebuild") {
+      if (rebuildIndex && rebuildIndex.ok === false) return rebuildIndex;
+      return {
+        ok: true,
+        result: rebuildIndex ?? {
+          indexed: 0,
+          total: 0,
+          pending: 0,
+          cache: { enabled: true, bytes: 0, exists: false, sessions: 0 },
+          building: false,
+        },
+      };
+    }
+    if (path === "/search/index/clear") {
+      if (clearIndex && clearIndex.ok === false) return clearIndex;
+      return {
+        ok: true,
+        result: clearIndex ?? {
+          freedBytes: 4096,
+          sessions: 63,
+          indexed: 0,
+          total: 0,
+          pending: 0,
+          cache: { enabled: true, bytes: 0, exists: false, sessions: 0 },
+          building: false,
+        },
+      };
+    }
     if (path === "/component/status") {
       return { ok: true, result: { phase: component, version: "1.0.0", installed: component === "ready" } };
     }
@@ -607,3 +663,97 @@ test("a refused reset shows the host's reason and keeps the box open", async () 
 });
 
 
+
+
+/** The 搜索索引 group (m00561): the only place the index can be kept, built
+ *  early, rebuilt or dropped. Found by its heading, like 关于, so the group order
+ *  can change without rewriting the test. */
+const indexGroup = (tree) =>
+  collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupSearch"));
+
+test("搜索索引 keeps the cache and the idle build as two separate switches", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings();
+  const group = indexGroup(tree);
+  assert.ok(group, "the group is on the page");
+  const switches = collect(group, byClass("se-set-switch"));
+  assert.equal(switches.length, 2);
+  // 缓存缺省开（省下每次重启的重读），空闲建立缺省关（那是一次 6.5 秒的日志读）。
+  assert.match(switches[0].props.className, /\bon\b/, "the cache is on by default");
+  assert.doesNotMatch(switches[1].props.className, /\bon\b/, "the idle build is off by default");
+
+  switches[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const cacheWrite = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  assert.ok(cacheWrite, "the click writes immediately");
+  // 只写这一个键：一个开了很久的设置页不该把整份文档盖回去。
+  assert.deepEqual(cacheWrite.body, { search: { indexCache: false } });
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const offGroup = indexGroup(after);
+  const offSwitches = collect(offGroup, byClass("se-set-switch"));
+  assert.doesNotMatch(offSwitches[0].props.className, /\bon\b/);
+  // 关掉不是静静地关掉：还能搜，只是每次都要重读日志。
+  assert.match(textOf(offGroup), /setIndexOff/);
+
+  offSwitches[1].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(calls.filter((call) => call.method === "PUT").at(-1).body, { search: { indexIdle: true } });
+});
+
+test("搜索索引 reports where the index stands", async () => {
+  const { tree } = await renderSettings({ interpolate: true });
+  // 已建立 63/63 · 4 KB —— 数字来自宿主，不是页面猜的。
+  assert.match(textOf(indexGroup(tree)), /setIndexProgress\(63, 63, /);
+});
+
+test("重新建立索引缓存 asks the host, then says it is building", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({
+    interpolate: true,
+    rebuildIndex: {
+      indexed: 0,
+      total: 63,
+      pending: 63,
+      cache: { enabled: true, bytes: 0, exists: false, sessions: 0 },
+      building: true,
+    },
+  });
+  chipLabelled(tree, "setIndexRebuildGo").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const call = calls.find((entry) => entry.method === "POST" && entry.url.endsWith("/search/index/rebuild"));
+  assert.ok(call, "the rebuild is a host action, not a settings write");
+  // 不带 settings 的 revision：重建和设置文档的版本无关，别让它因别人的编辑失败。
+  assert.equal(call.headers["if-match"], undefined);
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const group = indexGroup(after);
+  assert.match(textOf(group), /setIndexRebuilding/);
+  assert.match(textOf(group), /setIndexProgress\(0, 63, /);
+});
+
+test("删除索引缓存 drops it and reports the bytes it freed", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({ interpolate: true });
+  chipLabelled(tree, "setIndexClearGo").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(calls.find((entry) => entry.method === "POST" && entry.url.endsWith("/search/index/clear")));
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const text = textOf(indexGroup(after));
+  assert.match(text, /setIndexCleared\(/);
+  assert.doesNotMatch(text, /setIndexClearedNone/);
+  // 缓存没了，计划里的总数还在：重建时要知道有多少份会话。
+  assert.match(text, /setIndexProgress\(0, 63, /);
+});
+
+test("a failed 删除索引缓存 reports the reason, not a freed size", async () => {
+  const { tree, driver, api, t } = await renderSettings({
+    interpolate: true,
+    clearIndex: { ok: false, code: "index-clear-failed", error: "EBUSY: the index file is locked" },
+  });
+  chipLabelled(tree, "setIndexClearGo").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const after = await driver.settle(() => page(driver, api, t));
+  const text = textOf(indexGroup(after));
+  assert.match(text, /setIndexFailed/);
+  assert.match(text, /EBUSY: the index file is locked/);
+  assert.doesNotMatch(text, /setIndexCleared/);
+});

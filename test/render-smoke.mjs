@@ -398,6 +398,27 @@ if (!String(childRowInList.props.className).includes("sub-row")) throw new Error
 if (!String(childRowInList.props.className).includes("bound-row")) throw new Error("the child row must carry .bound-row");
 console.log("ListPane (subagent rows) ok: folded 1 row, open 2 rows");
 
+// ── the box that selects rows by dragging ───────────────────────────────────
+// 框选 (m01168) paints into an element it finds through a ref, so the element
+// has to be in the tree: without it the drag had nothing to resize.
+const plainPane = listPaneWith({});
+if (findAll(plainPane, hasClass("selrect")).length !== 1) throw new Error("the list must hold one .selrect");
+const plainBody = findAll(plainPane, hasClass("listbody"))[0];
+if (plainBody.props.onMouseDown) throw new Error("a list without onMarquee must not start a box");
+
+const calls = [];
+const dragPane = listPaneWith({ onMarquee: (...args) => calls.push(args) });
+const dragBody = findAll(dragPane, hasClass("listbody"))[0];
+if (typeof dragBody.props.onMouseDown !== "function") throw new Error("the list body must start a box");
+const blankEvent = { target: { closest: () => null }, clientX: 12, clientY: 40, button: 0 };
+dragBody.props.onMouseDown(blankEvent);
+if (calls.length !== 1) throw new Error("a press on the blank body must hand over one drag, got " + calls.length);
+const [event, pane, rect] = calls[0];
+if (event !== blankEvent) throw new Error("the drag must receive the press it started from");
+if (pane !== null && typeof pane !== "object") throw new Error("the drag must receive the pane element or null");
+if (rect !== null && rect !== undefined && typeof rect !== "object") throw new Error("the drag must receive the box element or null");
+console.log("ListPane (marquee) ok: .selrect present, blank press starts a box");
+
 // ── containers in the list ──────────────────────────────────────────────────
 // Three things are pinned here, all of which were invisible in the UI:
 //   1. a user folder under the current scope must be *listed*, not only drawn
@@ -433,6 +454,28 @@ if (workspaceAt < 0) throw new Error("workspaces need their own group, got " + J
 if (folderAt > workspaceAt) throw new Error("文件夹 must come before 工作区, got " + JSON.stringify(captions));
 console.log("list containers ok:", folderRows.length, "folder,", wsRows.length, "workspace,", specialRows.length, "special");
 console.log("groups:", captions.join(" | "));
+
+// ── 拖动要先选中 (m01385) ───────────────────────────────────────────────────
+// Every row in the list used to be draggable, so pressing one and moving started
+// a native drag and 框选 never saw the press. The gate is the pick: the row the
+// user last clicked, or a ticked one, drags; every other row is surface for the
+// box. The predicate the box asks has to be the same one, or the browser starts
+// a drag the box cannot see.
+const rowById = (pane, id) =>
+  findAll(pane, (cls) => cls.split(" ").includes("row")).find((row) => row.props?.["data-id"] === id);
+const unpickedRow = rowById(listPaneWith({}), session.id);
+if (!unpickedRow) throw new Error("the list must draw the session row");
+if (unpickedRow.props.draggable !== false) throw new Error("an unpicked session row must not drag");
+const pickedRow = rowById(listPaneWith({ selected: session.id }), session.id);
+if (pickedRow.props.draggable !== true) throw new Error("the picked session row must still drag");
+const tickedRow = rowById(listPaneWith({ checked: new Set([session.id]) }), session.id);
+if (tickedRow.props.draggable !== true) throw new Error("a ticked session row must still drag");
+// A container row follows the same rule, so a folder or a workspace is picked
+// before it can be moved by hand — otherwise pressing it would move it while
+// the user was dragging a box across the list.
+if (folderRows[0].props.draggable !== false) throw new Error("an unpicked folder row must not drag");
+if (wsRows[0].props.draggable !== false) throw new Error("an unpicked workspace row must not drag");
+console.log("ListPane (drag gate) ok: unpicked rows are surface, picked and ticked rows drag");
 
 // ── the pencil on a container row ──────────────────────────────────────────
 // "文件夹、工作区点了重命名按钮却不出现输入框，会话的重命名是好的" — the row

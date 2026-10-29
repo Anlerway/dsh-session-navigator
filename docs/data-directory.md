@@ -25,6 +25,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 ├── annotations.v1.json   标签、备注、收藏/待办标记、共享标签库
 ├── settings.v1.json      跨浏览器的偏好（布局在 localStorage）
 ├── move-journal.v1.json  正在进行的跨工作区移动（见 §6.2）
+├── content-index.v1.json 会话内容索引的缓存（派生文件，删了只是要重建一次）
 ├── .location             迁移后留下的指针（只有 copy 模式会留）
 ├── .tmp/                 原子写的临时文件，启动时只清 `*.tmp`
 ├── quarantine/           读不出来的文档原件（`<name>.corrupt-<ts>.json`）
@@ -73,7 +74,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 |---|---|---|
 | `tree.v1.json` | `{ folders, placement, workspaceOrder, shortcuts, pins, quickAccess, sessionPlacement }` | `placement` 是 workspace 的显式顺序；`sessionPlacement` 是会话的**显示**归属覆盖；`pins` 是排名、`quickAccess` 是书签带，两张表故意分开（见 tree-and-placement.md §8） |
 | `annotations.v1.json` | `{ sessions: {}, tags: [] }` | `tags` 是共享标签库；`sessions[id]` 是单条注解 |
-| `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js:74` |
+| `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js:123` |
 | `trash/index.v1.json` | `{ entries: {} }` | 见第 5 节 |
 
 `settings.v1.json` 的完整形状：
@@ -95,6 +96,8 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
             "hideBlank": true,           // 过滤空会话：开关，默认过滤
             "dateFormat": "date",        // date | relative，详细日期 vs 距今时间
             "sizeFormat": "auto" },      // auto | kb，自动转换 vs 固定 KB
+  "search": { "indexCache": true,        // 会话内容索引落盘复用：开关，默认开
+              "indexIdle": false },      // 空闲时自动建立索引：开关，默认关
   "dataDir": { "current": null }
 }
 ```
@@ -108,11 +111,22 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 `subagents` 仍然被读：`expanded` 迁成 `false`，两者同时存在时以开关为准。
 
 `dateFormat` 与 `sizeFormat` 是列表里那两列怎么写：`date` 写具体时刻，`relative` 写「3 天前」
-（单位随距离走：分钟 → 小时 → 天 → 月 → 年，用 `Intl.RelativeTimeFormat`，语言跟着面板当前的
-语言）；`auto` 在 B / KB / MB / GB 里挑合适的单位，`kb` 一列只用一个单位，方便竖着比大小。
+（单位随距离走：分钟 → 小时 → 天，走到天就停——不出现月与年，也不出现「昨天」这类自然语言，
+数字永远在，语言跟着面板当前的语言）；`auto` 在 B / KB / MB / GB 里挑合适的单位，`kb` 一列只用一个单位，方便竖着比大小。
 两者的默认值都等于改造之前的样子，所以升级不会改变任何人的列表。
 
 `mergeSettings()` 只认已知键，未知键在归一化时被丢掉，而不是落盘等下个版本困惑。
+
+### 3.1 派生的那份不是侧车：`content-index.v1.json`
+
+四份侧车之外还有一份**可删**的文件，装的是会话内容索引的缓存：`{ version: 1, savedAt, sessions }`，
+`sessions[id]` 带 `sig`（`path\u0000sizeBytes\u0000activityAt`）与 `text`。它和侧车的区别是
+"删了只损失时间"：下次打开会话内容搜索时重读日志重建一遍，答案一模一样。所以
+
+- 它不进 `DOCUMENT_NAMES`，没有 revision、没有乐观锁，写入走同一个 `writeAtomic`。
+- 设置里关掉「搜索索引缓存」时 `PUT /settings` 顺手删掉它——开关的语义是"不要这份缓存"。
+- `version` 不匹配就当没有（不回写迁移）；文件坏了、临时目录不可写，搜索照常工作，只是每次重读。
+- 「清除数据」也会删它，并且不把它算进四份侧车那份清单里。
 
 ## 4. 原子写与乐观锁
 
@@ -240,6 +254,7 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 | `lib/store/sidecar.js` | 原子写、revision、损坏隔离、`codedError` |
 | `lib/store/documents.js` | 四份文档的初始形状与迁移函数 |
 | `lib/domain/settings.js` | 设置形状的唯一出处、`mergeSettings`、`normalizeSettings` |
+| `lib/sources/content.js` | 会话内容索引：内存 + 可选落盘、按签名失效、`flush` / `clear` / `rebuild` |
 | `lib/host/datadir.js` | `describeDataDir` / `inspectDataDir` / `migrateDataDir` |
 | `lib/host/trash.js` | 移动字节、维持索引、对账、恢复阶梯 |
 | `lib/host/move.js` | 跨工作区移动/复制、回滚、`reconcileMoves` |

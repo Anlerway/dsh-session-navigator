@@ -29,7 +29,7 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 - Search covers titles, notes and tags, and can opt into conversation content (its own index, built on first use) — results always span the whole library
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
 - Cut and paste across workspaces; export a session as Markdown or JSONL
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 427 tests on Windows
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 458 tests on Windows
 
 ## What it looks like
 
@@ -129,7 +129,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Shortcut | Create Shortcut in This Directory puts a session or a folder in the container you are standing in; removing it only drops the entry |
 | Pin | Pin folders and workspaces to the front of where they already live; DSH's own pinned sessions share the same band, and the tree marks them with a pin glyph |
 | Quick access | Drag a folder or workspace onto the Quick Access strip for a second entry point; a row there is that folder, so dropping on it goes inside |
-| Multi-select | Check several rows and act on all of them at once: favorite, to-do, pin, archive, quick access, copy, delete |
+| Multi-select | Check several rows and act on all of them at once: favorite, to-do, pin, archive, quick access, copy, delete. Or press on the empty space of the list — or on any row that is not picked — and drag a box: every row it crosses is checked, and a plain click on that space clears the checks. Only picked rows (clicked or checked) drag; an unpicked row drags a box |
 | Archive | De-emphasised but still listed by default; hide them in settings |
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Move | Cut and paste across workspaces; files, DSH's bookkeeping, tags and notes follow |
@@ -154,6 +154,9 @@ Settings live in DSH → 会话资源管理器 (Session Navigator), stored in `~
 | Collapse subagents | On | Child sessions fold under the parent |
 | Date format | Exact date | Or relative time such as "3 days ago" |
 | Size unit | Auto | Picks B / KB / MB / GB, or fix it to KB |
+| Search index cache | On | Keeps the conversation-content index on disk (`content-index.v1.json`) so a restart does not re-read every log; turn it off and the file is neither read nor written |
+| Build the index when idle | Off | Once turned on, it fills in slowly after startup and nothing waits on it |
+| Rebuild / Delete index | — | Two buttons: rebuild from scratch (results fill in as it goes) or delete the cache file |
 | Data directory | `~/.dsh-session-navigator` | Change it in settings to migrate |
 
 `DSH_SE_DATA_DIR` overrides the data directory for tests or migrations; a path pointing at a filesystem root, `~/.dsh` or inside it is ignored with a warning.
@@ -165,7 +168,7 @@ Architecture, HTTP API and data directory notes are in [docs/](docs/README.md) (
 ## Development
 
 ```powershell
-node --test "test/*.test.mjs"   # 427 cases
+node --test "test/*.test.mjs"   # 458 cases
 node test/render-smoke.mjs      # render smoke test
 ```
 

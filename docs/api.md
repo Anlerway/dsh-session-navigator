@@ -1,7 +1,7 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:379` 的 `ROUTES` 表定义，
-`lib/index.js:1529` 的 `handle()` 分发。共 **64 条**。
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:564` 的 `ROUTES` 表定义，
+`lib/index.js:1908` 的 `handle()` 分发。共 **66 条**。
 
 ## 1. 信封
 
@@ -18,7 +18,7 @@
 - 空 body 解析成 `{}`。
 
 **四条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件）、
-`GET /ui*`（静态资源）。`handle()` 在 `headersSent` 后不再追加信封（`lib/index.js:1563`）。
+`GET /ui*`（静态资源）。`handle()` 在 `headersSent` 后不再追加信封（`lib/index.js:1942`）。
 
 ## 2. 通用约定
 
@@ -36,12 +36,12 @@
 bad-request`，而不是悄悄当没给——否则一个写错的头会变成"最后写入者赢"。
 
 两者都不给 = 最后写入者赢（单窗口用户的预期）。给了但落后 = `409 revision-conflict`，
-客户端应重新拉取后重试。实现见 `lib/index.js:1315`（读期望值）与 `lib/store/sidecar.js`（比对）。
+客户端应重新拉取后重试。实现见 `lib/index.js:1672`（读期望值）与 `lib/store/sidecar.js`（比对）。
 
 ### 迁移守卫
 
 数据目录迁移期间（`api.migration !== null`），**除 `/datadir*` 之外的所有非 GET/HEAD 请求**
-一律 `409 migration-in-progress`（`lib/index.js:1552`）。否则写入会落进正在被复制的旧目录。
+一律 `409 migration-in-progress`（`lib/index.js:1932`）。否则写入会落进正在被复制的旧目录。
 
 ### id 约定
 
@@ -58,7 +58,7 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 
 ## 3. 错误码 → HTTP 状态
 
-`lib/index.js:1614`。DSH 原生的命名空间码原样透出，不翻译。
+`lib/index.js:2034`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
 
 | code | 状态 | 含义 |
 |---|---|---|
@@ -109,7 +109,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 
 子智能体是父会话一次委派的产物，DSH 仍然把它写成完整的会话目录，但它不是用户可以
 单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口
-`assertStandalone(api, ids)`（`lib/index.js:1253`）：
+`assertStandalone(api, ids)`（`lib/index.js:1567`）：
 
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
@@ -137,7 +137,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | `GET /theme` | — | `null` 或 `{ mode, tokens, at }` |
 | `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme` |
 
-`GET /bootstrap`（`lib/index.js:387`）是面板唯一的一次往返，字段：
+`GET /bootstrap`（`lib/index.js:572`）是面板唯一的一次往返，字段：
 
 ```jsonc
 {
@@ -159,7 +159,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 ```
 
 `sessions[]` 的 `home` 是它显示在哪个容器节点里，`homeOverride` 表示这是侧车的虚拟放置而非
-DSH 自己的归属（`lib/index.js:1235`）。两者都由 host 算好，客户端不重放规则。
+DSH 自己的归属（`lib/index.js:1549`）。两者都由 host 算好，客户端不重放规则。
 
 两个字段不是 DSH 给的，是插件自己从日志两端读出来的（`lib/sources/logfacts.js`）：
 
@@ -501,6 +501,8 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 - `trash/` 里的**净内容**。回收站是 move 不是 copy（`lib/host/trash.js`），里面的目录
   曾经就是 DSH 的会话目录，删掉它们等于把这些会话永久删掉——这就是它必须被 `DELETE` 拦住的原因；
 - `quarantine/`（解析不了的文档，是用户自己的字节）与 `.tmp/`（写了一半的原子写残留）。
+- `content-index.v1.json`：会话内容索引的缓存（§4.14）。派生文件，删了只是下次重建一次；
+  返回里的 `contentIndex` 就是它那一项，`{ removed, bytes }` 与 `documents` 同形状。
 
 它**不动**的东西：
 
@@ -517,7 +519,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 清完必须 `invalidateMemory(api)`：面板上每张列表都是 memo 过的，只删文件的话，被删掉的
 文件夹和标签还会从内存里一直答到进程重启为止。
 
-`documents` 每项是 `{ removed, bytes }`。文件被扫描器或索引器占着删不掉时 `removed: false`
+`documents` 每项是 `{ removed, bytes }`（第五份被删的是派生缓存 `contentIndex`）。文件被扫描器或索引器占着删不掉时 `removed: false`
 而不是抛错——摘要要描述真实发生的事，`freedBytes` 也只累加真的回来了的字节。
 
 ### 4.13 全文检索
@@ -528,7 +530,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 面板里 会话名 / 标签 / 备注 三个字段本来就在列表行上，读一遍内存就有答案；**会话内容**只在会话日志里
 ——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以这里不是每次按键读文件，而是一个
-进程内索引（`lib/sources/content.js`）：按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
+索引（`lib/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
 逐份构建、每份之间让出事件循环（一次最多 `budgetMs = 700`），并且同一时刻只允许一个构建在跑。
 
 - `ready: false` = 索引还没建完，`indexed / total` 是进度；`hits` 是**已经建到的那部分**的答案。
@@ -537,8 +539,36 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
   `snippet` 取命中前后 30 / 70 字符、折成一行、两端带省略号。
 - 检索是**纯读**：不产生 revision，读不出的日志只记一次空文本、不无限重试。
 
+索引默认还会落盘一份（`content-index.v1.json`），进程重启后不必重读日志；缓存开关、重建与删除见 §4.14。
+
 搜索的**位置**与字段是两件事：字段由客户端上的「搜索范围」决定，位置恒为整个库——站在任何目录里搜，
 答案都不该是"这个目录里没有"（唯一例外是回收站，它按自己的行回答）。
+
+### 4.14 搜索索引（缓存 / 重建 / 删除）
+
+| 路由 | body | 返回 |
+|---|---|---|
+| `GET /search/index` | — | `{ ...state, cache, building }` |
+| `POST /search/index/rebuild` | — | `{ ...state, cache, building }` |
+| `POST /search/index/clear` | — | `{ freedBytes, sessions, cache, building }` |
+
+对应设置文档（`lib/domain/settings.js`）里的两组开关，缺省值就在 `defaultSettings()`：
+
+| 键 | 缺省 | 含义 |
+|---|---|---|
+| `search.indexCache` | `true` | 把建好的索引落成 `<数据目录>/content-index.v1.json`（原子写）；关掉后不写，启动时也不读 |
+| `search.indexIdle` | `false` | 允许空闲时自动建立：`bootstrap` 之后等 `idleDelayMs = 1200`，再按 `idleSliceMs = 250` 的小步推进 |
+
+- `state` 是 `{ indexed, total, pending, ready }`，与 `GET /search/content` 同源；`cache` 是
+  `{ enabled, bytes, exists, sessions }`（`bytes` 是磁盘文件的真实大小，`exists` 只说明文件在不在）；
+  `building` 是后台构建器的忙闲。
+- `rebuild` 先清空内存与磁盘条目（旧缓存不再命中任何日志），再从头构建；构建期间搜索照常可用，
+  只是答案逐步变全。`clear` 让构建器停下、删文件、清内存，`freedBytes` 只累加真正回来了的字节。
+- 关掉 `search.indexCache` 时 `PUT /settings` 会顺带 `dropDisk()`：开关的语义是「不要这份缓存」，
+  留着一百多 MB 的旧文件等下一个人来读没有意义。只关 `indexIdle` 不删文件。
+- 缓存条目按 `path\u0000sizeBytes\u0000activityAt` 组成的签名判失效，文件里写着 `version: 1`；
+  版本不符就当没有，不做迁移。文件损坏、临时目录不可写都只让 `flush` 返回 `{ written: false }`，
+  搜索仍然可用——缓存是加速手段，不是正确性的前提。
 
 ## 5. 客户端怎么用
 

@@ -13,7 +13,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 三十八个测试文件，各自钉住什么
+## 1. 三十九个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -27,8 +27,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme.test.mjs` | 104 | 主题 store 只交出窗口用的 token，且拒绝注入 |
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
-| `test/settings.test.mjs` | 266 | 设置文档的默认值、合并、归一化；日期格式与大小单位是封闭词表 |
-| `test/settings-page.test.mjs` | 609 | 设置页真实渲染：打开方式、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
+| `test/settings.test.mjs` | 289 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的两个开关都是封闭词表 |
+| `test/settings-page.test.mjs` | 759 | 设置页真实渲染：打开方式、搜索索引组（两个开关、进度、重建/删除、失败文案）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
@@ -42,8 +42,9 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，而不是别人的 |
 | `test/row-rail.test.mjs` | 169 | 子会话引导线的几何：必须落在上面那个折叠箭头的中心（深度 0 与非 0 是两条式子） |
 | `test/list-containers.test.mjs` | 180 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来 |
-| `test/content-index.test.mjs` | 232 | 会话内容索引：按 `path|size|mtime` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段 |
+| `test/content-index.test.mjs` | 429 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；磁盘缓存写盘后重启不再读日志、坏版本与写不进去都不阻断搜索；空闲构建器只在开关打开时动手 |
 | `test/search-scope.test.mjs` | 245 | 搜索范围的四个字段与弹窗：默认三项、会话内容只看 host 命中、搜索是整库范围、面板确实把范围传给了列表 |
+| `test/marquee.test.mjs` | 410 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击 |
 | `test/quick-access.test.mjs` | 81 | 快速访问是一条序列：只有真实容器能当书签、整条一起写、陌生 id 跳过、没动过的书签保留原位 |
 | `test/filter-dialog.test.mjs` | 115 | 筛选对话框的两个出口：重置还要按应用，取消是一步；没东西可取消时它不存在 |
 | `test/heads.test.mjs` | 109 | 会话 header 扫描：换过格式版本的日志仍找得到、同 id 只出一份、无日志目录跳过 |
@@ -55,7 +56,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/locale-parity.test.mjs` | 88 | 中英两份字典键集合一致、占位符一致、英文标签放得下；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：字典覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/reset.test.mjs` | 208 | 清除数据：一个字都没动之前先验 `DELETE`、四份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
-| `test/render-smoke.mjs` | 1146 | 每个组件真实渲染一次（不是 `node --test` 的一部分） |
+| `test/render-smoke.mjs` | 1199 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true |
 
 ## 2. 为什么是这些
 

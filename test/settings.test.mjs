@@ -264,3 +264,26 @@ test("a percentage preset follows the viewport", () => {
   assert.deepEqual(modalSizeOf({ sizing: "percent", percent: "p100" }), { width: "100vw", height: "100vh" });
   assert.deepEqual(modalSizeOf({ sizing: "percent" }), { width: "70vw", height: "70vh" });
 });
+
+test("the 会话内容 index caches on disk and does not build itself by default", () => {
+  // Two different costs: keeping the cache is cheap, building it is 6.5 s of log
+  // reads, so only the first is on out of the box (m00561).
+  assert.deepEqual(defaultSettings().search, { indexCache: true, indexIdle: false });
+});
+
+test("a search patch merges one switch without disturbing the other", () => {
+  const merged = mergeSettings(defaultSettings(), { search: { indexIdle: true } });
+  assert.deepEqual(merged.search, { indexCache: true, indexIdle: true });
+  assert.equal(merged.list.dateFormat, "date", "the list group is untouched");
+});
+
+test("a search value that is not a boolean falls back to the default", () => {
+  assert.deepEqual(normalizeSettings({ search: { indexCache: "on", indexIdle: 1 } }).search, {
+    indexCache: true,
+    indexIdle: false,
+  });
+  assert.deepEqual(normalizeSettings({ search: { indexCache: false, indexIdle: true } }).search, {
+    indexCache: false,
+    indexIdle: true,
+  });
+});

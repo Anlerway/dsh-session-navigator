@@ -14,7 +14,7 @@
 | Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`，无构建步骤 | 渲染进程（浏览器环境） |
 
 Host 半体在 DSH 的 web 服务器上注册**一个**前缀路由 `/session-navigator/api`，所有端点都在
-它下面（`lib/index.js:248-252`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
+它下面（`lib/index.js:300-304`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
 portal 到 `<body>` 上的固定层。
 
 ### 加载链路
@@ -24,7 +24,7 @@ package.json
 ├─ dsh.bundle.patch = "./cordis.patch.yml"
 │    └─ - insert: [{ id: session-navigator, name: 'dsh-session-navigator', config: {} }]
 │         → Cordis 按包名 import，取 name / inject / apply
-│           (lib/index.js:104 name, lib/index.js:109 inject, lib/index.js:118 apply)
+│           (lib/index.js:107 name, lib/index.js:112 inject, lib/index.js:121 apply)
 └─ dsh.client.inject = "@deepseek-ai/dsh-client-ui-slots"
    dsh.client.platform = "web"
      → 渲染进程把 lib/client.js 当作 out-of-tree client 模块执行
@@ -35,42 +35,43 @@ package.json
 
 ## 2. Host 半体：`apply(ctx)` 做了七件事
 
-`lib/index.js:101-268`，顺序有意义：
+`lib/index.js:121-320`，顺序有意义：
 
-1. **拿 webServer**（`:102-103`）。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
+1. **拿 webServer**（`:122-123`）。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
    profile 就没有浏览器半体，此时直接 return，让 loader 跳过这一行。
-2. **开数据目录**（`:107-118`）：`resolveDataDir()` → `dataPaths()` → `openDocuments()`。
+2. **开数据目录**（`:127-138`）：`resolveDataDir()` → `dataPaths()` → `openDocuments()`。
    `openAt(dir)` 让迁移完成后能在**不重启**的情况下切到新目录。
-3. **四个可选件**（`:120-164`）：
+3. **四个可选件**（`:140-184`）：
    - `component`：浏览器组件状态机（Electron 运行时）；
    - `detached`：独立窗口 helper 进程控制器（懒创建）；
    - `bridge`：浮窗 ↔ 独立窗口的命令总线（内存）；
    - `theme`：浮窗上报、窗口读取的调色板。
-4. **组装 `api` 对象**（`:167-227`）。这是路由处理器唯一的依赖入口：
+4. **组装 `api` 对象**（`:187-275`）。这是路由处理器唯一的依赖入口：
    `ctx / dataDir / paths / documents / migration / reopen / component / detached / bridge /
-   theme / capabilities / reader`。`dataDir` 与 `paths` 是 getter，迁移后自动指向新值。
-5. **启动自愈**（`:232-246`）：`reconcileTrash(api)` 收尾"索引已写、payload 未搬"的中断；
+   theme / capabilities / reader / content / indexBuilder`。`dataDir` 与 `paths` 是 getter，
+   迁移后自动指向新值——内容索引的缓存文件也跟着走（`content` 用 getter 拿路径，见 api.md §4.14）。
+5. **启动自愈**（`:277-298`）：`reconcileTrash(api)` 收尾"索引已写、payload 未搬"的中断；
    `reconcileMoves(api)` 做同一件事的移动版（payload 已搬到目标、注册表还没跟上）；
    `component.sweep()` 删除上一次卸载时被占用、删不掉的目录。三者都 best-effort、不 await。
-6. **注册前缀路由**（`:248-256`），并把返回的 dispose 挂到 `ctx.effect`。
-7. **退出时收尾**（`:261-267`）：插件被禁用/重载时 `api.detached.stop()`，否则 helper 进程会
+6. **注册前缀路由**（`:300-308`），并把返回的 dispose 挂到 `ctx.effect`。
+7. **退出时收尾**（`:310-319`）：插件被禁用/重载时 `api.detached.stop()`，否则 helper 进程会
    活过拥有它的代码。
 
 ## 3. 一次请求的生命周期
 
-`handle(api, req, res)`（`lib/index.js:1189-1248`）：
+`handle(api, req, res)`（`lib/index.js:1908-1955`）：
 
 ```
 routeOf(req.url)                 // lib/http.js:88  剥掉 /session-navigator/api
   ↓ null → 404 bad-request
-compileRoute 匹配表               // lib/index.js:1145  段数相等 + :param 解码
+compileRoute 匹配表               // lib/index.js:1864  段数相等 + :param 解码
   ↓ 无 → 404 no route for <METHOD> <path>
 迁移守卫                          // 非 GET/HEAD 且非 /datadir* → migration-in-progress
 assertSameOrigin(req)            // 非 GET/HEAD：跨站 / 非 JSON → 403 / 415
 readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（lib/http.js:57）
 handler(api, req, res, query, params)
   ↓ 正常 → ok(res, result)        // { ok: true, result }
-  ↓ 抛错 → statusFor(code)        // lib/index.js:1310  错误码 → HTTP 状态
+  ↓ 抛错 → statusFor(code)        // lib/index.js:2034  错误码 → HTTP 状态
            fail(res, status, code, message)
 ```
 
@@ -79,9 +80,9 @@ handler(api, req, res, query, params)
 - **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`lib/http.js:22-48`）。
   客户端只对 `code` 分支，`error` 只给人看。
 - **错误码直通**：DSH 原生错误带的命名空间码（`workspace/name-conflict`、
-  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`lib/index.js:1274`）。
+  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js:1998`）。
 - **SSE 例外**：`GET /bridge/events` 自己接管响应，`handle` 在 `headersSent` 时不再写信封
-  （`lib/index.js:1223`）。
+  （`lib/index.js:1942`）。
 - **写请求必须同源**：没有 token，所以靠 `Sec-Fetch-Site` 与 `Content-Type: application/json`
   这两个浏览器强制的信号拒绝跨站写（`lib/index.js` 的 `assertSameOrigin()`，见
   [api.md](api.md#31-写请求的同源约束)）。
@@ -90,7 +91,7 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          1717  插件装配 + 路由表（64 条）+ 错误映射（唯一编排层）
+├─ index.js          2101  插件装配 + 路由表（66 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测
@@ -102,7 +103,7 @@ lib/
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     250  日志两端：空白会话 / 已中断（按 path|size|mtime 有界缓存）
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
-│  ├─ content.js      188  会话内容索引：按 path|size|mtime 判失效，逐份构建、可续查
+│  ├─ content.js      385  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，可选落盘
 │  └─ reader.js       264  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
 │
 ├─ domain/                  纯规则，无 IO，可直接单测
@@ -112,7 +113,7 @@ lib/
 │  ├─ folders.js      330  新建/重命名/移动/删除文件夹（改 tree draft）
 │  ├─ shortcuts.js    233  快捷方式：引用而非移动
 │  ├─ annotations.js  276  标签、备注、收藏/待办
-│  ├─ settings.js     315  设置文档形状与归一化
+│  ├─ settings.js     376  设置文档形状与归一化（含搜索索引的两个开关）
 │  ├─ trash.js        210  回收站条目形状、恢复阶梯
 │  ├─ subagents.js    107  子智能体绑定：isBound / descendantsOf / withDescendants / boundIds
 │  ├─ export.js       258  日志 → Markdown / JSONL（处理 surfaceOp 遮蔽）
@@ -201,7 +202,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 ## 5. Client 半体：`apply(ctx)` 注册了什么
 
-`lib/client.js:10734-10905`。`inject = ["slots", "locale", "uiWorkspace"]`（`:10908`）。
+`lib/client.js:12639-12810`。`inject = ["slots", "locale", "uiWorkspace"]`（`:12813`）。
 
 **插槽**（order 决定与 DSH 自带条目的相对位置）：
 
@@ -216,14 +217,14 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 **effect**（随插件卸载自动清理）：
 
 - 主题上报：`reportTheme()` + `MutationObserver` 监听 `documentElement` 的
-  `class` / `data-theme` / `style`（`:10754-10774`）；
+  `class` / `data-theme` / `style`（`:12659-12672`）；
 - 桥订阅：`subscribeBridge(...)`，处理 `open-session` / `new-session` / `open-settings` /
-  `reveal` / `window-closed`（`:10776-10825`）；
-- 词典注册：`ctx.locale.register(NS, { zh, en })`（`:10827`）。
+  `reveal` / `window-closed`（`:12674-12731`）；
+- 词典注册：`ctx.locale.register(NS, { zh, en })`（`:12732`）。
 
-**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:10907-10910`）。
+**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:12812-12815`）。
 
-浮窗本体是 `Panel`（`lib/client.js:4729`，单函数约 4000 行，内部按功能分段），
+浮窗本体是 `Panel`（`lib/client.js:5472`，单函数约 5500 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
 （`lib/client.js:594` 的注释）。
 
@@ -232,15 +233,15 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 按「这一屏的标签是不是固定的」分工：
 
 - **设置页**用 DSH 的命名键字典（`t("setStarHint")`）：一屏固定表单，键名可读比字面量值钱。
-- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js:1786` 起的注释块下方）：键就是中文原文。
+- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js:1873` 起的注释块下方）：键就是中文原文。
   三百多条散在渲染树里的短标签，命名键只会多一层间接；而且改字时字典未命中的后果是
   「显示中文」而不是「在页面上印出 key」。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
 
 `T` 读模块级的 `panelLang`，而 `Panel` 每次渲染都从 props 的翻译器刷新它：
-`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:4732`）。
+`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:5475`）。
 语言开关一动，DSH 用新的 `t` 重渲染插槽，下一帧就是新语言。代价是模块级表（`FIXED_META`、
 `COLUMNS`）的 `label` 必须写成 `get label() { return T("…"); }`——直接赋值会在模块加载时求值、
-永久冻在中文。英文表在 `panelDict()`（`lib/client.js:9910`）。
+永久冻在中文。英文表在 `panelDict()`（`lib/client.js:11719`）。
 
 宿主发来的名字也属于同一类，只是来源不同：固定目录（所有会话 / 未分组 / 待办 / 收藏 / 回收站 / 根目录）
 的 `name` 在 host 那边是标识符、写法就是中文，所以 `nodeLabel()` 不印它，而是取
@@ -250,7 +251,7 @@ host 画成「默认工作区」——节点因此带一个 `default: true` 标�
 
 独立窗口是另一侧：`assets/detached` 是静态页 + 冒充 DSH 的 shim，它读不到 DSH 的语言开关，
 也不会跟着 DSH 重渲染。所以语言由面板在 `POST /detached/open` 里报给 host（`uiLang()`，
-`lib/client.js:1807`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
+`lib/client.js:1894`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
 helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`，
 之后每句都过 `L(zh, en)`。中途切换语言时控制器用控制通道广播 `{ type: "lang" }`，helper 直接
 `win.loadURL()` reload——字典是页面加载时定死的，reload 是唯一能让新字典生效的方式。

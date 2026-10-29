@@ -11,8 +11,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { createContentIndex } from "../lib/sources/content.js";
-import { searchSessionContent } from "../lib/index.js";
+import { createIndexBuilder, searchSessionContent } from "../lib/index.js";
 
 /** A session as the reader reports it: only these three fields matter. */
 const session = (id, extra = {}) => ({
@@ -29,7 +33,7 @@ const session = (id, extra = {}) => ({
  * `logs` maps path → array of turn texts, and `reads` records how often each
  * path was actually opened — the cache assertions are about that list.
  */
-function fixture(logs) {
+function fixture(logs, extra = {}) {
   const reads = [];
   const index = createContentIndex({
     budgetMs: 60_000,
@@ -39,6 +43,7 @@ function fixture(logs) {
       return { events: logs[path] };
     },
     turns: (events) => events.map((text) => ({ text })),
+    ...extra,
   });
   return { index, reads };
 }
@@ -229,4 +234,196 @@ test("a missing parameter is not a search", async () => {
   assert.equal(answer.query, "");
   assert.deepEqual(answer.hits, []);
   assert.equal(reads.length, 0);
+});
+
+/** A real directory for the cache file: writeAtomic renames into tmpDir. */
+async function cacheStore() {
+  const root = await mkdtemp(join(tmpdir(), "se-content-"));
+  return { root, store: { path: join(root, "content-index.v1.json"), tmpDir: join(root, ".tmp") } };
+}
+
+/** One log, one turn: enough to tell "restored" from "read". */
+const cachedLogs = { "C:/logs/a.zstd": ["alpha beta"] };
+
+test("the cache is written, and a restart answers from it without reading a log", async () => {
+  const { root, store } = await cacheStore();
+  try {
+    const first = fixture(cachedLogs, { store });
+    await first.index.open();
+    first.index.sync([session("a")]);
+    await first.index.work();
+    assert.equal(first.reads.length, 1);
+    const written = JSON.parse(await readFile(store.path, "utf8"));
+    assert.equal(written.version, 1);
+    assert.match(written.sessions.a.text, /beta/);
+
+    const second = fixture(cachedLogs, { store });
+    await second.index.open();
+    assert.deepEqual(second.index.sync([session("a")]), { indexed: 1, total: 1, pending: 0 });
+    await second.index.work();
+    assert.equal(second.reads.length, 0, "the cache answered, the log was not read");
+    assert.equal(second.index.search("beta")[0].id, "a");
+    assert.equal(second.index.state().indexed, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a changed log invalidates its cached entry instead of trusting it", async () => {
+  const { root, store } = await cacheStore();
+  try {
+    const first = fixture(cachedLogs, { store });
+    await first.index.open();
+    first.index.sync([session("a")]);
+    await first.index.work();
+
+    const second = fixture(cachedLogs, { store });
+    await second.index.open();
+    second.index.sync([session("a", { sizeBytes: 200, activityAt: 2_000 })]);
+    assert.equal(second.index.state().pending, 1, "the entry is queued again");
+    await second.index.work();
+    assert.equal(second.reads.length, 1, "re-read, not trusted");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("with the cache switched off nothing is written, and nothing is restored", async () => {
+  const { root, store } = await cacheStore();
+  try {
+    const off = fixture(cachedLogs, { store, cacheEnabled: () => false });
+    await off.index.open();
+    off.index.sync([session("a")]);
+    await off.index.work();
+    const info = await off.index.cacheInfo();
+    assert.equal(info.enabled, false);
+    assert.equal(info.exists, false, "no file on disk");
+    assert.deepEqual(off.index.search("beta").map((hit) => hit.id), ["a"], "search still works");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("clear() deletes the file and reports the bytes it freed", async () => {
+  const { root, store } = await cacheStore();
+  try {
+    const { index } = fixture(cachedLogs, { store });
+    await index.open();
+    index.sync([session("a")]);
+    await index.work();
+    const before = await index.cacheInfo();
+    assert.equal(before.exists, true);
+    assert.ok(before.bytes > 0);
+    assert.equal(before.sessions, 1);
+
+    const cleared = await index.clear();
+    assert.ok(cleared.freedBytes > 0);
+    assert.deepEqual(index.state(), { indexed: 0, total: 0, pending: 0 });
+    assert.equal((await index.cacheInfo()).exists, false);
+    // And the deleted index is not resurrected by the next build's flush.
+    await index.work();
+    assert.equal((await index.cacheInfo()).exists, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a cache file from another build is ignored, not migrated", async () => {
+  const { root, store } = await cacheStore();
+  try {
+    await writeFile(
+      store.path,
+      JSON.stringify({ version: 99, sessions: { a: { sig: "x", text: "old" } } }),
+      "utf8",
+    );
+    const { index, reads } = fixture(cachedLogs, { store });
+    await index.open();
+    assert.equal(index.sync([session("a")]).pending, 1, "nothing was restored");
+    assert.deepEqual(index.search("old"), []);
+    await index.work();
+    assert.equal(reads.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a cache that cannot be written still answers from memory", async () => {
+  const { root } = await cacheStore();
+  try {
+    // tmpDir under a regular file: mkdir throws ENOTDIR, and the flush reports.
+    const blocker = join(root, "blocker");
+    await writeFile(blocker, "not a directory", "utf8");
+    const store = { path: join(root, "index.json"), tmpDir: join(blocker, ".tmp") };
+    const { index } = fixture(cachedLogs, { store });
+    await index.open();
+    index.sync([session("a")]);
+    const after = await index.work();
+    assert.equal(after.pending, 0);
+    assert.equal(index.search("beta")[0].id, "a", "the search is unaffected");
+    const failed = await index.flush();
+    assert.equal(failed.written, false);
+    assert.ok(failed.error, "the failure is reported, not thrown");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+/** A builder over two logs, with the idle switch under the test's control. */
+function builderFixture(idle) {
+  const logs = { "C:/logs/a.zstd": ["alpha"], "C:/logs/b.zstd": ["alpha too"] };
+  const { index, reads } = fixture(logs);
+  let idleFlag = idle;
+  const api = {
+    documents: { settings: { read: async () => ({ search: { indexIdle: idleFlag } }) } },
+    reader: { snapshot: async () => ({ sessions: [session("a"), session("b")] }) },
+    content: index,
+  };
+  return { api, reads, allow: (value) => { idleFlag = value; } };
+}
+
+const settleFor = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("the idle build stays quiet while the setting is off", async () => {
+  const { api, reads } = builderFixture(false);
+  const builder = createIndexBuilder({ idleDelayMs: 1, idleSliceMs: 1_000 });
+  try {
+    builder.nudge(api);
+    await settleFor(40);
+    assert.equal(reads.length, 0, "no log was opened");
+  } finally {
+    builder.stop();
+  }
+});
+
+test("the idle build drains the queue in slices once it is allowed", async () => {
+  const { api, reads } = builderFixture(true);
+  const builder = createIndexBuilder({ idleDelayMs: 1, idleSliceMs: 1_000 });
+  try {
+    builder.nudge(api);
+    // The queue starts empty and fills when the first slice runs, so wait on the
+    // reads rather than on pending.
+    for (let i = 0; i < 60 && reads.length < 2; i += 1) await settleFor(10);
+    assert.equal(reads.length, 2);
+    assert.equal(api.content.state().pending, 0);
+  } finally {
+    builder.stop();
+  }
+});
+
+test("删除缓存 stops the build, and resume starts it again", async () => {
+  const { api, reads } = builderFixture(true);
+  const builder = createIndexBuilder({ idleDelayMs: 1, idleSliceMs: 1_000 });
+  try {
+    builder.stop();
+    builder.nudge(api);
+    await settleFor(30);
+    assert.equal(reads.length, 0, "a stopped builder stays quiet");
+
+    builder.resume(api);
+    for (let i = 0; i < 60 && reads.length < 2; i += 1) await settleFor(10);
+    assert.equal(reads.length, 2);
+    assert.equal(api.content.state().pending, 0);
+  } finally {
+    builder.stop();
+  }
 });
