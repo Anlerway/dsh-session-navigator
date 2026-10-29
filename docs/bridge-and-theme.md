@@ -43,7 +43,7 @@ payload 只接受三个字符串字段，各自截到 200 字符：
 
 `sessionId` / `workspaceId` / `scope` 之外的键**直接丢掉**。桥是一根窄管子，不是插件的遥控器。
 
-**为什么方向是分开的**（`lib/client.js:12674-12731`）：
+**为什么方向是分开的**（`lib/client.js:12879-12936`）：
 
 - `open-session` / `new-session` 只由 DSH 页面执行。窗口是发起方；窗口若也听自己的命令，
   就会把命令原样再发一次（shim 里的 `ECHO_MS` 回声守卫只是时间启发式，不是契约）。
@@ -117,7 +117,7 @@ map 就是一条样式注入通道。规则是：
 
 ### 上报时机
 
-`reportTheme()`（`lib/client.js:9955`）：读 `.se-shell`（没挂载就读 `body`，最后才退到
+`reportTheme()`（`lib/client.js:10160`）：读 `.se-shell`（没挂载就读 `body`，最后才退到
 `documentElement`）的 computed style，取这 14 个 token 的值，`POST /theme` 带 `{ mode, tokens }`。
 `mode` 来自 `documentElement` 的 `data-theme` 是否为 `light`。
 
@@ -127,14 +127,14 @@ map 就是一条样式注入通道。规则是：
 读一次——那时面板还没挂载、`<html>` 又没有 token，于是 host 存下一份空的调色板，
 窗口只好用样式表里硬编码的兜底色（工作区名字/图标因此是深蓝 `#4176e6`，而 DSH 里是主题色）。
 
-**值必须解析成具体颜色**（`resolveThemeValue()`，`lib/client.js:9917`）：DSH 的 alias token
+**值必须解析成具体颜色**（`resolveThemeValue()`，`lib/client.js:10122`）：DSH 的 alias token
 几乎都是指向自己调色板的引用，例如 `--dsw-alias-label-primary: var(--dsw-static-neutral-bluish-50)`。
 窗口没有 `--dsw-static-*` 这一层，原样搬过去会得到一个"引用了不存在变量"的值——这在 CSS 里是
 *无效*而不是*未设置*，消费方 `var(--token, fallback)` 的 fallback 根本轮不到，文字会掉成
 `unset`。所以在这里就地展开引用（深度上限 8 层，支持 `var(--x, #fallback)`），解不出来的
 token 直接丢给 host 丢弃，让窗口保留自己的兜底。
 
-触发点有三个：`apply()` 时一次；`Panel` 挂载后一次（`lib/client.js:5459`，此时 `.se-shell`
+触发点有三个：`apply()` 时一次；`Panel` 挂载后一次（`lib/client.js:5664`，此时 `.se-shell`
 才存在，读到的就是面板真正看到的调色板）；以及一个 `MutationObserver`——监视
 `documentElement` 的 `class` / `data-theme` / `style` 三个属性。这是 DSH 里所有主题插件切换
 明暗的方式，所以监听它就等于监听"主题变了"。观察器挂在 `ctx.effect` 里，卸载时断开。
@@ -186,7 +186,7 @@ shim **故意不做**两件事：不上报主题（见上），不订阅命令�
 | `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
 | `lib/index.js:1421` | `POST /bridge/commands` |
 | `lib/index.js:1434` | `GET /bridge/events`（SSE） |
-| `lib/client.js:9955` | `reportTheme()` + `resolveThemeValue()`（`lib/client.js:9917`）+ MutationObserver |
+| `lib/client.js:10160` | `reportTheme()` + `resolveThemeValue()`（`lib/client.js:10122`）+ MutationObserver |
 | `lib/client.js:544` | `subscribeBridge()` |
-| `lib/client.js:12659` | `apply()` 里装配桥与主题监听 |
+| `lib/client.js:12864` | `apply()` 里装配桥与主题监听 |
 | `assets/detached/shim.js` | 窗口的假 DSH 外壳、主题拉取、回声守卫 |

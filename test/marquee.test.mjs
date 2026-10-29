@@ -27,8 +27,16 @@ function row(id, top, { height = 32, check = true, left = 0, right = 600 } = {})
   };
 }
 
-/** The list pane, its scrolling body, and the div the box paints into. */
+/**
+ * The list pane, its scrolling body, and the div the box paints into.
+ *
+ * `rows` and `box` may be functions: a list that scrolls moves its rows and a
+ * pane pushed by an ancestor moves both, and the box has to follow them (m01540).
+ */
 function pane(rows, box = { left: 0, top: 0, right: 600, bottom: 400 }) {
+  const rowsNow = () => (typeof rows === "function" ? rows() : rows);
+  const boxNow = () => (typeof box === "function" ? box() : box);
+  const scrolls = new Set();
   // A real element clamps its scroll to the content: 0 at the top, and the
   // overflow past the viewport at the bottom.
   let scrolled = 0;
@@ -39,15 +47,26 @@ function pane(rows, box = { left: 0, top: 0, right: 600, bottom: 400 }) {
     set scrollTop(value) {
       scrolled = Math.max(0, Math.min(240, value));
     },
-    getBoundingClientRect: () => box,
+    getBoundingClientRect: () => boxNow(),
+    addEventListener: (type, fn) => {
+      if (type === "scroll") scrolls.add(fn);
+    },
+    removeEventListener: (type, fn) => {
+      scrolls.delete(fn);
+    },
   };
   const attrs = {};
   return {
     body,
+    scrolls,
     attrs,
-    getBoundingClientRect: () => box,
+    /** Scroll the list the way the wheel or the scrollbar would. */
+    scroll() {
+      for (const fn of [...scrolls]) fn({ type: "scroll" });
+    },
+    getBoundingClientRect: () => boxNow(),
     querySelector: (selector) => (selector === ".listbody" ? body : null),
-    querySelectorAll: () => rows,
+    querySelectorAll: () => rowsNow(),
     setAttribute: (key, value) => {
       attrs[key] = value;
     },
@@ -364,6 +383,96 @@ test("the box scrolls the list when the pointer passes its edge", () => {
     context.tick();
     context.tick();
     assert.equal(list.body.scrollTop, 0, "and it stops at the top");
+  } finally {
+    stop(context);
+  }
+});
+
+test("the box keeps the row it started on when the list scrolls (m01775)", () => {
+  // The wheel, the scrollbar and the edge scroll all move the rows without a
+  // single mousemove. Two things follow, and the second one is what m01775 is
+  // about: the box has to repaint on scroll (m01540), and its *start* has to
+  // stay on the row it was pressed on. Left at its screen position the start
+  // point slid down the list with every wheel notch, so the selection range
+  // travelled with the scroll instead of staying anchored.
+  // The gesture sits in the middle of the list on purpose: near an edge the box
+  // scrolls the list by itself and the numbers below would measure that instead.
+  const shift = { y: 0 };
+  const rows = () => [row("a", 100 - shift.y), row("b", 132 - shift.y), row("c", 164 - shift.y)];
+  const list = pane(rows);
+  const rect = box();
+  const context = start();
+  try {
+    api.marqueeDrag({
+      event: { target: { closest: () => null }, clientX: 10, clientY: 110, button: 0, preventDefault() {} },
+      pane: list,
+      rect,
+      onPick: (ids) => context.picks.push(ids),
+    });
+    context.fire("mousemove", { clientX: 300, clientY: 120 });
+    context.tick();
+    assert.deepEqual(context.picks.at(-1), ["a"], "the box starts on the first row");
+    assert.equal(rect.style.top, "110px");
+
+    // Scrolled by 40: the rows slide up under a pointer that has not moved. The
+    // press was inside row a, so row a is still the anchor — the box now reaches
+    // up to where that row went, and covers b on the way down to the pointer.
+    shift.y = 40;
+    list.body.scrollTop = 40;
+    list.scroll();
+    context.tick();
+    assert.deepEqual(context.picks.at(-1), ["a", "b"], "the anchor row stays in the box");
+    assert.equal(rect.style.top, "70px", "the start moved up with the rows, not with the screen");
+    assert.equal(rect.style.height, "50px", "and the box still ends at the pointer");
+    assert.equal(context.listeners.get("mousemove")?.size ?? 0, 1);
+
+    // A second notch does not double-count: the anchor is measured from where the
+    // press landed, not from the previous scroll event.
+    shift.y = 80;
+    list.body.scrollTop = 80;
+    list.scroll();
+    context.tick();
+    assert.equal(rect.style.top, "30px", "one anchor, however many notches");
+    assert.deepEqual(context.picks.at(-1), ["a", "b", "c"]);
+
+    context.fire("mouseup", {});
+    assert.equal(list.scrolls.size, 0, "the scroll listener leaves with the gesture");
+  } finally {
+    stop(context);
+  }
+});
+
+test("a box re-anchors when its pane is pushed by an ancestor (m01540)", () => {
+  // The pane's rectangle used to be read once, at the press. Anything that moved
+  // it afterwards — a resized panel, a taller header, a scroll of an ancestor —
+  // drew and hit-tested the box offset from the pointer by exactly that movement.
+  const layout = { dy: 0 };
+  const rows = () => [row("a", layout.dy), row("b", layout.dy + 32), row("c", layout.dy + 64)];
+  const list = pane(rows, () => ({ left: 0, top: layout.dy, right: 600, bottom: layout.dy + 400 }));
+  const rect = box();
+  const context = start();
+  try {
+    api.marqueeDrag({
+      event: { target: { closest: () => null }, clientX: 10, clientY: 10, button: 0, preventDefault() {} },
+      pane: list,
+      rect,
+      onPick: (ids) => context.picks.push(ids),
+    });
+    context.fire("mousemove", { clientX: 300, clientY: 60 });
+    context.tick();
+    assert.deepEqual(context.picks.at(-1), ["a", "b"]);
+
+    // The pane slides down 40 with its rows, and the pointer stays where it was:
+    // in the pane's own frame the press is now 40 further up, so the box starts
+    // above row a instead of inside it. Read from the press-time rectangle the
+    // box would still be painted at 10px — 50px below the pointer — and would
+    // miss every row in the list.
+    layout.dy = 40;
+    context.fire("mousemove", { clientX: 300, clientY: 60 });
+    context.tick();
+    assert.equal(rect.style.top, "-30px", "the box is measured in the pane's frame, which moved");
+    assert.equal(rect.style.height, "50px", "and it still spans press to pointer");
+    assert.deepEqual(context.picks.at(-1), ["a"], "the rows are measured in the same frame, so the box clips only the top row");
   } finally {
     stop(context);
   }

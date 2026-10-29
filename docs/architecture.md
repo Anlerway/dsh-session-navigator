@@ -202,7 +202,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 ## 5. Client 半体：`apply(ctx)` 注册了什么
 
-`lib/client.js:12639-12810`。`inject = ["slots", "locale", "uiWorkspace"]`（`:12813`）。
+`lib/client.js:12844-13015`。`inject = ["slots", "locale", "uiWorkspace"]`（`:13018`）。
 
 **插槽**（order 决定与 DSH 自带条目的相对位置）：
 
@@ -217,14 +217,14 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 **effect**（随插件卸载自动清理）：
 
 - 主题上报：`reportTheme()` + `MutationObserver` 监听 `documentElement` 的
-  `class` / `data-theme` / `style`（`:12659-12672`）；
+  `class` / `data-theme` / `style`（`:12864-12877`）；
 - 桥订阅：`subscribeBridge(...)`，处理 `open-session` / `new-session` / `open-settings` /
-  `reveal` / `window-closed`（`:12674-12731`）；
-- 词典注册：`ctx.locale.register(NS, { zh, en })`（`:12732`）。
+  `reveal` / `window-closed`（`:12879-12936`）；
+- 词典注册：`ctx.locale.register(NS, { zh, en })`（`:12937`）。
 
-**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:12812-12815`）。
+**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:13017-13020`）。
 
-浮窗本体是 `Panel`（`lib/client.js:5472`，单函数约 5500 行，内部按功能分段），
+浮窗本体是 `Panel`（`lib/client.js:5634`，单函数约 5500 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
 （`lib/client.js:594` 的注释）。
 
@@ -238,10 +238,10 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
   「显示中文」而不是「在页面上印出 key」。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
 
 `T` 读模块级的 `panelLang`，而 `Panel` 每次渲染都从 props 的翻译器刷新它：
-`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:5475`）。
+`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:5637`）。
 语言开关一动，DSH 用新的 `t` 重渲染插槽，下一帧就是新语言。代价是模块级表（`FIXED_META`、
 `COLUMNS`）的 `label` 必须写成 `get label() { return T("…"); }`——直接赋值会在模块加载时求值、
-永久冻在中文。英文表在 `panelDict()`（`lib/client.js:11719`）。
+永久冻在中文。英文表在 `panelDict()`（`lib/client.js:11924`）。
 
 宿主发来的名字也属于同一类，只是来源不同：固定目录（所有会话 / 未分组 / 待办 / 收藏 / 回收站 / 根目录）
 的 `name` 在 host 那边是标识符、写法就是中文，所以 `nodeLabel()` 不印它，而是取

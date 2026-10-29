@@ -95,7 +95,7 @@ const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"
   .replace(
     "    exports.apply = apply;",
     [
-      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems };",
+      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems, splitDragIds, draggedSessionIds, draggedNodeIds };",
       "    exports.apply = apply;",
     ].join("\n"),
   );
@@ -178,7 +178,7 @@ console.log("panel render ok:", Boolean(panelTree));
 // ── surface mode ────────────────────────────────────────────────────────────
 // Two modes only: 浮窗 and 独立窗口. The old "let DSH's Modal host the panel"
 // axis is gone, and with it the data-hosted attribute that marked it.
-const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary } = mod.__test;
+const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, draggedSessionIds, draggedNodeIds } = mod.__test;
 
 const shellNode = findAll(panelTree, hasClass("se-shell"))[0] ?? null;
 if (!shellNode) throw new Error("the panel must render a .se-shell");
@@ -477,6 +477,66 @@ if (folderRows[0].props.draggable !== false) throw new Error("an unpicked folder
 if (wsRows[0].props.draggable !== false) throw new Error("an unpicked workspace row must not drag");
 console.log("ListPane (drag gate) ok: unpicked rows are surface, picked and ticked rows drag");
 
+// ── a drag carries the whole check-set (m01540) ────────────────────────────
+// The row under the pointer used to be the only thing that moved, so ticking
+// four sessions and dragging one moved one. The pane splits the check-set into
+// the sessions a workspace can take and the containers that move as nodes, and
+// hands that split to whichever row starts the gesture.
+const twin = { ...session, id: "twin-2" };
+const dragEvent = (transfer = true) => {
+  const store = new Map();
+  return {
+    dataTransfer: transfer
+      ? {
+          effectAllowed: "",
+          setData: (type, value) => store.set(type, String(value)),
+          getData: (type) => store.get(type) ?? "",
+        }
+      : null,
+    preventDefault: noop,
+  };
+};
+/** Start a drag on one row and hand back the event it received. */
+const dragFrom = (found, label) => {
+  if (!found) throw new Error("no row to start a drag on: " + label);
+  const event = dragEvent();
+  found.props.onDragStart(event);
+  return event;
+};
+const pairList = listPaneWith({ sessions: [session, twin], checked: new Set([session.id, "twin-2"]) });
+const pairEvent = dragFrom(rowById(pairList, session.id), session.id);
+if (draggedSessionIds(pairEvent).length !== 2) {
+  throw new Error("a ticked row must hand the whole check-set to the drop target, got " + draggedSessionIds(pairEvent).length);
+}
+if (draggedNodeIds().length !== 0) throw new Error("a session drag must carry no container");
+// One tick is already a payload: a second one is not what enables the drag.
+const soloEvent = dragFrom(rowById(listPaneWith({ checked: new Set([session.id]) }), session.id), session.id);
+if (draggedSessionIds(soloEvent).length !== 1) throw new Error("a single tick must ride alone");
+// A check-set can mix kinds — the folder rides as a node while the session
+// rides as a session — because each drop target acts on the half it accepts.
+const mixedList = listPaneWith({ sessions: [session, twin], checked: new Set([session.id, "d-1"]) });
+const mixedEvent = dragFrom(rowById(mixedList, session.id), session.id);
+if (draggedNodeIds().length !== 1 || draggedNodeIds()[0] !== "d-1") {
+  throw new Error("a ticked folder must still ride a session drag, got " + JSON.stringify(draggedNodeIds()));
+}
+if (draggedSessionIds(mixedEvent).length !== 1) throw new Error("and the session half must not be swallowed by it");
+// A container row under the pointer carries the set too, so a ticked session is
+// not dropped when the user happens to press the folder instead.
+const folderList = listPaneWith({ checked: new Set(["d-1"]) });
+const folderEvent = dragFrom(findAll(folderList, hasClass("folderrow"))[0], "d-1");
+if (draggedNodeIds().length !== 1 || draggedNodeIds()[0] !== "d-1") throw new Error("a folder row must drag itself");
+if (draggedSessionIds(folderEvent).length !== 0) throw new Error("and it must not invent a session half");
+// A browser may refuse reads during dragstart (Firefox answers "" for every
+// type it did not set itself), so the module payload — not the DataTransfer —
+// is the source of truth, and a drop handler that asks later gets the same set.
+const bareRow = rowById(listPaneWith({ sessions: [session, twin], checked: new Set([session.id, "twin-2"]) }), session.id);
+const bareEvent = { dataTransfer: { setData: noop, getData: () => "", effectAllowed: "" }, preventDefault: noop };
+bareRow.props.onDragStart(bareEvent);
+if (draggedSessionIds(bareEvent).length !== 2) throw new Error("a refused DataTransfer must not lose the set");
+if (draggedSessionIds({}).length !== 2) throw new Error("a target that hands over no event still reads the payload");
+
+console.log("ListPane (drag set) ok: the check-set rides the drag, split by kind");
+
 // ── the pencil on a container row ──────────────────────────────────────────
 // "文件夹、工作区点了重命名按钮却不出现输入框，会话的重命名是好的" — the row
 // half of that report. Two halves have to agree, and the harness checks both,
@@ -679,11 +739,13 @@ const sessionDrops = [];
 const bandProps = (qa) => ({
   tree: { ...tree, quickAccessNodes: qa, quickAccess: Object.fromEntries(qa.map((id, i) => [id, qa.length - i])), pins: {} },
   scope: "f-root", onSelect: noop, expanded: new Set(["f-root"]), onToggle: noop, width: 260,
-  onMove: (source, target) => moveCalls.push([source, target]),
+  // A drop carries the whole container half of the check-set (m01540), so the
+  // band hands the tree an array even for the one-node gesture.
+  onMove: (sources, target) => moveCalls.push([sources, target]),
   onDropSessions: (ids, workspaceId) => sessionDrops.push([ids, workspaceId]),
   onPlaceSessions: noop, onDropShortcut: noop, onHint: noop,
   rename: null, onBeginRename: noop, pins: {}, quickAccess: qa, onNodeContextMenu: noop,
-  onDropOnQuick: (source) => dropCalls.push([source]),
+  onDropOnQuick: (sources) => dropCalls.push(sources),
 });
 const emptyBand = findAll(render({ type: TreePane, props: bandProps([]) }), () => true);
 const emptyCap = emptyBand.find((node) => isCap(node, "快速访问")) ?? null;
@@ -728,7 +790,7 @@ if (JSON.stringify(dropCalls) !== JSON.stringify([["w-ws-1"]])) {
     dataTransfer: { types: ["text/plain"], dropEffect: "", getData: () => "d-1" },
   };
   dstRow.props.onDrop(rowDropEvent);
-  if (JSON.stringify(moveCalls) !== JSON.stringify([["w-ws-1", "d-1"]])) {
+  if (JSON.stringify(moveCalls) !== JSON.stringify([[["w-ws-1"], "d-1"]])) {
     throw new Error("dropping a bookmark on a sibling must move into that folder, got " + JSON.stringify(moveCalls));
   }
   if (dropCalls.length !== 1) throw new Error("a drop on a row must not rewrite the strip, got " + JSON.stringify(dropCalls));
@@ -807,8 +869,15 @@ if (findAll(mappedList, hasClass("scrow")).length !== 0) {
   throw new Error("a mapping must not also draw a 快捷方式 row");
 }
 const clickEvent = { stopPropagation() {}, preventDefault() {} };
-mappedFolder.props.onDoubleClick(clickEvent);
-mappedWorkspace.props.onDoubleClick(clickEvent);
+// 双击要有时限 (m01775): opening now lives in the second *press*, so the smoke
+// presses twice the way a pointer would. The native dblclick handler is left
+// with nothing but swallowing the text selection.
+for (const row of [mappedFolder, mappedWorkspace]) {
+  const before = opened.length;
+  row.props.onClick(clickEvent);
+  if (opened.length !== before) throw new Error("one press must not open a container");
+  row.props.onClick(clickEvent);
+}
 if (opened[0] !== "d-1" || opened[1] !== "w-ws-1") {
   throw new Error("a mapping must open its target, got " + JSON.stringify(opened));
 }

@@ -29,7 +29,7 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 - Search covers titles, notes and tags, and can opt into conversation content (its own index, built on first use) — results always span the whole library
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
 - Cut and paste across workspaces; export a session as Markdown or JSONL
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 458 tests on Windows
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 471 tests on Windows
 
 ## What it looks like
 
@@ -168,7 +168,7 @@ Architecture, HTTP API and data directory notes are in [docs/](docs/README.md) (
 ## Development
 
 ```powershell
-node --test "test/*.test.mjs"   # 458 cases
+node --test "test/*.test.mjs"   # 471 cases
 node test/render-smoke.mjs      # render smoke test
 ```
 
