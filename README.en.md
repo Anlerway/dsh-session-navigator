@@ -26,10 +26,10 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 
 - The folder tree mirrors your workspaces; add your own folders, nest them, drag sessions between them
 - Titles, tags and notes are your own words, shown in the list without opening anything
-- Search covers titles, notes and tags, and can opt into conversation content (its own index, built on first use). The funnel next to the box opens the scope dialog: where (all locations by default, or the current folder) and which fields, plus a jump to the search index settings
+- Search covers titles, notes and tags, and can opt into conversation content: what the user and the agent said, not tool output (its own index, built on first use). The funnel next to the box opens the scope dialog: where (all locations by default, or the current folder) and which fields, plus a jump to the search index settings
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
-- Cut and paste across workspaces; export a session as Markdown or JSONL
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 478 tests on Windows
+- Cut and paste across workspaces; export a session as Markdown or JSONL — what the user said, what the agent answered, every tool call and its output, with compacted history kept verbatim
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 488 tests on Windows
 
 ## What it looks like
 
@@ -124,7 +124,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Group sessions | Workspaces become folders automatically; drag into another folder or create nested ones |
 | Rename | Double-click the row head and type a name you recognise |
 | Tag / note | Right-hand detail pane; tags come from a shared tag library |
-| Find it again | Search titles, notes, tags and optionally conversation content; the funnel opens the scope dialog, where the place is all locations (default) or the current folder, and the footer links to the search index settings; Filter narrows by favorite, archive, todo and tags |
+| Find it again | Search titles, notes, tags and optionally conversation content (user and agent text, not tool output); the funnel opens the scope dialog, where the place is all locations (default) or the current folder, and the footer links to the search index settings; Filter narrows by favorite, archive, todo and tags |
 | Favorite / todo | Mark it and it also appears in Favorites / To-do; an entry naming a folder or workspace *is* that container, and double-click goes back to it |
 | Shortcut | Create Shortcut in This Directory puts a session or a folder in the container you are standing in; removing it only drops the entry |
 | Pin | Pin folders and workspaces to the front of where they already live; DSH's own pinned sessions share the same band, and the tree marks them with a pin glyph |
@@ -133,7 +133,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Archive | De-emphasised but still listed by default; hide them in settings |
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Move | Cut and paste across workspaces; files, DSH's bookkeeping, tags and notes follow |
-| Export | Detail pane and row menu; Markdown or JSONL, tool calls excluded by default |
+| Export | Detail pane and row menu; Markdown or JSONL — user messages, agent replies, every tool call and output, compacted spans kept verbatim; long tool output is truncated in Markdown (full text in JSONL) |
 
 ## Settings
 

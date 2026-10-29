@@ -42,7 +42,7 @@ function fixture(logs, extra = {}) {
       if (!(path in logs)) throw new Error("unreadable: " + path);
       return { events: logs[path] };
     },
-    turns: (events) => events.map((text) => ({ text })),
+    turns: (events) => events.map((text) => ({ role: 'user', text })),
     ...extra,
   });
   return { index, reads };
@@ -121,7 +121,7 @@ test("an async read is awaited, not mistaken for an empty log", async () => {
   const index = createContentIndex({
     budgetMs: 60_000,
     read: async () => ({ events: ["a promise is not a log"] }),
-    turns: (events) => events.map((text) => ({ text })),
+    turns: (events) => events.map((text) => ({ role: 'user', text })),
   });
   index.sync([session("a")]);
   await index.work();
@@ -182,7 +182,7 @@ function scripted(logs) {
       if (!(path in logs)) throw new Error("unreadable: " + path);
       return { events: logs[path] };
     },
-    turns: (events) => events.map((text) => ({ text })),
+    turns: (events) => events.map((text) => ({ role: 'user', text })),
   };
 }
 
@@ -254,7 +254,8 @@ test("the cache is written, and a restart answers from it without reading a log"
     await first.index.work();
     assert.equal(first.reads.length, 1);
     const written = JSON.parse(await readFile(store.path, "utf8"));
-    assert.equal(written.version, 1);
+    // v2: v1 held only the user's half of every conversation.
+    assert.equal(written.version, 2);
     assert.match(written.sessions.a.text, /beta/);
 
     const second = fixture(cachedLogs, { store });
@@ -444,4 +445,39 @@ test("删除缓存 stops the build, and resume starts it again", async () => {
   } finally {
     builder.stop();
   }
+});
+
+/**
+ * A log shaped the way a real one is: `time`, `data.message.content` on the
+ * model's messages, `source.kind` on the user's, and tool output in its own
+ * event. The fake turns above test the scheduler; this one tests the text.
+ */
+const T0 = 1_760_000_000_000;
+const realLog = () => ({
+  events: [
+    { seq: 1, time: T0, type: "user/message", data: { source: { kind: "runtime-context" }, content: [{ type: "text", text: "工作目录 injected-context" }] } },
+    { seq: 2, time: T0, type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "排序用 quicksort 吗" }] } },
+    { seq: 3, time: T0, type: "assistant/message", data: { message: { role: "assistant", content: [{ type: "text", text: "我改用 mergesort，因为要稳定" }] } } },
+    { seq: 4, time: T0, type: "tool/call", data: { callId: "c1", name: "read", arguments: '{"path":"gradle-lockfile.txt"}' } },
+    { seq: 5, time: T0, type: "tool/result", data: { message: { toolCallId: "c1", content: [{ type: "text", text: "tool-output-only" }] } } },
+  ],
+});
+
+test("会话内容 covers what the agent said, and nothing else", async () => {
+  // This is the whole contract of the field: two voices. The turn list used to
+  // arrive with every assistant message missing, so a search answered "not
+  // found" for the half of the conversation the user actually read.
+  const index = createContentIndex({
+    budgetMs: 60_000,
+    read: () => realLog(),
+    store: null,
+  });
+  index.sync([session("a")]);
+  await index.work();
+
+  assert.equal(index.search("quicksort")[0]?.id, "a", "what the user asked");
+  assert.equal(index.search("mergesort")[0]?.id, "a", "what the agent answered");
+  assert.deepEqual(index.search("tool-output-only"), [], "a tool result is not the conversation");
+  assert.deepEqual(index.search("gradle-lockfile"), [], "nor are tool arguments");
+  assert.deepEqual(index.search("injected-context"), [], "nor is the context DSH injects");
 });

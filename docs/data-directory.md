@@ -119,9 +119,11 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 ### 3.1 派生的那份不是侧车：`content-index.v1.json`
 
-四份侧车之外还有一份**可删**的文件，装的是会话内容索引的缓存：`{ version: 1, savedAt, sessions }`，
+四份侧车之外还有一份**可删**的文件，装的是会话内容索引的缓存：`{ version: 2, savedAt, sessions }`，
 `sessions[id]` 带 `sig`（`path\u0000sizeBytes\u0000activityAt`）与 `text`。它和侧车的区别是
-"删了只损失时间"：下次打开会话内容搜索时重读日志重建一遍，答案一模一样。所以
+"删了只损失时间"：下次打开会话内容搜索时重读日志重建一遍，答案一模一样。`version` 一升旧文件就
+被忽略并就地覆盖（文件名里的 `.v1` 是槽位、不是版本，改名只会让旧文件变成垃圾）：v1 装的是
+"只有用户那一半"的会话文本，留着它就会一直回答"没搜到"而信号又永不变化。所以
 
 - 它不进 `DOCUMENT_NAMES`，没有 revision、没有乐观锁，写入走同一个 `writeAtomic`。
 - 它**没有开关**（1.0.6 的 `search.indexCache` 已被 `normalizeSettings` 当未知键丢掉）：派生文件删掉

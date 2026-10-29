@@ -256,7 +256,7 @@ DSH 自己的归属（`lib/index.js:1549`）。两者都由 host 算好，客户
 | `POST /restore` | `{ ids }` | `{ restored, skipped, errors }` |
 | `POST /purge` | `{ ids }` | `{ purged, skipped }` |
 | `POST /trash/empty` | — | `{ purged }` |
-| `GET /export` | `?sessionId&format=md\|jsonl&download=1&range=<from>-<to>` | 文件本体 |
+| `GET /export` | `?sessionId&format=md\|jsonl&download=1` | 文件本体 |
 
 前六个都是**DSH 自己的概念**，走 DSH 的服务（`lib/host/actions.js`），插件不落盘：
 
@@ -334,9 +334,29 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 文件名按**码点**截断到 80（`Array.from(...).slice(0, 80)`），不是 `slice(0, 80)`：后者按 UTF-16
 切，标题末尾是 emoji 时会切出孤立代理项，`encodeURIComponent` 随即抛 `URIError`，一次导出变成 500。
 
-`GET /export?range=` 的掩码（导出时隐藏某段对话）要求 `from`/`to` 都是有限非负整数：只给 `from`
-时按"到结尾"处理（`to = Infinity` 由实现截到末条），`to` 也有上界，不会出现"日志里写了
-`to: 1000000000` 就把请求线程循环十亿次"的输入。
+导出的是**说过的全部内容**：用户的消息、助手的回复、工具调用与它们的输出。三类东西被当成
+"没人说过的话"去掉，并在文件头部逐类写出条数，方便读者对账：DSH 每轮注入的上下文（`user/message`
+里 `data.source.kind` 不是 `user` 的那些：时间戳、运行上下文、技能目录、审批提示……）、系统提示、
+`developer/message` 的工具清单变更。用户消息没有 `source` 字段时按老日志处理，算用户说的。
+
+**surfaceOp 与压缩只报告，不过滤。** 真实日志里 `surfaceOp` 是字符串 `"append"` 或
+`{op: "replace", startSeq, endSeq}`（含端点），DSH 压缩一次长会话会把整段——实测一次 4094 个、
+一次 4638 个事件，其中 480/499 次工具调用——换成一个 `source.kind = "compact-checkpoint"` 的摘要
+消息。若按掩码把这段丢掉，一次 26 条用户消息、1142 次工具调用的会话只导出 5 条消息与 163 次调用，
+正是"导出不全"的来源。所以导出**保留**被替换的片段、在片段起点写一行 ⚠ 注记、把摘要按
+`## 上下文压缩摘要`（标注"由 DSH 自动生成，不是用户原话"）单独成段，并在头部报出被替换与被剪
+（`compaction/prune` 的 `shadowedSeqs`）的事件数。`maskedSeqs` 因此只用来打注记，不再当过滤器；
+它的范围有上界（`MAX_MASKED_RANGE = 100_000`），日志里写 `to: 1000000000` 不会循环十亿次。
+
+助手消息的内容在 `data.message.content` 里（不是 `data.content`），工具调用既有 block 又有独立的
+`tool/call` 事件，按 `callId` 去重；时间戳读顶层 `time`（不是 `at`）。读错任何一条都会让整类
+内容静默消失。
+
+Markdown 默认带工具调用与输出，单条输出超过 `toolResultLimit`（4000 字符）时截断并注明"完整输出见
+JSONL 导出"；JSONL 一条回合一行，参数与输出全量。思考过程（`reasoning`）两种格式都默认不写。
+
+文件名按**码点**截断到 80（`Array.from(...).slice(0, 80)`），不是 `slice(0, 80)`：后者按 UTF-16
+切，标题末尾是 emoji 时会切出孤立代理项，`encodeURIComponent` 随即抛 `URIError`，一次导出变成 500。
 
 渲染时不认识的 block 类型不会让整条消息消失：它被写成一个可读的占位块，所以一条只含图片或
 只含工具结果的助手消息仍然出现在 md 与 jsonl 里。
@@ -533,6 +553,11 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 索引（`lib/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
 逐份构建、每份之间让出事件循环（一次最多 `budgetMs = 700`），并且同一时刻只允许一个构建在跑。
 
+索引里装的是**说的话**：用户消息与助手回复的文字（`collectTurns` 的 `role` 为 `user` 与
+`assistant` 两种回合）。工具调用的参数与输出、思考过程、DSH 每轮注入的上下文、压缩摘要都不进
+索引——它们不是"谁说的"，而是"系统做了什么"，混进来会让搜一个函数名命中一百个无关会话。
+`ready: true` 之后搜不到，就是这份日志里没人说过。
+
 - `ready: false` = 索引还没建完，`indexed / total` 是进度；`hits` 是**已经建到的那部分**的答案。
   冷启动的第一次搜索先给一半答案，比转 6 秒钟好；客户端 240ms 防抖，未就绪时每 700ms 续查一次。
 - `hits` 每项 `{ id, count, snippet }`：`count` 数的是出现次数（上限 999），最多 200 个会话，
@@ -540,6 +565,9 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 - 检索是**纯读**：不产生 revision，读不出的日志只记一次空文本、不无限重试。
 
 索引总是落盘一份（`content-index.v1.json`），进程重启后不必重读日志；它没有开关（m01916 去掉了），重建与删除见 §4.14。
+缓存 payload 带 `version`（当前 2）：v1 只存了用户那一半正文，签名（`logPath|size|activityAt`）却一样，
+留着它就会永远回答"没搜到"而不自愈，所以版本一升旧条目即被忽略并就地覆盖。文件名里的 `.v1` 是槽位
+不是版本号，改名只会把旧文件变成垃圾。
 
 搜索的**位置**与字段是两件事，两者都在客户端的「搜索范围」弹窗里选：**位置**是「所有位置」（缺省）
 或「当前目录」，**字段**是会话名 / 标签 / 备注 / 会话内容。缺省搜整个库——站在任何目录里搜，答案都

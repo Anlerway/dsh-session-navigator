@@ -36,13 +36,13 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/move.test.mjs` | 523 | 跨 workspace 移动/复制的三件事一个事务 |
 | `test/datadir.test.mjs` | 405 | 数据目录迁移：预检、七步、回滚、`.location` |
 | `test/component.test.mjs` | 369 | 组件状态机：单飞锁、复用、校验、pending 清扫 |
-| `test/export.test.mjs` | 154 | 会话日志 → Markdown / JSONL |
+| `test/export.test.mjs` | 296 | 会话日志 → Markdown / JSONL：真实形状（`time`、`data.message.content`、独立 `tool/call` 事件、`source.kind`）才算数——助手回复与工具调用曾经因为读错字段整类消失；注入上下文与系统提示不进正文；压缩摘要与被替换片段**只报告、不丢弃** |
 | `test/detached-window.test.mjs` | 561 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案 |
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，而不是别人的 |
 | `test/row-rail.test.mjs` | 169 | 子会话引导线的几何：必须落在上面那个折叠箭头的中心（深度 0 与非 0 是两条式子） |
 | `test/list-containers.test.mjs` | 211 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来；「当前目录」时放宽整棵树这件事也不做 |
-| `test/content-index.test.mjs` | 447 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
+| `test/content-index.test.mjs` | 483 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；**只索引用户与助手的文字**（真实日志形状：工具输出、注入上下文都不该被搜到）；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
 | `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
 | `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上而不是屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
 | `test/double-press.test.mjs` | 48 | 双击时限：同一行两次按下都在 `DOUBLE_CLICK_MS` 内才算、慢一拍就是两次单击（而且那次慢按成为新的一对的开始）、换一行不配对、一次双击用掉这一对所以第三下重新开始、没有名字的目标永远不算 |

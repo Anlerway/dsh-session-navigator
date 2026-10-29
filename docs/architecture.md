@@ -103,7 +103,7 @@ lib/
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     250  日志两端：空白会话 / 已中断（按 path|size|mtime 有界缓存）
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
-│  ├─ content.js      376  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
+│  ├─ content.js      389  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
 │  └─ reader.js       264  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
 │
 ├─ domain/                  纯规则，无 IO，可直接单测
@@ -116,7 +116,7 @@ lib/
 │  ├─ settings.js     376  设置文档形状与归一化（搜索索引只剩 indexIdle 一个开关）
 │  ├─ trash.js        210  回收站条目形状、恢复阶梯
 │  ├─ subagents.js    107  子智能体绑定：isBound / descendantsOf / withDescendants / boundIds
-│  ├─ export.js       258  日志 → Markdown / JSONL（处理 surfaceOp 遮蔽）
+│  ├─ export.js       681  日志 → Markdown / JSONL（surfaceOp 与压缩只报告、不过滤）
 │  └─ session-state.js 38  单个会话的布尔位（给 DSH 自己的按钮用，含 subagent）
 │
 ├─ store/                   自己的持久化
