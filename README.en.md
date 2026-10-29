@@ -25,11 +25,13 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 **Who it is for**: DSH users with dozens or hundreds of sessions who look things up by project rather than by scrolling.
 
 - The folder tree mirrors your workspaces; add your own folders, nest them, drag sessions between them
+- The "All sessions" view is cut into one band per workspace, captioned with that workspace's name; click a caption to fold that band, and the folded set is part of the saved layout
+- Sidecar projections are reused by size + mtime, so unchanged sessions are never re-read: 141 ms → 2 ms for the listing, 129 ms → 4 ms when the panel reopens
 - Titles, tags and notes are your own words, shown in the list without opening anything
 - Search covers titles, notes and tags, and can opt into conversation content: what the user and the agent said, not tool output (its own index, built on first use). The funnel next to the box opens the scope dialog: where (all locations by default, or the current folder) and which fields, plus a jump to the search index settings
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
 - Cut and paste across workspaces; export a session as Markdown or JSONL — what the user said, what the agent answered, every tool call and its output, with compacted history kept verbatim
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 561 tests on Windows
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 573 tests on Windows
 
 ## What it looks like
 

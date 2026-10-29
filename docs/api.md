@@ -1,7 +1,7 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:564` 的 `ROUTES` 表定义，
-`lib/index.js:1908` 的 `handle()` 分发。共 **66 条**。
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:623` 的 `ROUTES` 表定义，
+`lib/index.js:2184` 的 `handle()` 分发。共 **76 条**。
 
 ## 1. 信封
 
@@ -18,7 +18,7 @@
 - 空 body 解析成 `{}`。
 
 **四条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件）、
-`GET /ui*`（静态资源）。`handle()` 在 `headersSent` 后不再追加信封（`lib/index.js:1942`）。
+`GET /ui*`（静态资源）。`handle()` 在 `headersSent` 后不再追加信封（`lib/index.js:2218`）。
 
 ## 2. 通用约定
 
@@ -36,12 +36,12 @@
 bad-request`，而不是悄悄当没给——否则一个写错的头会变成"最后写入者赢"。
 
 两者都不给 = 最后写入者赢（单窗口用户的预期）。给了但落后 = `409 revision-conflict`，
-客户端应重新拉取后重试。实现见 `lib/index.js:1672`（读期望值）与 `lib/store/sidecar.js`（比对）。
+客户端应重新拉取后重试。实现见 `lib/index.js:1932`（读期望值）与 `lib/store/sidecar.js`（比对）。
 
 ### 迁移守卫
 
 数据目录迁移期间（`api.migration !== null`），**除 `/datadir*` 之外的所有非 GET/HEAD 请求**
-一律 `409 migration-in-progress`（`lib/index.js:1932`）。否则写入会落进正在被复制的旧目录。
+一律 `409 migration-in-progress`（`lib/index.js:2208`）。否则写入会落进正在被复制的旧目录。
 
 ### id 约定
 
@@ -58,7 +58,7 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 
 ## 3. 错误码 → HTTP 状态
 
-`lib/index.js:2034`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
+`lib/index.js:2310`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
 
 | code | 状态 | 含义 |
 |---|---|---|
@@ -119,7 +119,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 
 子智能体是父会话一次委派的产物，DSH 仍然把它写成完整的会话目录，但它不是用户可以
 单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口
-`assertStandalone(api, ids)`（`lib/index.js:1567`）：
+`assertStandalone(api, ids)`（`lib/index.js:1828`）：
 
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
@@ -147,7 +147,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | `GET /theme` | — | `null` 或 `{ mode, tokens, at }` |
 | `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme` |
 
-`GET /bootstrap`（`lib/index.js:572`）是面板唯一的一次往返，字段：
+`GET /bootstrap`（`lib/index.js:631`）是面板唯一的一次往返，字段：
 
 ```jsonc
 {
@@ -169,7 +169,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 ```
 
 `sessions[]` 的 `home` 是它显示在哪个容器节点里，`homeOverride` 表示这是侧车的虚拟放置而非
-DSH 自己的归属（`lib/index.js:1549`）。两者都由 host 算好，客户端不重放规则。
+DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户端不重放规则。
 
 两个字段不是 DSH 给的，是插件自己从日志两端读出来的（`lib/sources/logfacts.js`）：
 
@@ -463,7 +463,7 @@ payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，
 | `GET /ui/react.js` | `assets/vendor/react.production.min.js` | `text/javascript` |
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
 
-路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js:92`）。
+路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js:97`）。
 全部 `no-store`：面板和窗口必须跑同一份代码，缓存一份旧的正是这套安排要消除的漂移。
 文件缺失时 `ui-asset-missing`（500）。
 

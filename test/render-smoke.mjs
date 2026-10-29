@@ -521,6 +521,97 @@ if (folderAt > workspaceAt) throw new Error("文件夹 must come before 工作�
 console.log("list containers ok:", folderRows.length, "folder,", wsRows.length, "workspace,", specialRows.length, "special");
 console.log("groups:", captions.join(" | "));
 
+// ── 所有会话 按工作区切分 ────────────────────────────────────────────────────
+// 所有会话 is the whole library at once, and it used to be one flat 会话 band: every
+// row repeated its workspace in the subtitle, and the pane never answered "where
+// does this live" as a list. It is cut by workspace now, and the caption *is* the
+// workspace name — the same string the tree draws for the same node.
+const bandTree = {
+  nodes: {
+    "f-root": { id: "f-root", type: "folder", name: "根目录", fixed: true, kind: "root", parent: null, order: 0 },
+    "f-all": { id: "f-all", type: "folder", name: "所有会话", fixed: true, kind: "all", parent: "f-root", order: 0 },
+    "w-a": { id: "w-a", type: "workspace", name: "Alpha", workspaceId: "ws-a", kind: "workspace", parent: "f-root", order: 1 },
+    "w-b": { id: "w-b", type: "workspace", name: "Beta", workspaceId: "ws-b", kind: "workspace", parent: "f-root", order: 2 },
+  },
+  children: { "f-root": ["f-all", "w-a", "w-b"], "f-all": [], "w-a": [], "w-b": [] },
+  counts: { "f-root": 0, "f-all": 0, "w-a": 1, "w-b": 1 },
+  roots: ["f-root"],
+};
+decorateTree(bandTree);
+const bandSessions = [
+  { ...session, id: "s-beta", pinned: false, workspaceId: "ws-b", workspaceTitle: "Beta", activityAt: 3 },
+  { ...session, id: "s-alpha", pinned: false, workspaceId: "ws-a", workspaceTitle: "Alpha", activityAt: 2 },
+  { ...session, id: "s-none", pinned: false, workspaceId: null, workspaceTitle: null, activityAt: 1 },
+];
+const allPane = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "f-all" });
+const bandCaptions = findAll(allPane, hasClass("grp")).map((group) => textOf(group));
+if (bandCaptions.length !== 3) throw new Error("所有会话 must draw one band per workspace, got " + JSON.stringify(bandCaptions));
+// Tree order, not alphabetical order: Alpha and Beta are the 目录 order.
+if (!bandCaptions[0].includes("Alpha")) throw new Error("the first band must be the first workspace, got " + JSON.stringify(bandCaptions));
+if (!bandCaptions[1].includes("Beta")) throw new Error("the second band must be the second workspace, got " + JSON.stringify(bandCaptions));
+if (!bandCaptions[2].includes("未分组")) throw new Error("a session with no workspace belongs to 未分组, got " + JSON.stringify(bandCaptions));
+if (!bandCaptions[0].includes("1")) throw new Error("a band carries its own count, got " + JSON.stringify(bandCaptions));
+// Every session row still exists exactly once, and under the right caption.
+const bandRowIds = findAll(allPane, (cls) => cls.split(" ").includes("row"))
+  .map((row) => row.props?.["data-id"])
+  .filter((id) => ["s-alpha", "s-beta", "s-none"].includes(id));
+if (bandRowIds.length !== 3) throw new Error("every session must be listed once, got " + JSON.stringify(bandRowIds));
+// Standing inside a workspace — or answering a search — keeps one 会话 band: there
+// the list is already about a place, and a caption per workspace would repeat one
+// word down the pane.
+const insidePane = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "w-a" });
+const insideCaptions = findAll(insidePane, hasClass("grp")).map((group) => textOf(group));
+if (!insideCaptions.some((text) => text.includes("会话")) || insideCaptions.some((text) => text.includes("Alpha"))) {
+  throw new Error("a container scope must keep one 会话 band, got " + JSON.stringify(insideCaptions));
+}
+const searchPane = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "f-all", query: "示例" });
+const searchCaptions = findAll(searchPane, hasClass("grp")).map((group) => textOf(group));
+if (searchCaptions.some((text) => text.includes("Alpha"))) {
+  throw new Error("a search result is not a place: it must stay one band, got " + JSON.stringify(searchCaptions));
+}
+console.log("所有会话 bands ok:", bandCaptions.join(" | "));
+
+// ── 分组折叠 (m01948) ───────────────────────────────────────────────────────
+// 所有会话 is one band per workspace now, which is only useful if a band can be
+// put away: the caption row doubles as the button. Two things are pinned here —
+// a folded band builds no rows (a "folded" band that still renders every row is
+// not folded), and the fold is scoped, because 会话 exists in every folder and
+// folding one folder's copy must not fold another's.
+const foldKey = (scope, key) => scope + "\u0000" + key;
+const rowsOfPane = (pane) =>
+  findAll(pane, (cls) => cls.split(" ").includes("row"))
+    .map((row) => row.props?.["data-id"])
+    .filter((id) => ["s-alpha", "s-beta", "s-none"].includes(id));
+const foldedPane = listPaneWith({
+  sessions: bandSessions,
+  tree: bandTree,
+  scope: "f-all",
+  foldedBands: new Set([foldKey("f-all", "ws:ws-a")]),
+});
+const alphaCaption = findAll(foldedPane, hasClass("grp")).find((node) => textOf(node).includes("Alpha"));
+if (!alphaCaption) throw new Error("a folded band must keep its caption");
+if (alphaCaption.props["aria-expanded"] !== "false") throw new Error("a folded caption must say it is folded");
+const foldedRowIds = rowsOfPane(foldedPane);
+if (foldedRowIds.includes("s-alpha")) throw new Error("a folded band must build no rows, got " + JSON.stringify(foldedRowIds));
+if (!foldedRowIds.includes("s-beta") || !foldedRowIds.includes("s-none")) {
+  throw new Error("the other bands must stay open, got " + JSON.stringify(foldedRowIds));
+}
+// The same 会话 band in two folders: folding it in 所有会话 leaves 根目录 open.
+const otherScope = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "w-a", foldedBands: new Set([foldKey("f-all", "normal")]) });
+if (!rowsOfPane(otherScope).includes("s-alpha")) {
+  throw new Error("a fold in 所有会话 must not fold 会话 in another folder, got " + JSON.stringify(rowsOfPane(otherScope)));
+}
+const ownScope = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "w-a", foldedBands: new Set([foldKey("w-a", "normal")]) });
+if (rowsOfPane(ownScope).length !== 0) {
+  throw new Error("folding 会话 inside a folder must hide its rows, got " + JSON.stringify(rowsOfPane(ownScope)));
+}
+// A press on a caption asks the panel to fold *that* band, scope included.
+const asked = [];
+const clickPane = listPaneWith({ sessions: bandSessions, tree: bandTree, scope: "f-all", onToggleBand: (key) => asked.push(key) });
+findAll(clickPane, hasClass("grp")).find((node) => textOf(node).includes("Beta")).props.onClick();
+if (asked[0] !== foldKey("f-all", "ws:ws-b")) throw new Error("a caption must fold its own band, got " + JSON.stringify(asked));
+console.log("分组折叠 ok:", "Alpha folded |", "Beta open |", "会话 scoped");
+
 // ── 拖动要先选中 (m01385) ───────────────────────────────────────────────────
 // Every row in the list used to be draggable, so pressing one and moving started
 // a native drag and 框选 never saw the press. The gate is the pick: the row the

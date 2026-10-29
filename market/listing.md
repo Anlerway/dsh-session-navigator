@@ -17,6 +17,7 @@
 - 目录树按工作区自动生成，自己可以新建文件夹无限嵌套，会话工作区支持拖进拖出
 - 标题、标签、备注随心所欲的自定义
 - 搜索支持标题、备注、标签，并可检索会话正文（用户说的与助手回复的）
+- 所有会话 按工作区切成一段一段，标题就是工作区名字；点标题收起整段，折叠状态跟着布局记忆一起保存
 - 收藏、待办、置顶、归档；配备回收站，删除后有后悔药
 - 跨工作区剪切粘贴；会话可导出 Markdown 或 JSONL：用户的话、助手的回复、每次工具调用与输出，压缩过的历史按原文保留
 
@@ -60,6 +61,7 @@ dsh plugin --profile desktop add dsh-session-navigator  # 桌面版
 
 Session Navigator manages DSH sessions the way Windows Explorer manages files: a folder tree
 per workspace, tags, notes, favourites and a recycle bin on top of the native session store.
+The "All sessions" view is cut into one band per workspace, each caption foldable.
 Session files never move — all state lives in `~/.dsh-session-navigator/`, a sibling of `~/.dsh`,
 so uninstalling means deleting one folder. Zero runtime dependencies, no build step, MIT.
 

@@ -14,7 +14,7 @@
 | Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`，无构建步骤 | 渲染进程（浏览器环境） |
 
 Host 半体在 DSH 的 web 服务器上注册**一个**前缀路由 `/session-navigator/api`，所有端点都在
-它下面（`lib/index.js:300-304`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
+它下面（`lib/index.js:333-337`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
 portal 到 `<body>` 上的固定层。
 
 ### 加载链路
@@ -24,7 +24,7 @@ package.json
 ├─ dsh.bundle.patch = "./cordis.patch.yml"
 │    └─ - insert: [{ id: session-navigator, name: 'dsh-session-navigator', config: {} }]
 │         → Cordis 按包名 import，取 name / inject / apply
-│           (lib/index.js:107 name, lib/index.js:112 inject, lib/index.js:121 apply)
+│           (lib/index.js:109 name, lib/index.js:114 inject, lib/index.js:123 apply)
 └─ dsh.client.inject = "@deepseek-ai/dsh-client-ui-slots"
    dsh.client.platform = "web"
      → 渲染进程把 lib/client.js 当作 out-of-tree client 模块执行
@@ -35,7 +35,7 @@ package.json
 
 ## 2. Host 半体：`apply(ctx)` 做了七件事
 
-`lib/index.js:121-318`，顺序有意义：
+`lib/index.js:123-353`，顺序有意义：
 
 1. **拿 webServer**（`:122-123`）。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
    profile 就没有浏览器半体，此时直接 return，让 loader 跳过这一行。
@@ -62,19 +62,19 @@ package.json
 
 ## 3. 一次请求的生命周期
 
-`handle(api, req, res)`（`lib/index.js:1901-1948`）：
+`handle(api, req, res)`（`lib/index.js:2184-2231`）：
 
 ```
 routeOf(req.url)                 // lib/http.js:88  剥掉 /session-navigator/api
   ↓ null → 404 bad-request
-compileRoute 匹配表               // lib/index.js:1857  段数相等 + :param 解码
+compileRoute 匹配表               // lib/index.js:2140  段数相等 + :param 解码
   ↓ 无 → 404 no route for <METHOD> <path>
 迁移守卫                          // 非 GET/HEAD 且非 /datadir* → migration-in-progress
 assertSameOrigin(req)            // 非 GET/HEAD：跨站 / 非 JSON → 403 / 415
 readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（lib/http.js:57）
 handler(api, req, res, query, params)
   ↓ 正常 → ok(res, result)        // { ok: true, result }
-  ↓ 抛错 → statusFor(code)        // lib/index.js:2027  错误码 → HTTP 状态
+  ↓ 抛错 → statusFor(code)        // lib/index.js:2310  错误码 → HTTP 状态
            fail(res, status, code, message)
 ```
 
@@ -83,9 +83,9 @@ handler(api, req, res, query, params)
 - **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`lib/http.js:22-48`）。
   客户端只对 `code` 分支，`error` 只给人看。
 - **错误码直通**：DSH 原生错误带的命名空间码（`workspace/name-conflict`、
-  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js:1991`）。
+  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js:2274`）。
 - **SSE 例外**：`GET /bridge/events` 自己接管响应，`handle` 在 `headersSent` 时不再写信封
-  （`lib/index.js:1935`）。
+  （`lib/index.js:2218`）。
 - **写请求必须同源**：没有 token，所以靠 `Sec-Fetch-Site` 与 `Content-Type: application/json`
   这两个浏览器强制的信号拒绝跨站写（`lib/index.js` 的 `assertSameOrigin()`，见
   [api.md](api.md#31-写请求的同源约束)）。
@@ -94,64 +94,66 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          2397  插件装配 + 路由表（76 条）+ 错误映射（唯一编排层）
+├─ index.js          2417  插件装配 + 路由表（76 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测
-├─ paths.js           327  数据目录解析、`.location` 指针、原子写临时目录清理
+├─ paths.js           365  数据目录解析、`.location` 指针、原子写临时目录清理
+├─ fs.js               52  存在与列举：宿主与组件安装共用的两个判断
 │
 ├─ sources/                 读 DSH 的数据（只读，除 move 的受控重写）
 │  ├─ heads.js        233  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）
-│  ├─ projcache.js    177  L1：storages/session_projcache 的每会话小 JSON
+│  ├─ projcache.js    228  L1：storages/session_projcache 的每会话小 JSON
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     250  日志两端：空白会话 / 已中断（按 path|size|mtime 有界缓存）
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
 │  ├─ content.js      389  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
-│  └─ reader.js       264  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
+│  └─ reader.js       313  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
 │
 ├─ domain/                  纯规则，无 IO，可直接单测
 │  ├─ sessions.js     310  合并三源 → 扁平会话列表（header 定身份，cache 只填空）
-│  ├─ tree.js         450  树投影：workspace 节点 + 固定节点 + 用户文件夹
-│  ├─ tree-rules.js   451  规则表 R1–R5 的唯一实现（accepts / scope / ref 装饰）
-│  ├─ folders.js      330  新建/重命名/移动/删除文件夹（改 tree draft）
-│  ├─ shortcuts.js    233  快捷方式：引用而非移动
+│  ├─ tree.js         477  树投影：workspace 节点 + 固定节点 + 用户文件夹
+│  ├─ tree-rules.js   487  规则表 R1–R5 的唯一实现（accepts / scope / ref 装饰）
+│  ├─ folders.js      335  新建/重命名/移动/删除文件夹（改 tree draft）
+│  ├─ shortcuts.js    259  快捷方式：引用而非移动
 │  ├─ annotations.js  276  标签、备注、收藏/待办
 │  ├─ settings.js     439  设置文档形状与归一化（搜索索引只剩 indexIdle 一个开关）
 │  ├─ trash.js        210  回收站条目形状、恢复阶梯
 │  ├─ subagents.js    107  子智能体绑定：isBound / descendantsOf / withDescendants / boundIds
 │  ├─ export.js       681  日志 → Markdown / JSONL（surfaceOp 与压缩只报告、不过滤）
 │  ├─ summaries.js    763  AI 字段的提示词契约、回答解析、预算、花费账本、待补清单（纯函数）
-│  └─ session-state.js 38  单个会话的布尔位（给 DSH 自己的按钮用，含 subagent）
+│  └─ session-state.js 68  单个会话的布尔位（给 DSH 自己的按钮用，含 subagent）
 │
 ├─ store/                   自己的持久化
 │  ├─ sidecar.js      238  原子写 + revision + 串行化 + mtime/size 缓存
 │  └─ documents.js    151  五份侧车文档的注册表
 │
 ├─ host/                    需要动文件系统或跨进程的操作
-│  ├─ actions.js      697  改名/派生/归档/置顶 → 调 DSH 自己的服务
+│  ├─ actions.js      701  改名/派生/归档/置顶 → 调 DSH 自己的服务
 │  ├─ trash.js        496  删除/恢复/清空的字节搬运
-│  ├─ move.js         683  跨 workspace 移动/复制（重写 header cwd + 换登记）
+│  ├─ move.js         777  跨 workspace 移动/复制（重写 header cwd + 换登记）
 │  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时，启动收尾而不是留下孤儿
-│  ├─ datadir.js      380  数据目录检查与七步迁移
+│  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
 │  ├─ theme.js        103  调色板令牌白名单与校验
 │  ├─ native-reveal.js 107 koffi → `SHOpenFolderAndSelectItems`，"在文件夹中显示"
 │  ├─ reveal-agent.js  203 常驻 PowerShell：省掉每次 reveal 一秒多的进程启动
 │  ├─ update.js       210  更新检查：版本比较、GitHub release 解析、5 分钟缓存
-│  ├─ open-link.js    169  链接白名单（repo / star / issues / releases）→ 系统浏览器（带降级链）
-│  ├─ maintenance.js  215  缓存清理：内存三件 + `.tmp` / 下载目录 / staging，跳过在装的组件
+│  ├─ open-link.js    161  链接白名单（repo / star / issues / releases）→ 系统浏览器（带降级链）
+│  ├─ fsutil.js        22  psQuote / dshHomeOf：两条 PowerShell 命令行共用的引用与 home
+│  ├─ maintenance.js  229  缓存清理：内存三件 + `.tmp` / 下载目录 / staging，跳过在装的组件
 │  ├─ summarize.js    787  AI 字段队列：模型目录、路由、单飞 worker、重试与 token 落账（调 DSH 的 llm 服务）
-│  └─ reset.js        193  清除数据：五份侧车 + 回收站净内容 + 隔离区 + `.tmp`，`DELETE` 把关
+│  └─ reset.js        209  清除数据：五份侧车 + 回收站净内容 + 隔离区 + `.tmp`，`DELETE` 把关
 │
 ├─ component/               可选 Electron 运行时
 │  ├─ layout.js       226  路径、版本、SHA-256、镜像、体积
-│  ├─ state.js        160  state.v1.json 生命周期机
+│  ├─ state.js        168  state.v1.json 生命周期机
 │  ├─ downloader.js   339  curl 流式下载（断点续传、镜像、进度）
-│  ├─ install.js      562  校验 → 解压 → 原子发布
+│  ├─ install.js      541  校验 → 解压 → 原子发布
 │  └─ manager.js      688  单飞状态机（install/cancel/remove 共享一把锁）
 │
 ├─ detached/
-│  ├─ launcher.js     390  Host 侧：spawn / 重试 / 聚焦 / 关闭、net 控制通道
+│  ├─ launcher.js     415  Host 侧：spawn / 重试 / 聚焦 / 关闭、net 控制通道
 │  └─ main.cjs        —    跑在 Electron 运行时里，拥有 BrowserWindow
 │
 └─ dsh/
@@ -241,7 +243,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 ## 5. Client 半体：`apply(ctx)` 注册了什么
 
-`lib/client.js:12893-13064`。`inject = ["slots", "locale", "uiWorkspace"]`（`:13067`）。
+`lib/client.js:14190-14363`。`inject = ["slots", "locale", "uiWorkspace"]`（`:13067`）。
 
 **插槽**（order 决定与 DSH 自带条目的相对位置）：
 
@@ -263,24 +265,24 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 **导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:13066-13070`）。
 
-浮窗本体是 `Panel`（`lib/client.js:5675`，单函数约 5500 行，内部按功能分段），
+浮窗本体是 `Panel`（`lib/client.js:6356`，单函数约 5500 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
-（`lib/client.js:594` 的注释）。
+（`lib/client.js:879` 的注释）。
 
 ### 5.1 面板与独立窗口的双语：两套机制，一条链路
 
 按「这一屏的标签是不是固定的」分工：
 
 - **设置页**用 DSH 的命名键字典（`t("setStarHint")`）：一屏固定表单，键名可读比字面量值钱。
-- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js:1873` 起的注释块下方）：键就是中文原文。
+- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js:2196` 起的注释块下方）：键就是中文原文。
   三百多条散在渲染树里的短标签，命名键只会多一层间接；而且改字时字典未命中的后果是
   「显示中文」而不是「在页面上印出 key」。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
 
 `T` 读模块级的 `panelLang`，而 `Panel` 每次渲染都从 props 的翻译器刷新它：
-`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:5678`）。
+`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:6359`）。
 语言开关一动，DSH 用新的 `t` 重渲染插槽，下一帧就是新语言。代价是模块级表（`FIXED_META`、
 `COLUMNS`）的 `label` 必须写成 `get label() { return T("…"); }`——直接赋值会在模块加载时求值、
-永久冻在中文。英文表在 `panelDict()`（`lib/client.js:11965`）。
+永久冻在中文。英文表在 `panelDict()`（`lib/client.js:13228`）。
 
 宿主发来的名字也属于同一类，只是来源不同：固定目录（所有会话 / 未分组 / 待办 / 收藏 / 回收站 / 根目录）
 的 `name` 在 host 那边是标识符、写法就是中文，所以 `nodeLabel()` 不印它，而是取
@@ -290,7 +292,7 @@ host 画成「默认工作区」——节点因此带一个 `default: true` 标�
 
 独立窗口是另一侧：`assets/detached` 是静态页 + 冒充 DSH 的 shim，它读不到 DSH 的语言开关，
 也不会跟着 DSH 重渲染。所以语言由面板在 `POST /detached/open` 里报给 host（`uiLang()`，
-`lib/client.js:1894`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
+`lib/client.js:2216`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
 helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`，
 之后每句都过 `L(zh, en)`。中途切换语言时控制器用控制通道广播 `{ type: "lang" }`，helper 直接
 `win.loadURL()` reload——字典是页面加载时定死的，reload 是唯一能让新字典生效的方式。
@@ -298,6 +300,34 @@ helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`）�
 
 `test/panel-copy.test.mjs` 守着这条链的可见后果：`T()` 的每个键都在表里、表里没有空值或中文、
 占位符两边一致，以及渲染树里不许有裸中文字面量（注释与样式表除外）。
+
+### 5.2 列表的「带」：先切数据，再画标题
+
+列表不是一棵树长出来的，是一串**带**（band）。`ListPane` 先把行分组，再统一画成
+`button.grp`（标题行：折叠箭头、图标、名字、计数）+ 该带的行，行本身由 `rowsOf()` 生成：
+
+```js
+groups.push({ key, title, icon, count, rows });
+```
+
+带是渲染前的数据结构，不是 CSS 分组，「这一带有什么」和「这一带画不画」因此在同一个对象里
+回答。带按固定优先级排：置顶、搜索/筛选结果、特殊文件夹、容器（文件夹 / 工作区 / 快捷方式）、
+`所有会话` 的行、已归档（`lib/client.js:4599-4700` 的九处 `groups.push`）。
+
+`所有会话` 在没有搜索词、没有筛选时不是一条平带，而是**一条带一个工作区**：
+`workspaceBands(sessions, tree)`（`lib/client.js:3962`）按 `session.workspaceId` 分桶，
+标题取会话视图里的 `workspaceTitle`——跟树画的是同一个名字，视图过期时回落到 id；
+顺序用 DFS 从整棵树取（进到 workspace 节点就记位置、不再下钻，所以拖进用户文件夹的工作区
+仍留在文件夹的位置上），树不认识的工作区排在已知之后，没有工作区的沉到最末。
+搜索与筛选一旦生效就退回单带（`lib/client.js:4672` 的 `byWorkspace`）：那些列表回答
+「哪几行匹配」，每行一条工作区标题只是复读。
+
+折叠只改画不改数据。`foldedBands` 是 `Panel` 的 `Set` 状态（`lib/client.js:6483`，初值来自
+布局记忆），键是 `scope + "\u0000" + bandKey`（`lib/client.js:4337`）——同一个「会话」带在
+根目录和某个工作区里是两个开关，否则折一次全站没有行。折起来的带在**建行之前**短路：
+`rows: bandFolded("normal") ? null : rowsOf(normal)`（`lib/client.js:4690`）。所以不是渲染完
+再藏起来——被折的行既不在 DOM 里，也不进框选，删不掉看不见的东西。状态随布局记忆落盘
+（`foldedBands: [...foldedBands]`，`lib/client.js:6672`）。
 
 ## 6. 数据流
 
