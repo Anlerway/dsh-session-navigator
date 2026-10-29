@@ -27,6 +27,15 @@ class StubComponent {
   }
 }
 
+// How many hooks the component being called has used so far.
+//
+// React requires that number to be identical on every render of the same
+// component, and breaking it is a crash ("Rendered more hooks than during the
+// previous render"), not a wrong pixel. DetailPane had exactly that: a hook sat
+// below its empty-state return, so selecting the first row threw. The stub
+// counts the calls and `render` compares them across renders of one component.
+let hookCalls = 0;
+
 const React = {
   Component: StubComponent,
   Fragment: Symbol("Fragment"),
@@ -39,12 +48,29 @@ const React = {
     return { type, props: merged, children };
   },
   createPortal: (node) => node,
-  useRef: (initial) => ({ current: initial }),
-  useState: (initial) => [typeof initial === "function" ? initial() : initial, () => {}],
-  useEffect: () => {},
-  useMemo: (compute) => compute(),
-  useCallback: (fn) => fn,
-  useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+  useRef: (initial) => {
+    hookCalls += 1;
+    return { current: initial };
+  },
+  useState: (initial) => {
+    hookCalls += 1;
+    return [typeof initial === "function" ? initial() : initial, () => {}];
+  },
+  useEffect: () => {
+    hookCalls += 1;
+  },
+  useMemo: (compute) => {
+    hookCalls += 1;
+    return compute();
+  },
+  useCallback: (fn) => {
+    hookCalls += 1;
+    return fn;
+  },
+  useSyncExternalStore: (_subscribe, getSnapshot) => {
+    hookCalls += 1;
+    return getSnapshot();
+  },
 };
 
 const store = new Map();
@@ -122,6 +148,9 @@ new Function("window", "document", "navigator", "fetch", source)(
 );
 if (!mod) throw new Error("the module factory did not run");
 
+/** Hook calls per component, to catch a hook that a branch can skip. */
+const hookCounts = new WeakMap();
+
 /** Walk an element tree, calling every function component once. */
 function render(element) {
   if (element === null || element === undefined || element === false || element === true) return null;
@@ -138,7 +167,27 @@ function render(element) {
       instance.props = element.props ?? {};
       return render(instance.render());
     }
-    return render(element.type(element.props, ...(element.children ?? [])));
+    // The hooks below belong to this call alone: a component rendered inside it
+    // is only *called* by the recursion at the end, which counts its own.
+    const outer = hookCalls;
+    hookCalls = 0;
+    let out;
+    try {
+      out = element.type(element.props, ...(element.children ?? []));
+    } finally {
+      const count = hookCalls;
+      hookCalls = outer;
+      const seen = hookCounts.get(element.type);
+      if (seen === undefined) hookCounts.set(element.type, count);
+      else if (seen !== count) {
+        const name = element.type.name || "an unnamed component";
+        throw new Error(
+          name + " used " + count + " hooks here but " + seen + " the first time it was rendered: " +
+          "a hook that a branch can skip is a crash in React, not a slow render",
+        );
+      }
+    }
+    return render(out);
   }
   // Host elements keep their props: the assertions below read data-mode and the
   // class names off them, and dropping props would make them vacuously pass.
