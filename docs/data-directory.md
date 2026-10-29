@@ -21,7 +21,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 ```
 <dataDir>/
-├── tree.v1.json          文件夹、放置、workspace 顺序、快捷方式、置顶
+├── tree.v1.json          文件夹、放置、workspace 顺序、快捷方式、置顶、快速访问
 ├── annotations.v1.json   标签、备注、收藏/待办标记、共享标签库
 ├── settings.v1.json      跨浏览器的偏好（布局在 localStorage）
 ├── move-journal.v1.json  正在进行的跨工作区移动（见 §6.2）
@@ -71,7 +71,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 | 文件 | 初始形状 | 说明 |
 |---|---|---|
-| `tree.v1.json` | `{ folders, placement, workspaceOrder, shortcuts, pins, sessionPlacement }` | `placement` 是 workspace 的显式顺序；`sessionPlacement` 是会话的**显示**归属覆盖 |
+| `tree.v1.json` | `{ folders, placement, workspaceOrder, shortcuts, pins, quickAccess, sessionPlacement }` | `placement` 是 workspace 的显式顺序；`sessionPlacement` 是会话的**显示**归属覆盖；`pins` 是排名、`quickAccess` 是书签带，两张表故意分开（见 tree-and-placement.md §8） |
 | `annotations.v1.json` | `{ sessions: {}, tags: [] }` | `tags` 是共享标签库；`sessions[id]` 是单条注解 |
 | `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js:74` |
 | `trash/index.v1.json` | `{ entries: {} }` | 见第 5 节 |

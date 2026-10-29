@@ -90,7 +90,7 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          1717  插件装配 + 路由表（62 条）+ 错误映射（唯一编排层）
+├─ index.js          1717  插件装配 + 路由表（64 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测

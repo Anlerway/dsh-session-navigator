@@ -13,27 +13,28 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 三十四个测试文件，各自钉住什么
+## 1. 三十六个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
-| `test/tree.test.mjs` | 545 | 树投影的规则 R1–R5：嵌套、计数、降级、环、`sessionHome` |
-| `test/tree-mirror.test.mjs` | 160 | 客户端只持有**遍历**、不持有**规则**——同一问题在两处必须同答案 |
+| `test/tree.test.mjs` | 580 | 树投影的规则 R1–R5：嵌套、计数、降级、环、`sessionHome` |
+| `test/tree-mirror.test.mjs` | 178 | 客户端只持有**遍历**、不持有**规则**——同一问题在两处必须同答案 |
 | `test/sessions.test.mjs` | 229 | 合并视图：一个会话"是什么"的唯一判定处 |
-| `test/store.test.mjs` | 405 | 侧车存储、原子写、revision、损坏隔离，以及改它的两个规则模块 |
+| `test/store.test.mjs` | 422 | 侧车存储、原子写、revision、损坏隔离，以及改它的两个规则模块 |
 | `test/revision.test.mjs` | 183 | 乐观锁的两端：侧车拒绝过期写，HTTP 层把 409 送到客户端 |
 | `test/shortcuts.test.mjs` | 159 | 快捷方式永不移动目标；主题 store 的往返 |
+| `test/flags.test.mjs` | 183 | 收藏/待办标记 → 快捷方式的一次性迁移：幂等、写失败先留旧标记、过期标记不中断启动 |
 | `test/theme.test.mjs` | 104 | 主题 store 只交出窗口用的 token，且拒绝注入 |
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
 | `test/settings.test.mjs` | 266 | 设置文档的默认值、合并、归一化；日期格式与大小单位是封闭词表 |
 | `test/settings-page.test.mjs` | 609 | 设置页真实渲染：打开方式、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
-| `test/display-format.test.mjs` | 81 | 两种日期格式与两种大小单位真正打印出来的样子：单位阶梯走到月与年、固定 KB 不换单位 |
-| `test/session-state.test.mjs` | 100 | DSH 自己的界面读的那一个布尔集合 |
+| `test/display-format.test.mjs` | 92 | 两种日期格式与两种大小单位真正打印出来的样子：单位阶梯走到月与年、固定 KB 不换单位 |
+| `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
 | `test/trash.test.mjs` | 425 | 回收站：删除、恢复阶梯、清空、对账 |
-| `test/move.test.mjs` | 510 | 跨 workspace 移动/复制的三件事一个事务 |
-| `test/datadir.test.mjs` | 364 | 数据目录迁移：预检、七步、回滚、`.location` |
+| `test/move.test.mjs` | 523 | 跨 workspace 移动/复制的三件事一个事务 |
+| `test/datadir.test.mjs` | 405 | 数据目录迁移：预检、七步、回滚、`.location` |
 | `test/component.test.mjs` | 369 | 组件状态机：单飞锁、复用、校验、pending 清扫 |
 | `test/export.test.mjs` | 154 | 会话日志 → Markdown / JSONL |
 | `test/detached-window.test.mjs` | 561 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案 |
@@ -41,6 +42,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，而不是别人的 |
 | `test/row-rail.test.mjs` | 169 | 子会话引导线的几何：必须落在上面那个折叠箭头的中心（深度 0 与非 0 是两条式子） |
 | `test/list-containers.test.mjs` | 151 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成"含命中"的结果视图 |
+| `test/quick-access.test.mjs` | 81 | 快速访问是一条序列：只有真实容器能当书签、整条一起写、陌生 id 跳过、没动过的书签保留原位 |
 | `test/filter-dialog.test.mjs` | 115 | 筛选对话框的两个出口：重置还要按应用，取消是一步；没东西可取消时它不存在 |
 | `test/heads.test.mjs` | 109 | 会话 header 扫描：换过格式版本的日志仍找得到、同 id 只出一份、无日志目录跳过 |
 | `test/logfacts.test.mjs` | 168 | 空白会话 / 已中断：读日志两端的两个事实，以及只读头尾时的窗口边界 |
@@ -51,7 +53,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/locale-parity.test.mjs` | 88 | 中英两份字典键集合一致、占位符一致、英文标签放得下；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：字典覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/reset.test.mjs` | 208 | 清除数据：一个字都没动之前先验 `DELETE`、四份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
-| `test/render-smoke.mjs` | 916 | 每个组件真实渲染一次（不是 `node --test` 的一部分） |
+| `test/render-smoke.mjs` | 1146 | 每个组件真实渲染一次（不是 `node --test` 的一部分） |
 
 ## 2. 为什么是这些
 
