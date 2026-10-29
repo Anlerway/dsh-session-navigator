@@ -619,17 +619,28 @@ if (findAll(quickRow, hasClass("tpin")).length !== 0) {
 }
 console.log("quick access ok: a strip of buttons above 目录; 置顶 only reorders 目录");
 
-// ── 快速访问 is a drop target, with or without bookmarks ────────────────────
-// Dragging a folder up here is how a container becomes a bookmark, so the band
-// cannot wait for its first entry to exist: an empty strip draws the caption and
-// one placeholder line, and both accept the drop. A bookmark dropped on a
-// sibling is the reorder, and it travels the same channel ("source, before").
+// ── 快速访问: the label parks, the rows take drops *into* them ──────────────
+// Parking a container in the strip is the *label* gesture, so the band cannot
+// wait for its first entry to exist: an empty strip draws the caption and one
+// placeholder line, and both accept that drop.
+//
+// A drop on a *row* is a different thing (m03793). The row is the folder it
+// names, so the payload goes inside that folder exactly as it would one level
+// down in 目录: a bookmark dropped on a sibling moves into it, and a session
+// dropped on a bookmarked workspace re-homes there. A strip that read every drop
+// as "add/reorder a bookmark" refused a folder the very same folder took in the
+// tree.
 const dropCalls = [];
+const moveCalls = [];
+const sessionDrops = [];
 const bandProps = (qa) => ({
   tree: { ...tree, quickAccessNodes: qa, quickAccess: Object.fromEntries(qa.map((id, i) => [id, qa.length - i])), pins: {} },
   scope: "f-root", onSelect: noop, expanded: new Set(["f-root"]), onToggle: noop, width: 260,
-  onMove: noop, rename: null, onBeginRename: noop, pins: {}, quickAccess: qa, onNodeContextMenu: noop,
-  onDropOnQuick: (source, before) => dropCalls.push([source, before]),
+  onMove: (source, target) => moveCalls.push([source, target]),
+  onDropSessions: (ids, workspaceId) => sessionDrops.push([ids, workspaceId]),
+  onPlaceSessions: noop, onDropShortcut: noop, onHint: noop,
+  rename: null, onBeginRename: noop, pins: {}, quickAccess: qa, onNodeContextMenu: noop,
+  onDropOnQuick: (source) => dropCalls.push([source]),
 });
 const emptyBand = findAll(render({ type: TreePane, props: bandProps([]) }), () => true);
 const emptyCap = emptyBand.find((node) => isCap(node, "快速访问")) ?? null;
@@ -640,7 +651,7 @@ if (!ghost) throw new Error("an empty 快速访问 must draw the placeholder tha
 if (!textOf(ghost).includes("把文件夹或工作区拖到这里")) {
   throw new Error("the empty band must say what to drag here, got " + JSON.stringify(textOf(ghost)));
 }
-// Two bookmarks: drag the first, drop on the band, then on its sibling.
+// Two bookmarks: drag the first, drop it on the label, then on its sibling.
 const twoBand = findAll(render({ type: TreePane, props: bandProps(["w-ws-1", "d-1"]) }), () => true);
 if (twoBand.some((node) => hasClass("tghost")(clsOf(node)))) {
   throw new Error("a non-empty 快速访问 must not keep the placeholder");
@@ -651,22 +662,53 @@ if (!srcRow) throw new Error("a bookmark row must be draggable");
 srcRow.props.onDragStart(bandDragEvent);
 const bandDropEvent = { preventDefault: noop, stopPropagation: noop, dataTransfer: { dropEffect: "" } };
 emptyCap.props.onDrop(bandDropEvent);
-if (JSON.stringify(dropCalls[0]) !== JSON.stringify(["w-ws-1", null])) {
-  throw new Error("a drop on the band must append, got " + JSON.stringify(dropCalls[0]));
+if (JSON.stringify(dropCalls) !== JSON.stringify([["w-ws-1"]])) {
+  throw new Error("a drop on the 快速访问 label must park the container once, got " + JSON.stringify(dropCalls));
 }
-// The row's own drop path: Trow forwards a node payload to onDropNode(scope),
-// so the second bookmark is the target and the drag source is the first.
-srcRow.props.onDragStart(bandDragEvent);
-const dstRow = twoBand.find((node) => isRow(node, "d-1")) ?? null;
-if (!dstRow) throw new Error("the second bookmark must draw a row");
-if (typeof dstRow.props.onDrop !== "function") throw new Error("a bookmark must accept another bookmark dropped on it");
-const rowDropEvent = {
-  preventDefault: noop, stopPropagation: noop,
-  dataTransfer: { types: ["text/plain"], dropEffect: "", getData: () => "d-1" },
-};
-dstRow.props.onDrop(rowDropEvent);
-if (JSON.stringify(dropCalls[1]) !== JSON.stringify(["w-ws-1", "d-1"])) {
-  throw new Error("dropping a bookmark on a sibling must reorder before it, got " + JSON.stringify(dropCalls[1]));
+// A drop on a *row* means "into this folder": Trow forwards a container payload
+// to onDropNode(scope), which is the same move the row takes in 目录. It must
+// not touch the strip — the bookmark list is unchanged by it.
+{
+  const dstRow = twoBand.find((node) => isRow(node, "d-1")) ?? null;
+  if (!dstRow) throw new Error("the second bookmark must draw a row");
+  if (typeof dstRow.props.onDrop !== "function") throw new Error("a bookmark must accept a drop as a container");
+  // The label drop above cleared the shared payload, so arm the drag again: a
+  // dragover reads the source from module state, not from the DataTransfer.
+  srcRow.props.onDragStart(bandDragEvent);
+  // The row decides through its own dragover verdict — that is what greys a bad
+  // target out before the pointer is released.
+  let ok = false;
+  dstRow.props.onDragOver({ preventDefault: () => { ok = true; }, dataTransfer: { types: ["text/plain"], dropEffect: "" } });
+  if (!ok) throw new Error("a bookmark must accept a container dropped into it");
+  const rowDropEvent = {
+    preventDefault: noop, stopPropagation: noop,
+    dataTransfer: { types: ["text/plain"], dropEffect: "", getData: () => "d-1" },
+  };
+  dstRow.props.onDrop(rowDropEvent);
+  if (JSON.stringify(moveCalls) !== JSON.stringify([["w-ws-1", "d-1"]])) {
+    throw new Error("dropping a bookmark on a sibling must move into that folder, got " + JSON.stringify(moveCalls));
+  }
+  if (dropCalls.length !== 1) throw new Error("a drop on a row must not rewrite the strip, got " + JSON.stringify(dropCalls));
+}
+// A session dropped on a bookmarked *workspace* re-homes there: the row answers
+// through the same canDropNode/onDrop pair the tree row uses.
+{
+  const wsRow = twoBand.find((node) => isRow(node, "w-ws-1")) ?? null;
+  if (!wsRow) throw new Error("the bookmarked workspace must draw a row");
+  let takesSession = false;
+  wsRow.props.onDragOver({
+    preventDefault: () => { takesSession = true; },
+    dataTransfer: { types: ["application/x-dsh-session-ids"], dropEffect: "" },
+  });
+  if (!takesSession) throw new Error("a bookmarked workspace must accept a session dropped into it");
+  const sessionDropEvent = {
+    preventDefault: noop, stopPropagation: noop, ctrlKey: false, metaKey: false,
+    dataTransfer: { types: ["application/x-dsh-session-ids"], dropEffect: "", getData: () => JSON.stringify(["session-1"]) },
+  };
+  wsRow.props.onDrop(sessionDropEvent);
+  if (JSON.stringify(sessionDrops) !== JSON.stringify([[["session-1"], "ws-1"]])) {
+    throw new Error("a session dropped on a bookmarked workspace must move into it, got " + JSON.stringify(sessionDrops));
+  }
 }
 // The band only lights up while a container is in flight. Once the drag ends
 // with nothing carried, the caption must refuse the default — a band that
@@ -676,7 +718,7 @@ let lit = false;
 const strayEvent = { preventDefault: () => { lit = true; }, dataTransfer: { dropEffect: "" } };
 emptyCap.props.onDragOver(strayEvent);
 if (lit) throw new Error("an empty drag must not light the 快速访问 band");
-console.log("quick access drop ok: the band is a target when empty; a bookmark reorders by drop");
+console.log("quick access drop ok: the label parks, a row takes the drop inside it");
 
 // ── a folder / workspace member is drawn as the container itself ───────────
 // 收藏 holds memberships, and a membership of a folder *is* that folder: the
