@@ -15,8 +15,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildAutoTree, canMove, sessionsOfNode } from "../lib/domain/tree.js";
-import { shortcutTargetNodeId, subtreeOf } from "../lib/domain/tree-rules.js";
+import { buildAutoTree, canMove, sessionsOfNode, sessionsUnderNode } from "../lib/domain/tree.js";
+import { placementOfNode, shortcutTargetNodeId, subtreeOf } from "../lib/domain/tree-rules.js";
 import { FIXED_NODES } from "../lib/constants.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
@@ -110,16 +110,19 @@ test("client shortcutTarget resolves the same target the host ships as ref", () 
 });
 
 /**
- * Badge == rows, for every directory in the tree.
+ * A container's badge counts what lives under it; its page lists what it holds.
  *
- * This is the invariant the P17 fix established and that the unified subtree
- * rule makes structural: a directory's count is the length of the very list the
- * client renders for it.
+ * The badge is the directory question — "how many sessions are in here" — and
+ * the page is the browsing answer — "what is at this level". They used to be the
+ * same number because a folder flattened its whole subtree into one list, which
+ * put a nested workspace's sessions on the same level as the workspace row
+ * itself (m03586/m03587).
  */
-test("every directory's badge is the number of rows it renders", () => {
+test("a directory's badge counts its subtree, its page lists only what it holds", () => {
   const live = sessions;
-  // A row is a session or a reference to one. A reference is not another
-  // session, so it adds to the container's badge without adding to the total.
+  const rowsOf = (id) => sessionsOfNode(id, { sessions: live }, tree, { trashedIds: new Set() });
+  // A reference row is a row of its own: it counts towards the badge of every
+  // container it sits in, and it is never a second copy of its target.
   const referenceRows = (id) => {
     let total = 0;
     const stack = [...(tree.children[id] ?? [])];
@@ -135,16 +138,31 @@ test("every directory's badge is the number of rows it renders", () => {
   };
   for (const node of Object.values(tree.nodes)) {
     if (node.kind === "shortcut" || !node.accepts.folder) continue;
-    const rows =
-      sessionsOfNode(node.id, { sessions: live }, tree, { trashedIds: new Set() }).length + referenceRows(node.id);
+    const under =
+      sessionsUnderNode(node.id, { sessions: live }, tree, { trashedIds: new Set() }).length + referenceRows(node.id);
     if (node.id === FIXED_NODES.root) {
-      // 根目录 lists directories, not sessions — the one documented exception.
+      // 根目录 lists directories, not sessions — its badge is the live total.
       assert.equal(tree.counts[node.id], live.length, "根目录 counts every live session");
-      assert.equal(sessionsOfNode(node.id, { sessions: live }, tree, { trashedIds: new Set() }).length, 0, "but it lists none");
+      assert.equal(rowsOf(node.id).length, 0, "but it lists none");
       continue;
     }
-    assert.equal(tree.counts[node.id], rows, `${node.id} (${node.name}) badge vs rows`);
+    assert.equal(tree.counts[node.id], under, `${node.id} (${node.name}) badge vs subtree`);
+    // Every row a container draws is a session homed *directly* in it, so the
+    // badge can never be smaller than the list — and it is larger whenever a
+    // nested workspace holds sessions of its own.
+    // The fixture is pre-bootstrap: a session carries its workspaceId, not the
+    // `home` the host stamps on the way out. Resolve the same way the host does.
+    for (const session of rowsOf(node.id)) {
+      const home = placementOfNode(session, tree);
+      assert.equal(home, node.id, `${node.id} lists ${session.id}, homed in ${home}`);
+    }
+    assert.ok(tree.counts[node.id] >= rowsOf(node.id).length, `${node.id} badge below its own rows`);
   }
+  // The exact shape of the bug: A holds workspace wa, wa holds s1. A's page must
+  // not list s1 next to wa; wa's own page is where s1 lives.
+  assert.deepEqual(rowsOf("d-a").map((session) => session.id), [], "folder A lists no session of its workspace");
+  assert.deepEqual(rowsOf("w-wa").map((session) => session.id), ["s1"], "workspace wa lists its own session");
+  assert.equal(tree.counts["d-a"], 1, "and A still says one session lives below it");
 });
 
 test("the client's per-node scope matches what the host lists", () => {
@@ -156,5 +174,5 @@ test("the client's per-node scope matches what the host lists", () => {
   assert.equal(tree.nodes[FIXED_NODES.root].scope, "none");
   assert.equal(tree.nodes["d-a"].scope, "tree");
   assert.equal(tree.nodes["w-wa"].scope, "tree");
-  assert.equal(tree.nodes["s-w"].scope, "tree", "a container shortcut shows its target's subtree");
+  assert.equal(tree.nodes["s-w"].scope, "tree", "a container shortcut shows its target's contents");
 });

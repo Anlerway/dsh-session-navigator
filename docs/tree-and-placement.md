@@ -33,7 +33,7 @@
 |---|---|---|
 | **R1** | workspace 永不嵌进另一个 workspace；文件夹可以夹在根与 workspace 之间，但夹不到两个 workspace 之间 | `canMove()` 用祖先链判断"里面"，因为经过文件夹仍然算嵌套 |
 | **R2** | 会话的容器是它的 workspace 节点；没有 workspace 就是 `f-ungrouped` | `placementOfNode()` |
-| **R3** | 会话只在一个容器里被数一次 | `sessionsOfNode()` 同时产出列表和徽章数字 |
+| **R3** | 会话只在它的绝对位置出现，也只在那里被列为一行 | `placementOfNode()` 是唯一的家；`sessionsOfNode()` 画这一层，`sessionsUnderNode()` 数子树 |
 | **R4** | 收藏/待办装的是快捷方式（引用）而不是会话；引用不改变总数，根目录自己也不装会话 | `counts[...]` 的赋值 |
 | **R5** | 父节点消失的**目录**降级到根，而不是让子树变孤儿；环永远构造不出来 | `folderParent()` |
 
@@ -45,17 +45,33 @@ R5 的降级是**纯函数**：`folderParent()` 只依赖 `folders` 表，与迭
 能删掉的行（`lib/domain/tree.js:278-296`）。这种情况直接不建这一行；容器消失时 host 会先把里面的
 引用上提（删文件夹 → 父节点，父节点是根则进 `f-收藏`；删 workspace → `f-收藏`）。
 
-## 3. 徽章数字 == 列表行数
+## 3. 徽章数的是子树，列表画的是这一层
 
-`buildTree()` 最后那段计数不是"另一次过滤的模仿"，而是直接调用 `sessionsOfNode()` 的同一个函数，
-再加上子树里的引用行：
+这两个问题不一样，于是有两个函数：
 
 ```js
-counts[id] = sessionsOfNode(id, view, treeLike, { trashedIds: trashed }).length + shortcutRowsWithin(id);
+// 这一层的行：只算"家在它自己身上"的会话
+const holder = node.kind === NODE_KINDS.shortcut ? node.ref ?? nodeId : nodeId;
+return live.filter((session) => placementOfNode(session, tree) === holder);
+
+// 徽章：它下面（含自己）一共有多少会话
+return live.filter((session) => ids.has(placementOfNode(session, tree)));
 ```
 
-**一行 = 一个会话，或一条指向会话的引用。** 所以徽章不可能和它下面那几行对不上——包括一个只装了一条
-引用的文件夹（以前它显示 0，展开却有 1 行）。四个例外各自有意义：
+`buildTree()` 的计数用后者，再加上子树里的引用行：
+
+```js
+counts[id] = sessionsUnderNode(id, view, treeLike, { trashedIds: trashed }).length + shortcutRowsWithin(id);
+```
+
+**会话只在它的绝对位置出现一次。** 站在一个文件夹里，看到的是这个文件夹*装的东西*——子文件夹、
+workspace、引用行——而不是把里面 workspace 的会话翻上来跟 workspace 并排：那样文件夹看起来像自己
+持有这些会话，而且两层看起来一模一样（m03586/m03587）。会话在自己的 workspace 页里出现，那里的
+面包屑和详情卡给出它的绝对路径；`sessionPlacement` 指向文件夹的会话显示在那个文件夹里。
+
+数字仍然说"这里下面有多少会话"，像目录旁边的文件计数——`f-root` 一直是这样（列表是目录，数字是
+活跃会话总数），文件夹只是把同一个问题往下一层问。所以数字可以大于这一层的行数，绝不会小于：
+一个只装着 workspace 的文件夹写 4，那 4 条会话在那个 workspace 页里。四个例外各自有意义：
 
 - `f-root` 的列表是目录（空），但数字是活跃会话总数——那正是它旁边那个数的意思；
 - `f-favorites` / `f-todos` = 带标记的会话数 + 指向会话的快捷方式行数；
@@ -157,7 +173,7 @@ A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支�
 | 文件 | 职责 |
 |---|---|
 | `lib/domain/tree.js` | `buildTree()`：造节点、算 `sessionHome`、算徽章、排序 |
-| `lib/domain/tree-rules.js` | 全部规则：`placementOfNode` / `sessionsOfNode` / `acceptsOf` / `canMove` / `decorateTree` |
+| `lib/domain/tree-rules.js` | 全部规则：`placementOfNode` / `sessionsOfNode` / `sessionsUnderNode` / `acceptsOf` / `canMove` / `decorateTree` |
 | `lib/domain/shortcuts.js` | 快捷方式的规范化、目标解析、`canHoldShortcuts`、`dropShortcutsTo` |
 | `lib/domain/folders.js` | 文件夹命名、新建、上提删除 |
 | `lib/domain/sessions.js` | 合并视图、`home` / `homeOverride` 的推导 |
