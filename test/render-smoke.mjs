@@ -95,7 +95,7 @@ const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"
   .replace(
     "    exports.apply = apply;",
     [
-      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems };",
+      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems };",
       "    exports.apply = apply;",
     ].join("\n"),
   );
@@ -178,7 +178,7 @@ console.log("panel render ok:", Boolean(panelTree));
 // ── surface mode ────────────────────────────────────────────────────────────
 // Two modes only: 浮窗 and 独立窗口. The old "let DSH's Modal host the panel"
 // axis is gone, and with it the data-hosted attribute that marked it.
-const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary } = mod.__test;
+const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary } = mod.__test;
 
 const shellNode = findAll(panelTree, hasClass("se-shell"))[0] ?? null;
 if (!shellNode) throw new Error("the panel must render a .se-shell");
@@ -817,6 +817,16 @@ console.log("FilterDialog open ok:", Boolean(render({
   },
 })));
 console.log("FilterDialog closed ok:", render({ type: FilterDialog, props: { open: false, value: { favorite: "all", archived: "all", todo: "all", tags: [] }, library: [], onApply: noop, onClose: noop } }) === null);
+const scopeOpen = render({
+  type: SearchScopeDialog,
+  props: { open: true, value: { name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop },
+});
+console.log("SearchScopeDialog open ok:", Boolean(scopeOpen));
+const scopeClosed = render({
+  type: SearchScopeDialog,
+  props: { open: false, value: { name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop },
+});
+console.log("SearchScopeDialog closed ok:", scopeClosed === null);
 const plainMenu = render({
   type: CommandMenu,
   props: {

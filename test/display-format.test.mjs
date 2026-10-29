@@ -1,6 +1,8 @@
 /**
  * 日期格式 / 大小单位 — the two display choices in 设置 › 显示.
  *
+ * 距今时间 is a count of 分钟, 小时 or 天 — never 月 or 年, never "昨天".
+ *
  * Both formatters are called from rows that never receive a display prop, so the
  * branch they take is decided by one module-level record. That record is what
  * these cases move: they are the only place the four combinations are actually
@@ -67,16 +69,20 @@ test("详细日期 prints the clock time, with the year only when it is not this
   assert.equal(internals.formatWhen(0, now), "", "a session with no timestamp prints nothing");
 });
 
-test("距今时间 walks the units: 分钟, 小时, 天, 月, 年", () => {
+test("距今时间 counts only 分钟, 小时, 天", () => {
   choose("relative", "auto");
   const now = at(2026, 9, 23, 12, 0);
-  // zh-CN RelativeTimeFormat, numeric:auto — the label a person would say, and
-  // never a raw count of hours for something a week old.
-  assert.match(internals.formatWhen(now - 5 * 60_000, now), /^5\s?分钟前$/, "minutes");
-  assert.match(internals.formatWhen(now - 3 * HOUR, now), /^3\s?小时前$/, "hours");
-  assert.match(internals.formatWhen(now - 3 * DAY, now), /^3\s?天前$/, "days");
-  assert.match(internals.formatWhen(now - 60 * DAY, now), /^2\s?个月前$/, "months");
-  assert.match(internals.formatWhen(now - 800 * DAY, now), /^2\s?年前$/, "years");
+  // Three units and no more: a number plus 分钟 / 小时 / 天, with no 前 and no
+  // "昨天" — the count is the fact, the words around it are decoration.
+  assert.match(internals.formatWhen(now - 5 * 60_000, now), /^5\s?分钟$/, "minutes");
+  assert.match(internals.formatWhen(now - 3 * HOUR, now), /^3\s?小时$/, "hours");
+  assert.match(internals.formatWhen(now - 3 * DAY, now), /^3\s?天$/, "days");
+  // A count never stops climbing: months and years are days, however many.
+  assert.match(internals.formatWhen(now - 60 * DAY, now), /^60\s?天$/, "two months is still days");
+  assert.match(internals.formatWhen(now - 800 * DAY, now), /^800\s?天$/, "two years is still days");
+  // Just now is 1, never 0 — "0分钟" reads as a bug, not as freshness.
+  assert.match(internals.formatWhen(now - 20_000, now), /^1\s?分钟$/, "under a minute");
+  assert.match(internals.formatWhen(now, now), /^1\s?分钟$/, "the same instant");
   // The same instant reads differently under each setting — that is the whole
   // point of the choice, and the reason both formats share one entry point.
   choose("date", "auto");
@@ -86,7 +92,7 @@ test("距今时间 walks the units: 分钟, 小时, 天, 月, 年", () => {
 test("the two choices are independent", () => {
   choose("relative", "kb");
   const now = at(2026, 9, 23, 12, 0);
-  assert.match(internals.formatWhen(now - 2 * HOUR, now), /^2\s?小时前$/);
+  assert.match(internals.formatWhen(now - 2 * HOUR, now), /^2\s?小时$/);
   assert.equal(internals.formatSize(2048), "2.0 KB");
   choose("date", "auto");
 });

@@ -138,6 +138,35 @@ test("search widens to the whole tree and matches by name or path", () => {
   assert.deepEqual(ids(byPath), ["w-wa"]);
 });
 
+test("with 会话名 out of range a folder answers by holding a hit, not by its name", () => {
+  // 搜索范围 can leave 会话名 out (e.g. 仅搜会话内容). The name is then not a hit
+  // even when the folder is called the word the user typed.
+  const byNameOnly = api.listContainers({
+    tree,
+    scope: FIXED_NODES.root,
+    needle: "beta",
+    matchNames: false,
+    filterActive: false,
+    filterAll: true,
+    sessions: [],
+  });
+  assert.deepEqual(ids(byNameOnly), []);
+
+  // But the folders holding what the search did find have to stay: wa is two
+  // levels down inside 项目, and a result view that loses its folder loses the
+  // row's place in the library.
+  const holding = api.listContainers({
+    tree,
+    scope: FIXED_NODES.root,
+    needle: "beta",
+    matchNames: false,
+    filterActive: false,
+    filterAll: true,
+    sessions: rows("wa"),
+  });
+  assert.deepEqual(ids(holding), ["d-proj", "w-wa"]);
+});
+
 test("the bin lists no container: there is nothing to navigate out of", () => {
   const listed = api.listContainers({
     tree,

@@ -90,7 +90,7 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          1717  插件装配 + 路由表（62 条）+ 错误映射（唯一编排层）
+├─ index.js          1717  插件装配 + 路由表（64 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测
@@ -102,6 +102,7 @@ lib/
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     250  日志两端：空白会话 / 已中断（按 path|size|mtime 有界缓存）
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
+│  ├─ content.js      188  会话内容索引：按 path|size|mtime 判失效，逐份构建、可续查
 │  └─ reader.js       264  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
 │
 ├─ domain/                  纯规则，无 IO，可直接单测

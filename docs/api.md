@@ -1,7 +1,7 @@
 # HTTP API
 
 所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:379` 的 `ROUTES` 表定义，
-`lib/index.js:1529` 的 `handle()` 分发。共 **62 条**。
+`lib/index.js:1529` 的 `handle()` 分发。共 **64 条**。
 
 ## 1. 信封
 
@@ -146,7 +146,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
   "workspaces":  { "workspaces": [ { id, title, path, sessionIds, createdAt, updatedAt } ] },
   "sessions":    [ /* 合并视图 + home + homeOverride */ ],
   "trashed":     [ /* 回收站条目，按删除时间倒序 */ ],
-  "tree":        { /* 节点表 + sessionHome + sessionPlacement + pins + revision */ },
+  "tree":        { /* 节点表 + sessionHome + sessionPlacement + pins + quickAccess + revision */ },
   "tags":        { /* 使用索引：tag → 会话 id 列表 */ },
   "tagLibrary":  [ /* 共享标签库（创建序）+ 仅被使用的标签 */ ],
   "favorites":   [ /* 会话 id */ ],
@@ -209,7 +209,7 @@ DSH 自己的归属（`lib/index.js:1235`）。两者都由 host 算好，客户
 只想知道三个布尔。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
 任一为真即"不在"（`lib/domain/session-state.js:32`）。
 
-### 4.4 树：文件夹、快捷方式、置顶、放置
+### 4.4 树：文件夹、快捷方式、置顶、快速访问、放置
 
 | 路由 | body / query | 返回 |
 |---|---|---|
@@ -219,6 +219,8 @@ DSH 自己的归属（`lib/index.js:1235`）。两者都由 host 算好，客户
 | `POST /shortcuts` | `{ kind, targetId, parent?, label? }` | `{ id, shortcut, revision }` |
 | `DELETE /shortcuts/:id` | — | `{ removed, revision }` |
 | `POST /nodes/:id/pin` | `{ pinned?: boolean }` | `{ nodeId, pinned, revision }` |
+| `POST /nodes/:id/quick-access` | `{ quickAccess?: boolean }` | `{ nodeId, quickAccess, revision }` |
+| `POST /quick-access` | `{ ids }`（整条顺序，首行在前） | `{ order, quickAccess, revision }` |
 | `POST /nodes/:id/move` | `{ parent }` | `{ nodeId, parent, revision }` |
 | `POST /sessions/placement` | `{ ids, parent? }` | `{ ids, parent, revision, sessionPlacement }` |
 
@@ -228,6 +230,14 @@ DSH 自己的归属（`lib/index.js:1235`）。两者都由 host 算好，客户
 - `POST /nodes/:id/move` 先过 `canMove()`（`lib/domain/tree.js`），不合法直接带规则码抛错。
 - `POST /sessions/placement` 只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的 `cwd`
   推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
+- `POST /nodes/:id/quick-access` 只写侧车的 `quickAccess[id]`（`quickAccess: false` 删掉它），只有真实容器能当书签
+  （`isBookmarkable`：文件夹还在的 `d-…`，或 `w-…`）。视图、收藏 / 待办、快捷方式都不是「地方」——它们在左栏
+  已经是一行。它和 `POST /nodes/:id/pin` 是两件事：pin 是**在本来的带子里排前面**，quick-access 是**同一容器多一个
+  入口**（共用一张表时，置顶一个文件夹会把它从 目录 里挪走）。
+- `POST /quick-access` 一次写整条带子。加一个（把容器拖到带上）和重排（把一个书签拖到另一个上）是同一句话
+  「现在就是这个顺序」，所以没有「移到第 N 位」这种单行接口。不合法或已消失的 id 被**跳过**而不是 400（手势来自
+  一棵活的树，一条过期行不该作废整个动作），返回的 `order` 只含真正写进去的行；已经在带里但没出现在 `ids` 里的
+  书签保留原序号，排到新写的下面。
 
 ### 4.5 会话操作
 
@@ -509,6 +519,26 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 `documents` 每项是 `{ removed, bytes }`。文件被扫描器或索引器占着删不掉时 `removed: false`
 而不是抛错——摘要要描述真实发生的事，`freedBytes` 也只累加真的回来了的字节。
+
+### 4.13 全文检索
+
+| 路由 | body | 返回 |
+|---|---|---|
+| `GET /search/content` | `?q=<needle>` | `{ query, ready, indexed, total, hits }` |
+
+面板里 会话名 / 标签 / 备注 三个字段本来就在列表行上，读一遍内存就有答案；**会话内容**只在会话日志里
+——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以这里不是每次按键读文件，而是一个
+进程内索引（`lib/sources/content.js`）：按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
+逐份构建、每份之间让出事件循环（一次最多 `budgetMs = 700`），并且同一时刻只允许一个构建在跑。
+
+- `ready: false` = 索引还没建完，`indexed / total` 是进度；`hits` 是**已经建到的那部分**的答案。
+  冷启动的第一次搜索先给一半答案，比转 6 秒钟好；客户端 240ms 防抖，未就绪时每 700ms 续查一次。
+- `hits` 每项 `{ id, count, snippet }`：`count` 数的是出现次数（上限 999），最多 200 个会话，
+  `snippet` 取命中前后 30 / 70 字符、折成一行、两端带省略号。
+- 检索是**纯读**：不产生 revision，读不出的日志只记一次空文本、不无限重试。
+
+搜索的**位置**与字段是两件事：字段由客户端上的「搜索范围」决定，位置恒为整个库——站在任何目录里搜，
+答案都不该是"这个目录里没有"（唯一例外是回收站，它按自己的行回答）。
 
 ## 5. 客户端怎么用
 

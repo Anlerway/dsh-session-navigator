@@ -26,10 +26,10 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 
 - The folder tree mirrors your workspaces; add your own folders, nest them, drag sessions between them
 - Titles, tags and notes are your own words, shown in the list without opening anything
-- Search covers titles, notes and tags only — it never reads conversation content
+- Search covers titles, notes and tags, and can opt into conversation content (its own index, built on first use) — results always span the whole library
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
 - Cut and paste across workspaces; export a session as Markdown or JSONL
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 380 tests on Windows
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 427 tests on Windows
 
 ## What it looks like
 
@@ -124,9 +124,12 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Group sessions | Workspaces become folders automatically; drag into another folder or create nested ones |
 | Rename | Double-click the row head and type a name you recognise |
 | Tag / note | Right-hand detail pane; tags come from a shared tag library |
-| Find it again | Search titles, notes, tags; Filter narrows by favorite, archive, todo and tags |
-| Favorite / todo | Shortcut entries in the sidebar; the session stays in its folder |
-| Pin | Pin folders and workspaces to the top; DSH's own pinned sessions share the same band |
+| Find it again | Search titles, notes, tags and optionally conversation content — always across the whole library; Filter narrows by favorite, archive, todo and tags |
+| Favorite / todo | Mark it and it also appears in Favorites / To-do; an entry naming a folder or workspace *is* that container, and double-click goes back to it |
+| Shortcut | Create Shortcut in This Directory puts a session or a folder in the container you are standing in; removing it only drops the entry |
+| Pin | Pin folders and workspaces to the front of where they already live; DSH's own pinned sessions share the same band, and the tree marks them with a pin glyph |
+| Quick access | Drag a folder or workspace onto the Quick Access strip for a second entry point; a row there is that folder, so dropping on it goes inside |
+| Multi-select | Check several rows and act on all of them at once: favorite, to-do, pin, archive, quick access, copy, delete |
 | Archive | De-emphasised but still listed by default; hide them in settings |
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Move | Cut and paste across workspaces; files, DSH's bookkeeping, tags and notes follow |
@@ -162,7 +165,7 @@ Architecture, HTTP API and data directory notes are in [docs/](docs/README.md) (
 ## Development
 
 ```powershell
-node --test "test/*.test.mjs"   # 380 cases
+node --test "test/*.test.mjs"   # 427 cases
 node test/render-smoke.mjs      # render smoke test
 ```
 
