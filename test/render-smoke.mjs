@@ -610,8 +610,73 @@ const wsIdx = dirRowIdx("w-ws-1");
 if (pinnedIdx < 0 || wsIdx < 0) throw new Error("both containers must stay listed in 目录");
 if (!(pinnedIdx < wsIdx)) throw new Error("a pinned row must sort first among its siblings, not leave the band");
 if (!hasClass("pinned")(flat[pinnedIdx].props.className)) throw new Error("a pinned row must keep its pin marker");
+if (findAll(flat[pinnedIdx], hasClass("tpin")).length !== 1) {
+  throw new Error("a pinned tree row must draw the pin glyph, not only bold its label");
+}
 if (hasClass("pinned")(quickRow.props.className)) throw new Error("a bookmark is not a pin: it must not draw the pin marker");
+if (findAll(quickRow, hasClass("tpin")).length !== 0) {
+  throw new Error("a bookmark is a button, not a pin: it must not draw the pin glyph");
+}
 console.log("quick access ok: a strip of buttons above 目录; 置顶 only reorders 目录");
+
+// ── 快速访问 is a drop target, with or without bookmarks ────────────────────
+// Dragging a folder up here is how a container becomes a bookmark, so the band
+// cannot wait for its first entry to exist: an empty strip draws the caption and
+// one placeholder line, and both accept the drop. A bookmark dropped on a
+// sibling is the reorder, and it travels the same channel ("source, before").
+const dropCalls = [];
+const bandProps = (qa) => ({
+  tree: { ...tree, quickAccessNodes: qa, quickAccess: Object.fromEntries(qa.map((id, i) => [id, qa.length - i])), pins: {} },
+  scope: "f-root", onSelect: noop, expanded: new Set(["f-root"]), onToggle: noop, width: 260,
+  onMove: noop, rename: null, onBeginRename: noop, pins: {}, quickAccess: qa, onNodeContextMenu: noop,
+  onDropOnQuick: (source, before) => dropCalls.push([source, before]),
+});
+const emptyBand = findAll(render({ type: TreePane, props: bandProps([]) }), () => true);
+const emptyCap = emptyBand.find((node) => isCap(node, "快速访问")) ?? null;
+if (!emptyCap) throw new Error("an empty 快速访问 must still draw its caption");
+if (typeof emptyCap.props.onDrop !== "function") throw new Error("the 快速访问 caption must be a drop target");
+const ghost = emptyBand.find((node) => hasClass("tghost")(clsOf(node))) ?? null;
+if (!ghost) throw new Error("an empty 快速访问 must draw the placeholder that says what it is for");
+if (!textOf(ghost).includes("把文件夹或工作区拖到这里")) {
+  throw new Error("the empty band must say what to drag here, got " + JSON.stringify(textOf(ghost)));
+}
+// Two bookmarks: drag the first, drop on the band, then on its sibling.
+const twoBand = findAll(render({ type: TreePane, props: bandProps(["w-ws-1", "d-1"]) }), () => true);
+if (twoBand.some((node) => hasClass("tghost")(clsOf(node)))) {
+  throw new Error("a non-empty 快速访问 must not keep the placeholder");
+}
+const bandDragEvent = { stopPropagation: noop, dataTransfer: { setData: noop, effectAllowed: "" } };
+const srcRow = twoBand.find((node) => isRow(node, "w-ws-1") && typeof node.props.onDragStart === "function") ?? null;
+if (!srcRow) throw new Error("a bookmark row must be draggable");
+srcRow.props.onDragStart(bandDragEvent);
+const bandDropEvent = { preventDefault: noop, stopPropagation: noop, dataTransfer: { dropEffect: "" } };
+emptyCap.props.onDrop(bandDropEvent);
+if (JSON.stringify(dropCalls[0]) !== JSON.stringify(["w-ws-1", null])) {
+  throw new Error("a drop on the band must append, got " + JSON.stringify(dropCalls[0]));
+}
+// The row's own drop path: Trow forwards a node payload to onDropNode(scope),
+// so the second bookmark is the target and the drag source is the first.
+srcRow.props.onDragStart(bandDragEvent);
+const dstRow = twoBand.find((node) => isRow(node, "d-1")) ?? null;
+if (!dstRow) throw new Error("the second bookmark must draw a row");
+if (typeof dstRow.props.onDrop !== "function") throw new Error("a bookmark must accept another bookmark dropped on it");
+const rowDropEvent = {
+  preventDefault: noop, stopPropagation: noop,
+  dataTransfer: { types: ["text/plain"], dropEffect: "", getData: () => "d-1" },
+};
+dstRow.props.onDrop(rowDropEvent);
+if (JSON.stringify(dropCalls[1]) !== JSON.stringify(["w-ws-1", "d-1"])) {
+  throw new Error("dropping a bookmark on a sibling must reorder before it, got " + JSON.stringify(dropCalls[1]));
+}
+// The band only lights up while a container is in flight. Once the drag ends
+// with nothing carried, the caption must refuse the default — a band that
+// accepted stray drags would read as a target for sessions too.
+srcRow.props.onDragEnd();
+let lit = false;
+const strayEvent = { preventDefault: () => { lit = true; }, dataTransfer: { dropEffect: "" } };
+emptyCap.props.onDragOver(strayEvent);
+if (lit) throw new Error("an empty drag must not light the 快速访问 band");
+console.log("quick access drop ok: the band is a target when empty; a bookmark reorders by drop");
 
 // ── a folder / workspace member is drawn as the container itself ───────────
 // 收藏 holds memberships, and a membership of a folder *is* that folder: the
