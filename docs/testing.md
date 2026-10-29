@@ -28,7 +28,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
 | `test/settings.test.mjs` | 293 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
-| `test/settings-page.test.mjs` | 749 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
+| `test/settings-page.test.mjs` | 1058 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
@@ -37,6 +37,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/datadir.test.mjs` | 405 | 数据目录迁移：预检、七步、回滚、`.location` |
 | `test/component.test.mjs` | 369 | 组件状态机：单飞锁、复用、校验、pending 清扫 |
 | `test/export.test.mjs` | 296 | 会话日志 → Markdown / JSONL：真实形状（`time`、`data.message.content`、独立 `tool/call` 事件、`source.kind`）才算数——助手回复与工具调用曾经因为读错字段整类消失；注入上下文与系统提示不进正文；压缩摘要与被替换片段**只报告、不丢弃** |
+| `test/summary-apply.test.mjs` | 103 | 直接驱动 `POST /summaries/:id/apply` 这个真实路由（用内存侧车代替磁盘）：描述是**追加**在用户备注后面而不是覆盖、重复点两次不会贴两遍、标签只并勾选的那几个并写进标签库、不勾等于全并、过期勾选回 `nothing-to-apply`、字段名不认识回 `bad-request`、记录里没有的字段不能应用 |
+| `test/summaries.test.mjs` | 921 | AI 字段而不联网：stub 掉 `llm` 服务，断言送进模型的**正文**（只有双方发言，思考过程与工具输出从不出现，超长时头 55% 尾 45%）、提示词只列被要的字段（关掉的字段不在契约里）、回答的解析与校验（围栏与前后废话都读得出来、缺字段算缺失、`reasoning` 块不影响正文、工具调用块旁边的文字照收、只有工具调用则重试后报 `llm/tool-only`）、“乱答重试一次且两次都记账、两次都败不落盘”、待补清单只看**描述与标签**（备注抵描述、手写标签抵标签、手改标题不算）、标签先裁到 8 字再去重、生成时先看已有标签库并把它写进提示词、`alignTags()` 把同义词归到库里已有的写法、`mergeNote()` 追加而不是覆盖、`pickTags()` 只并勾选的且过期勾选算拒绝、队列单飞与取消（已写好的保留、一条失败不拖垮整批）、重复入队只算一次、token 账本（失败的尝试也记 `runs`）、模型目录 TTL 与单 provider 失败隔离、`effort` 是适配器自己的词所以换模型就丢；每个拒绝码映射到的 HTTP 状态（401 / 409 / 413 / 422 / 429 / 501 / 未知 500） |
 | `test/detached-window.test.mjs` | 561 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案 |
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，而不是别人的 |
@@ -57,8 +59,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/about.test.mjs` | 236 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过） |
 | `test/locale-parity.test.mjs` | 88 | 中英两份字典键集合一致、占位符一致、英文标签放得下；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：字典覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
-| `test/reset.test.mjs` | 208 | 清除数据：一个字都没动之前先验 `DELETE`、四份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
-| `test/render-smoke.mjs` | 1274 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中） |
+| `test/reset.test.mjs` | 208 | 清除数据：一个字都没动之前先验 `DELETE`、五份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
+| `test/render-smoke.mjs` | 1328 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；详情栏的「AI 字段」段必须紧跟在「备注」之后并带着那一枚按钮，存了字段之后要画出标题/描述/标签三行、每个标签都是**已勾选**的开关并写着「合并所选（2）」；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中） |
 
 ## 2. 为什么是这些
 

@@ -20,7 +20,7 @@ import { dataPaths } from "../lib/paths.js";
 import { openDocuments } from "../lib/store/documents.js";
 import { resetData, RESET_CONFIRMATION } from "../lib/host/reset.js";
 
-/** A migrated install: four documents with content, a bin with a session in it,
+/** A migrated install: five documents with content, a bin with a session in it,
  *  a quarantined parse failure, a tmp leftover, and the browser component. */
 async function makeInstall() {
   const dir = mkdtempSync(join(tmpdir(), "se-reset-"));
@@ -44,6 +44,11 @@ async function makeInstall() {
   });
   await documents.trash.mutate((draft) => {
     draft.entries = { s1: { id: "s1", from: "C:/dsh/sessions/s1", deletedAt: 1 } };
+  });
+  await documents.summaries.mutate((draft) => {
+    // Summaries were paid for in tokens: wiping them is the same one-way door.
+    draft.sessions = { s1: { text: "重构了导出", at: 2, sourceAt: 1, turns: 3 } };
+    draft.spend = { ...draft.spend, inputTokens: 12000, outputTokens: 900, runs: 1 };
   });
 
   // The bin is a move, not a copy: this directory used to be a DSH session.
@@ -69,7 +74,7 @@ async function makeInstall() {
   return { dir, paths, documents, api, calls };
 }
 
-const sidecars = (paths) => [paths.tree, paths.annotations, paths.settings, paths.trashIndex];
+const sidecars = (paths) => [paths.tree, paths.annotations, paths.settings, paths.summaries, paths.trashIndex];
 
 test("the word is checked before anything is read, let alone deleted", async () => {
   const { paths, api } = await makeInstall();
@@ -106,7 +111,7 @@ test("DELETE takes the records, the bin's payloads, the quarantine and the tmp",
   assert.deepEqual(readdirSync(paths.quarantine), []);
   assert.deepEqual(readdirSync(paths.tmpDir), []);
 
-  for (const name of ["tree", "annotations", "settings", "trash"]) {
+  for (const name of ["tree", "annotations", "settings", "summaries", "trash"]) {
     assert.equal(result.documents[name].removed, true, "reported removed: " + name);
     assert.ok(result.documents[name].bytes > 0, "reported bytes: " + name);
   }
@@ -180,9 +185,9 @@ test("a first run with no documents at all clears nothing and says so", async ()
 test("every memoised list is dropped, or the deleted folders would still answer", async () => {
   const { api, calls, documents } = await makeInstall();
   const invalidated = [];
-  // The four documents only: `openDocuments` also carries a `paths` property,
+  // The five documents only: `openDocuments` also carries a `paths` property,
   // which is not a sidecar and has nothing to invalidate.
-  for (const name of ["tree", "annotations", "settings", "trash"]) {
+  for (const name of ["tree", "annotations", "settings", "summaries", "trash"]) {
     const original = documents[name].invalidate;
     documents[name].invalidate = () => {
       invalidated.push(name);
@@ -192,7 +197,7 @@ test("every memoised list is dropped, or the deleted folders would still answer"
 
   await resetData(api, { confirm: "DELETE" });
   assert.deepEqual(calls, ["sessions"]);
-  assert.deepEqual(invalidated.sort(), ["annotations", "settings", "trash", "tree"]);
+  assert.deepEqual(invalidated.sort(), ["annotations", "settings", "summaries", "trash", "tree"]);
 });
 
 test("an unusable data directory is refused, even with the right word", async () => {

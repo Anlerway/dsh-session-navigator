@@ -173,6 +173,9 @@ function settingsDocument(mode, component) {
       // 搜索索引 (m00561): the index cache is on and the idle build is off, the
       // same defaults a fresh install gets.
       search: { indexIdle: false },
+      // AI 摘要 (m00531): no model chosen yet, and every piece of session
+      // metadata goes into the prompt until the user says otherwise.
+      summary: { provider: "", model: "", effort: "", fields: { title: true, description: true, tags: true } },
       dataDir: { current: null },
     },
     revision: 4,
@@ -181,6 +184,52 @@ function settingsDocument(mode, component) {
     // The build number rides along with the document so the 关于 group can print
     // it without a request of its own.
     version: "1.0.0",
+  };
+}
+
+/** The model catalogue a host with one provider would answer with. */
+function defaultCatalog() {
+  return {
+    providers: [
+      {
+        id: "wb-proxy",
+        name: "WB Proxy",
+        models: [
+          {
+            id: "deepseek-v4.1-flash",
+            name: "DeepSeek V4.1 Flash",
+            description: "1M window",
+            efforts: [
+              { id: "low", name: "Low" },
+              { id: "high", name: "High" },
+            ],
+            defaultEffort: "low",
+          },
+          { id: "hy3", name: "hy3", description: "", efforts: [], defaultEffort: null },
+        ],
+      },
+    ],
+    failures: [],
+    at: 1_700_000_000_000,
+  };
+}
+
+/** An idle summarizer, in the shape `GET /summarize/state` returns. */
+function idleState() {
+  return {
+    running: false,
+    cancelled: false,
+    total: 0,
+    done: 0,
+    failed: 0,
+    pending: 0,
+    current: null,
+    lastError: "",
+    lastFailureId: "",
+    startedAt: null,
+    finishedAt: null,
+    summarized: 0,
+    spend: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, runs: 0, failures: 0 },
   };
 }
 
@@ -206,6 +255,15 @@ async function renderSettings({
   index = null,
   rebuildIndex = null,
   clearIndex = null,
+  // AI 摘要 (m00531): the model catalogue, the queue's state, the stored
+  // summaries with their spend ledger, and whether the "uns summarized" button
+  // has anything to hand the host.
+  catalog = null,
+  summarizeState = null,
+  summaries = null,
+  pendingIds = [],
+  // What POST /summarize/pending answers, when a case needs the host to refuse.
+  pendingReply = null,
 } = {}) {
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
@@ -219,7 +277,48 @@ async function renderSettings({
       if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
       if (call.body.list) Object.assign(doc.settings.list, call.body.list);
       if (call.body.search) Object.assign(doc.settings.search, call.body.search);
+      if (call.body.summary) {
+        const patch = call.body.summary;
+        doc.settings.summary = {
+          ...doc.settings.summary,
+          ...patch,
+          fields: { ...doc.settings.summary.fields, ...(patch.fields ?? {}) },
+        };
+      }
       return { ok: true, result: { settings: doc.settings, revision: 5 } };
+    }
+    // AI 字段 (m00531). The catalogue is what the model `<select>` and the
+    // effort `<select>` are both drawn from.
+    if (path === "/summarize/catalog") {
+      return { ok: true, result: catalog ?? defaultCatalog() };
+    }
+    if (path === "/summarize/state") {
+      return { ok: true, result: summarizeState ?? idleState() };
+    }
+    if (path === "/summaries") {
+      return {
+        ok: true,
+        result: summaries ?? {
+          sessions: {},
+          spend: { inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, runs: 0, failures: 0 },
+          pending: pendingIds,
+          revision: 2,
+          choice: { provider: "", model: "", effort: "" },
+        },
+      };
+    }
+    if (path === "/summarize/pending") {
+      if (pendingReply) return pendingReply;
+      if (pendingIds.length === 0) {
+        return { ok: false, code: "nothing-pending", error: "所有会话都已经有描述和标签了" };
+      }
+      return { ok: true, result: { ...idleState(), running: true, total: pendingIds.length } };
+    }
+    if (path === "/summarize") {
+      return { ok: true, result: { ...idleState(), running: true, total: (call.body?.ids ?? []).length } };
+    }
+    if (path === "/summarize/cancel") {
+      return { ok: true, result: { ...idleState(), cancelled: true } };
     }
     // The component group re-probes on mount and reports the phase upward, so
     // the launch chips have to agree with it — a stub that answered nothing
@@ -746,4 +845,214 @@ test("a failed 删除索引缓存 reports the reason, not a freed size", async (
   assert.match(text, /setIndexFailed/);
   assert.match(text, /EBUSY: the index file is locked/);
   assert.doesNotMatch(text, /setIndexCleared/);
+});
+
+// ── AI 摘要 (m00531) ───────────────────────────────────────────────────────
+
+/** The AI group, found by its heading so the group order stays free to move. */
+const aiGroup = (tree) =>
+  collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupAi"));
+
+/** A `<select>` by the label the group gave it (its aria-label). */
+const selectLabelled = (tree, label) =>
+  collect(tree, (node) => node.props?.className === "se-set-select" && node.props?.["aria-label"] === label)[0];
+
+/** The visible options of a select, with their values. */
+const optionsOf = (select) => collect(select, (node) => node.type === "option" || node.props?.value !== undefined)
+  .filter((node) => node.type === "option")
+  .map((node) => ({ label: textOf(node), value: node.props.value }));
+
+test("AI 摘要 lists the host's models and saves the pick alone", async () => {
+  const { tree, calls } = await renderSettings();
+  const group = aiGroup(tree);
+  assert.ok(group, "the group is on the page");
+  // The names come from the catalogue, not from a list baked into the build: a
+  // provider the user added this morning has to appear without an upgrade.
+  const text = textOf(group);
+  assert.match(text, /DeepSeek V4\.1 Flash/);
+  assert.match(text, /hy3/);
+  assert.match(text, /aiModelHint|1M window/);
+
+  const select = selectLabelled(group, "aiModel");
+  assert.ok(select, "the model list is a dropdown");
+  const options = optionsOf(select);
+  assert.deepEqual(options.map((option) => option.label), ["DeepSeek V4.1 Flash", "hy3"]);
+  assert.equal(select.props.value, "wb-proxy\u001fdeepseek-v4.1-flash", "the first model is the empty-choice default");
+
+  select.props.onChange({ target: { value: "wb-proxy\u001fhy3" } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const write = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  assert.ok(write, "the pick writes immediately");
+  // Choosing a model clears the effort: the word "high" belongs to the old
+  // model's adapter and may not exist on the new one.
+  assert.deepEqual(write.body, { summary: { provider: "wb-proxy", model: "hy3", effort: "" } });
+});
+
+test("强度 offers 默认 plus the model's own efforts, and saves the pick alone", async () => {
+  const { tree, calls } = await renderSettings();
+  const group = aiGroup(tree);
+  const select = selectLabelled(group, "aiEffort");
+  assert.ok(select, "the effort list is a dropdown too");
+  assert.deepEqual(optionsOf(select).map((option) => option.label), ["aiEffortDefault", "Low", "High"], "默认 first, then the adapter's list");
+  assert.equal(select.props.value, "", "the default is the empty choice");
+
+  select.props.onChange({ target: { value: "high" } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const write = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  assert.deepEqual(write.body, { summary: { effort: "high" } });
+});
+
+test("a model with no effort list hides 强度 instead of offering a word it cannot use", async () => {
+  const { tree } = await renderSettings({
+    catalog: {
+      providers: [
+        { id: "wb-proxy", name: "WB Proxy", models: [{ id: "hy3", name: "hy3", description: "", efforts: [], defaultEffort: null }] },
+      ],
+      failures: [],
+      at: 1_700_000_000_000,
+    },
+  });
+  const group = aiGroup(tree);
+  assert.equal(selectLabelled(group, "aiEffort"), undefined, "no effort list, no 强度 row");
+});
+
+test("生成哪几项 starts with all three and each chip saves alone", async () => {
+  const { tree, calls } = await renderSettings();
+  const group = aiGroup(tree);
+  for (const key of ["aiFieldTitle", "aiFieldDescription", "aiFieldTag"]) {
+    const chip = chipLabelled(group, key);
+    assert.ok(chip, key + " is on the page");
+    assert.match(chip.props.className, /\bon\b/, key + " starts on");
+    assert.equal(chip.props["aria-pressed"], true);
+  }
+
+  chipLabelled(group, "aiFieldDescription").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const write = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  // One key, so the other two keep whatever the stored document says.
+  assert.deepEqual(write.body, { summary: { fields: { description: false } } });
+});
+
+test("一键总结未总结的会话 is off, with a reason, when everything has a summary", async () => {
+  const { tree } = await renderSettings({ pendingIds: [] });
+  const run = chipLabelled(aiGroup(tree), "aiRunNow");
+  assert.equal(run.props.disabled, true);
+  assert.equal(run.props.title, "aiNothingPending");
+});
+
+test("一键总结未总结的会话 hands the host the sweep and reports how many were queued", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({ pendingIds: ["session-1", "session-2"] });
+  const run = chipLabelled(aiGroup(tree), "aiRunNow");
+  assert.equal(run.props.disabled, false);
+
+  run.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const post = calls.find((call) => call.method === "POST" && call.url.endsWith("/summarize/pending"));
+  assert.ok(post, "the button asks the host to work out the set");
+  // The page does not decide who is uns summarized: the host owns the ledger,
+  // and a page that computed the set could summarize a session twice.
+  assert.equal(post.body.lang, "zh");
+
+  const after = await driver.settle(() => page(driver, api, t));
+  assert.match(textOf(after), /aiQueued/);
+});
+
+test("a host that answers 所有会话都已经有描述和标签了 is a note, not an error", async () => {
+  const { tree, driver, api, t } = await renderSettings({
+    // The page's own copy says there is work; the host says otherwise. The
+    // host owns the ledger, so its answer wins and it is not a failure.
+    pendingIds: ["session-1"],
+    pendingReply: { ok: false, code: "nothing-pending", error: "所有会话都已经有描述和标签了" },
+  });
+  chipLabelled(aiGroup(tree), "aiRunNow").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const after = await driver.settle(() => page(driver, api, t));
+  const text = textOf(aiGroup(after));
+  assert.match(text, /aiNothingPending/);
+  assert.doesNotMatch(text, /aiFailed/);
+});
+
+test("a refused sweep reports the host's reason", async () => {
+  const { tree, driver, api, t } = await renderSettings({
+    interpolate: true,
+    pendingIds: ["session-1"],
+    pendingReply: { ok: false, code: "llm-unavailable", error: "这个 profile 没有可用的模型服务" },
+  });
+  const runChip = collect(aiGroup(tree), byClass("se-set-chip")).find((chip) => textOf(chip).startsWith("aiRunNow"));
+  assert.ok(runChip, "the sweep button is on the page");
+  runChip.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const after = await driver.settle(() => page(driver, api, t));
+  const text = textOf(aiGroup(after));
+  assert.match(text, /aiFailed/);
+  assert.match(text, /没有可用的模型服务/);
+});
+
+test("累计花费 prints the lifetime ledger in tokens, never in money", async () => {
+  const { tree } = await renderSettings({
+    interpolate: true,
+    summaries: {
+      sessions: {},
+      spend: { inputTokens: 12000, outputTokens: 4000, totalTokens: 16000, cacheReadTokens: 0, cacheWriteTokens: 0, runs: 20, failures: 2 },
+      pending: [],
+      revision: 2,
+      choice: { provider: "", model: "", effort: "" },
+    },
+  });
+  const text = textOf(aiGroup(tree));
+  assert.match(text, /16k/, "the total is the number on the label");
+  assert.match(text, /12k/, "input is broken out");
+  assert.match(text, /4\.0k/, "output is broken out");
+  assert.match(text, /20, 2/, "runs and failures ride along, so a failure is not free");
+  assert.doesNotMatch(text, /\$|¥/, "no price: this plugin does not know one");
+});
+
+test("the queue's progress is on the page while it runs, with a way to stop it", async () => {
+  const { tree, calls } = await renderSettings({
+    interpolate: true,
+    summarizeState: {
+      ...idleState(),
+      running: true,
+      total: 12,
+      done: 3,
+      failed: 0,
+      current: { id: "session-7", title: "重构导出", startedAt: 1_700_000_000_000 },
+    },
+  });
+  const text = textOf(aiGroup(tree));
+  assert.match(text, /aiRunning\(3, 12\)/);
+  assert.match(text, /aiRunningCurrent\(重构导出\)/);
+  const stop = chipLabelled(aiGroup(tree), "aiStop");
+  assert.ok(stop, "a running batch offers 停下");
+  stop.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(calls.find((call) => call.method === "POST" && call.url.endsWith("/summarize/cancel")));
+});
+
+test("a document written before AI 摘要 existed still renders the group", async () => {
+  const fetchImpl = recordingFetch((call) => {
+    const path = call.url.replace(/^.*?\/api/, "");
+    if (path === "/settings") {
+      const doc = settingsDocument("panel", "absent");
+      delete doc.settings.summary;
+      return { ok: true, result: doc };
+    }
+    return { ok: true, result: {} };
+  });
+  const driver = makeReact();
+  const { test: api } = loadClientBundle({ fetch: fetchImpl, expose: EXPOSE, react: driver.React });
+  const t = (key) => key;
+  const tree = await driver.settle(() => page(driver, api, t));
+  const group = aiGroup(tree);
+  assert.ok(group, "the group renders with the defaults");
+  const on = collect(group, byClass("se-set-chip")).filter((chip) => chip.props["aria-pressed"] === true);
+  assert.equal(on.length, 3, "all three pieces of metadata start on");
+});
+
+test("a host with no model configured says so instead of drawing an empty row", async () => {
+  const { tree } = await renderSettings({ catalog: { providers: [], failures: [], at: 1_700_000_000_000 } });
+  const group = aiGroup(tree);
+  assert.match(textOf(group), /aiModelNone/);
+  // With no pending work and no model, the sweep cannot run either.
+  assert.equal(chipLabelled(group, "aiRunNow").props.disabled, true);
 });

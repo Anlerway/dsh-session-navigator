@@ -72,6 +72,16 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 | `revision-conflict` | 409 | 乐观锁失败 |
 | `datadir-same` / `datadir-not-empty` / `migration-in-progress` | 409 | 数据目录迁移的三种拒绝 |
 | `component-busy` / `component-in-use` | 409 | 组件正在被别的操作占用 / 窗口开着不能删 |
+| `nothing-pending` | 409 | 一键补齐时所有会话都已经有描述和标签了（这不是错误，是"没活干"） |
+| `ai/no-fields` | 409 | 模型没被要求写任何字段——三个开关全关了，调用没有意义 |
+| `nothing-to-apply` | 409 | 点了「应用」但记录里那个字段是空的 |
+| `too-many` | 413 | 一次要求生成的会话超过 `MAX_BATCH = 500` |
+| `llm/MISSING_CREDENTIAL` / `llm/INVALID_CREDENTIAL` / `llm/AUTH` | 401 | 模型服务拒绝了这个 profile 的凭据 |
+| `llm/RATE_LIMIT` / `llm/QUOTA` / `llm/ACCOUNT_QUOTA` | 429 | 被限速或额度用完 |
+| `llm/CONTEXT_WINDOW_EXCEEDED` / `llm/empty` / `llm/tool-only` / `llm/no-finish` | 422 | 会话太长 / 模型两次都没吐字 / 模型只想调用工具（请求里并没有工具） / 流没有以 `stop` 结束 |
+| `ai/bad-answer` | 422 | 两次尝试都没给出要的 JSON 对象（或缺少要的字段），回答已丢弃、没有写半成品 |
+| `nothing-to-summarize` | 422 | 这个会话没有可读的对话（只剩注入上下文或空日志） |
+| `llm-unavailable` | 501 | 该 profile 没有 `llm` 服务或没有可用模型 |
 | `confirm-required` | 400 | 清除数据没拿到 `DELETE`，一个字节都没动（§4.12） |
 | `reset-refused` | 409 | 数据目录不可用（根目录 / `~/.dsh` 或它的祖先），既然是清空就更不能动（§4.12） |
 | `component-disk-full` | 507 | 磁盘不足 |
@@ -599,9 +609,76 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
   只是答案逐步变全。`clear` 让构建器停下、删文件、清内存，`freedBytes` 只累加真正回来了的字节。
 - `PUT /settings` 只在 `search.indexIdle` 为真时 `indexBuilder.resume()`：那是"现在就慢慢建"的
   意愿表达，关掉不代表要删掉已经建好的文件——删文件是 `POST /search/index/clear` 与清除数据的事。
-- 缓存条目按 `path\u0000sizeBytes\u0000activityAt` 组成的签名判失效，文件里写着 `version: 1`；
+- 缓存条目按 `path\u0000sizeBytes\u0000activityAt` 组成的签名判失效，文件里写着 `version: 2`；
   版本不符就当没有，不做迁移。文件损坏、临时目录不可写都只让 `flush` 返回 `{ written: false }`，
   搜索仍然可用——缓存是加速手段，不是正确性的前提。
+  版本 2 之前只存了用户说的话（`turnsOf` 那时读不到 `data.message`，助手那一半从来没进过索引），
+  签名不变会让"搜不到助手回复"永远不愈合，所以版本号本身就是那一刀的开关。
+
+### 4.15 AI 字段
+
+产物是**标题、描述、标签**三个字段，不是一段摘要文字（用户 m01823：「总结就是让你总结标题 描述 标签」；
+m01826：「不输出摘要，摘要不是产物」）。三个字段各自独立，`settings.summary.fields` 决定要哪几个。
+
+| 路由 | body / query | 返回 |
+|---|---|---|
+| `GET /summaries` | — | `{ sessions, spend, pending, revision, choice }` |
+| `GET /summarize/catalog` | `?refresh=1` 跳过 60 秒的目录缓存 | `{ providers, failures, at }` |
+| `GET /summarize/state` | — | 队列状态，见下 |
+| `POST /summarize` | `{ ids, titles, lang }` | 队列状态 |
+| `POST /summarize/pending` | `{ lang }` | 队列状态 + `{ candidates, skipped }`；没活干时 `409 nothing-pending` |
+| `POST /summarize/cancel` | — | 队列状态（已完成的保留） |
+| `POST /summaries/:id/apply` | `{ field: "title" \| "description" \| "tags", tags?: string[] }` | `{ revision }` |
+| `DELETE /summaries/:id` | — | `{ revision }` |
+
+`state`（`lib/host/summarize.js` 的 `state()`）是客户端唯一要知道的东西：
+
+```jsonc
+{
+  "running": true, "total": 12, "done": 3, "failed": 0, "summarized": 41,
+  "current": { "id": "session-…", "title": "重构导出", "startedAt": 1793000000000 },
+  "lastError": "", "lastFailureId": null, "startedAt": 1793000000000, "finishedAt": null,
+  "spend": { /* 同 summaries.v1.json 的 spend */ }
+}
+```
+
+- 模型目录来自**宿主自己那一套**：`catalogFromController()` 读 `sessionController.modelCatalog()`
+  （与 dsh-orb 同一个来源、同一份 `groups` 形状），profile 没有这个服务时回退到直连
+  `llm.listProviders()` / `listModels()` / `resolveModelInfo()`。单条 provider 失败只进 `failures`，
+  不整体失败；缓存 60 秒，`?refresh=1` 跳过。
+- `POST /summarize` 在**入队之前**先解析模型路由（`pickRoute`）：profile 里没有 `llm` 服务、或选中的
+  模型已经不在目录里而目录又空着，一律 `501 llm-unavailable`，不会先答应再一个个失败。已经在队列里
+  或正在写的 id 被跳过，所以重复点不会重复计费。
+- 队列是单飞的：一次只发一个请求（`pump()` 里的 `while`），失败的会话记进 `lastError` 后继续下一个，
+  一条失败不拖垮整批。`cancel` 清掉未开始的部分并 abort 手上那一个，**已经写好的字段保留**。
+- 每次尝试都落账（`recordSpend`），包括没有 `usage` 的失败：它在 `runs` 里而不在 `totalTokens` 里，
+  但少了它，累计数就成了伪装成总数的下限。
+- 一次生成最多两次尝试：第一次的回答解析成 JSON 后若缺少要的字段（或根本不是 JSON 对象），重来一次，
+  **两次都记账**；两次都失败则 `422 ai/bad-answer`，一个半成品都不写（半成品会让这个会话永远不再重试）。
+- 送进模型的是 `transcriptOf()` 拼的对话正文——只有用户与助手的发言，思考过程（`turn.reasoning`）与
+  工具调用/输出（`turn.tools`）从不读；超出 `PROMPT_BUDGET_CHARS = 12000` 时保留头 55% 与尾 45%，
+  中间插一行省略说明。会话标题、备注、标签**不再**喂回模型（那是它要写的东西，喂回去只会让旧名字活下去）。
+- 请求本身**不带任何工具**（`tools: []`）、不设 `maxTokens`、只带本插件自己的 `system`：DSH 的 agent
+  提示词不会混进来（pi-ai 适配器的 `splitSystemPrompt()` 只拼 `options.system` 和请求里的 system 消息），
+  而推理模型的第一块是 `reasoning` 而不是文字——那是正常输出，照样继续等 `text-delta`。不设输出上限
+  是因为思考也算进同一个预算，小上限买到的是空正文（`dsh-pet` 的 `whisper.ts` 记了同一个坑）。
+  调用带 `sessionId: "session-navigator"` 这个固定身份（有的 provider 按身份路由，缺了会 400），
+  它不是真实会话 id，检查点中间件查不到这个会话就直接放行，不会往任何历史里写东西。
+- `POST /summaries/:id/apply` 是唯一会改动别的文档的路由，三个字段三种语义，都只走一次点击：
+  `title` 走 `renameSession()` 改名；`description` 用 `mergeNote()` **追加**到用户自己的备注后面
+  （备注是用户的话，模型的句子只能是补充，重复提交不会贴两遍）；`tags` 只并入 `body.tags` 里勾选的
+  那几个（`pickTags()` 与记录取交集，勾选的是过期值时回 `409 nothing-to-apply`，绝不退化成"全并"），
+  并把它们写进标签库——下次生成时它们就成了"已有标签"。
+  生成从不自动应用：名字改成什么由用户决定，标签库也不该被模型自己塞满。
+- 模型被要求优先使用已有标签：`existingTags` 读 `tagVocabulary()`，最多 40 个进系统提示词；
+  回答里的标签再由 `alignTags()` 按现有写法归一（"导出 " → "导出"），库里有词就不再造同义词。
+- `DELETE /summaries/:id` 只删记录，不动花费账本：钱已经花掉了，账本记的是事实。
+- 两个地方都按会话 id 的语法（`domain/annotations.js` 的 `isAnnotationId`）过滤：`start()` 丢掉不是
+  会话 id 的入队项，`DELETE` 对不是会话 id 的路径参数回 `400`。记录是以会话 id 为键的普通对象，键写成
+  `__proto__` 会让之后每一次 `sessions[id]` 查询都命中，整库看起来都"已经写完"；`normalizeSummaries()`
+  在读盘时也按同一条规则丢掉这类键。
+- `GET /summaries` 的 `revision` 是 `summaries.v1.json` 自己的修订号，与 `tree` / `settings` 无关；
+  客户端 `storeOf()` 对 `/summar…` 前缀返回 `null`，所以这些请求不带任何 `If-Match`。
 
 ## 5. 客户端怎么用
 

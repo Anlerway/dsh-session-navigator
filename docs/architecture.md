@@ -48,8 +48,11 @@ package.json
    - `theme`：浮窗上报、窗口读取的调色板。
 4. **组装 `api` 对象**（`:187-273`）。这是路由处理器唯一的依赖入口：
    `ctx / dataDir / paths / documents / migration / reopen / component / detached / bridge /
-   theme / capabilities / reader / content / indexBuilder`。`dataDir` 与 `paths` 是 getter，
-   迁移后自动指向新值——内容索引的缓存文件也跟着走（`content` 用 getter 拿路径，见 api.md §4.14）。
+   theme / capabilities / reader / content / indexBuilder / summarizer`。`dataDir` 与 `paths` 是
+   getter，迁移后自动指向新值——内容索引的缓存文件也跟着走（`content` 用 getter 拿路径，见 api.md §4.14）。
+   `summarizer` 在字面量之后单独赋值（`:250` 附近）：它要引用正在定义的 `api`，而且它的
+   `summaries` / `settings` 必须**每次现读** `documents`——迁移会重新赋值那个变量，
+   闭包里抓一份旧引用就会写进旧目录。
 5. **启动自愈**（`:275-296`）：`reconcileTrash(api)` 收尾"索引已写、payload 未搬"的中断；
    `reconcileMoves(api)` 做同一件事的移动版（payload 已搬到目标、注册表还没跟上）；
    `component.sweep()` 删除上一次卸载时被占用、删不掉的目录。三者都 best-effort、不 await。
@@ -91,7 +94,7 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          2094  插件装配 + 路由表（66 条）+ 错误映射（唯一编排层）
+├─ index.js          2397  插件装配 + 路由表（76 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测
@@ -113,15 +116,16 @@ lib/
 │  ├─ folders.js      330  新建/重命名/移动/删除文件夹（改 tree draft）
 │  ├─ shortcuts.js    233  快捷方式：引用而非移动
 │  ├─ annotations.js  276  标签、备注、收藏/待办
-│  ├─ settings.js     376  设置文档形状与归一化（搜索索引只剩 indexIdle 一个开关）
+│  ├─ settings.js     439  设置文档形状与归一化（搜索索引只剩 indexIdle 一个开关）
 │  ├─ trash.js        210  回收站条目形状、恢复阶梯
 │  ├─ subagents.js    107  子智能体绑定：isBound / descendantsOf / withDescendants / boundIds
 │  ├─ export.js       681  日志 → Markdown / JSONL（surfaceOp 与压缩只报告、不过滤）
+│  ├─ summaries.js    763  AI 字段的提示词契约、回答解析、预算、花费账本、待补清单（纯函数）
 │  └─ session-state.js 38  单个会话的布尔位（给 DSH 自己的按钮用，含 subagent）
 │
 ├─ store/                   自己的持久化
 │  ├─ sidecar.js      238  原子写 + revision + 串行化 + mtime/size 缓存
-│  └─ documents.js    130  四份侧车文档的注册表
+│  └─ documents.js    151  五份侧车文档的注册表
 │
 ├─ host/                    需要动文件系统或跨进程的操作
 │  ├─ actions.js      697  改名/派生/归档/置顶 → 调 DSH 自己的服务
@@ -136,7 +140,8 @@ lib/
 │  ├─ update.js       210  更新检查：版本比较、GitHub release 解析、5 分钟缓存
 │  ├─ open-link.js    169  链接白名单（repo / star / issues / releases）→ 系统浏览器（带降级链）
 │  ├─ maintenance.js  215  缓存清理：内存三件 + `.tmp` / 下载目录 / staging，跳过在装的组件
-│  └─ reset.js        193  清除数据：四份侧车 + 回收站净内容 + 隔离区 + `.tmp`，`DELETE` 把关
+│  ├─ summarize.js    787  AI 字段队列：模型目录、路由、单飞 worker、重试与 token 落账（调 DSH 的 llm 服务）
+│  └─ reset.js        193  清除数据：五份侧车 + 回收站净内容 + 隔离区 + `.tmp`，`DELETE` 把关
 │
 ├─ component/               可选 Electron 运行时
 │  ├─ layout.js       226  路径、版本、SHA-256、镜像、体积
@@ -158,7 +163,41 @@ lib/
 `host` → `domain` + `store`；`domain` 不 import 任何 IO 模块；`sources` 不 import `domain` 的规则
 （只 import 纯合并函数）。`domain/*` 全部是"传入 draft、返回 draft"，所以测试不需要文件系统。
 
-### 4.1 一件只能 host 做的事：更新检查
+### 4.1 唯一一次向外发请求：AI 字段
+
+AI 字段（标题 / 描述 / 标签）是插件里**唯一**会把会话内容送到模型的地方，也因此是唯一需要 `llm`
+服务的功能。
+
+- 依赖是**可选**的：`inject` 仍然只有 `webServer`（api.md §2），`llm` 与 `sessionController` 都用
+  `getService(ctx, …)` 现取。把它们写成硬依赖会让没有模型服务的 profile 整个插件都不加载，
+  而树的浏览、标签、导出都不需要模型。
+- 模型目录优先问**宿主自己那一套**：`sessionController.modelCatalog()`（与 dsh-orb 同源），
+  拿不到才回退到 `llm.listProviders()` / `listModels()` / `resolveModelInfo()`。理由是别在宿主
+  已经维护的目录之外再维护一份判断。
+- 依赖方向没有破：`domain/summaries.js` 只拼字符串、解析回答与算账（纯函数，可单测），
+  `host/summarize.js` 才碰 `LLM` 与文件；客户端只认 `state` 里的几个数字。
+- 队列**单飞**：一次一个请求，因为并发写同一个 `summaries.v1.json` 只会换来 `revision-conflict`，
+  而写字段不是越并发越快的东西——它是用户在等的一小段文字。
+- 每个请求带 180 秒的 `AbortSignal.timeout`：一个卡住的 provider 不该让队列永远停在
+  "正在生成 3/12"。**不设 `maxTokens`**：推理模型把思考算进同一个预算，小上限买到的是空正文
+  而不是短回答（自带的 `dsh-pet` 插件在 `whisper.ts` 里记下了同一个坑）；提示词只要三个短字段，
+  时长由超时兜住。
+- 请求**声明零个工具**（`tools: []`）：这是一次文本改写，给了工具模型就会去调它。有些模型
+  即使没有工具也会回一个 tool-call 块——那种块被当作"没有正文"处理而不是错误，旁边的文字照收；
+  两次都没有正文才报 `llm/tool-only` / `llm/empty`。系统提示词只有本插件这一份，DSH 的 agent
+  提示词不参与（pi-ai 适配器的 `splitSystemPrompt()` 只拼 `options.system` 与请求里的 system 消息）。
+- 标签**先问已有的**：`existingTags` 读 `tagVocabulary()`，最多 40 个进系统提示词，回答里的标签再由
+  `alignTags()` 按现有写法归一。理由是同义词比没有标签更糟——"导出"/"会话导出"/"导出功能"会让选择器
+  长出十几行意思一样的词，而这个库正是下一轮生成要参考的"已有标签"。
+- 答案是**读出来的**，不是**猜出来的**：提示词的契约就是一个 JSON 对象，`extractJsonObject()` 剥掉
+  围栏取第一个 `{` 到最后一个 `}`，`normalizeFields()` 逐字段校验；缺字段就重来一次，而且第二次
+  请求会附上一句"上次的回答不是那个 JSON 对象，不要调用工具"（原话重复只会得到原样的错）；
+  两次都缺则 `ai/bad-answer`，一个半成品都不写——半成品会让这个会话永远不再重试。DSH 的
+  `GenerateOptions` 没有 response-format 字段，所以这里能给的最硬保证就是"校验 + 重试 + 拒绝"。
+- `summaries.v1.json` 是**文档**不是缓存（见 data-directory.md §1.1）：它是花过钱换来的文字，
+  所以坏文件进 `quarantine/`、不随缓存清理消失，也不因为会话被删而删（钱已经花了）。
+
+### 4.2 一件只能 host 做的事：更新检查
 
 设置页「关于」组的三个入口里有两个**不能**由客户端完成，这是它们单独放在 `host/` 的原因：
 
@@ -178,10 +217,10 @@ lib/
 DSH 自己的 `storages/session_projcache` 一律不碰；组件正在下载/校验/解压时跳过那两项。
   浏览器缓存也不归它管：面板的 `/ui/*` 本来就不缓存，其余属于 DSH 的渲染进程和独立窗口。
 
-### 4.2 唯一不可逆的操作：清除数据
+### 4.3 唯一不可逆的操作：清除数据
 
 设置页最后一组（「危险操作」）只有一个按钮，它删的是用户自己的东西：**虚拟树**（文件夹、工作区
-摆放与顺序）、标签、备注、设置、回收站索引，以及回收站里的**会话目录本体**。回收站是 move 不是 copy（`host/trash.js`），
+摆放与顺序）、标签、备注、设置、摘要与它的花费账本、回收站索引，以及回收站里的**会话目录本体**。回收站是 move 不是 copy（`host/trash.js`），
 那些目录曾经就是 DSH 的会话目录——这一步没有"再点一次还原"可退。
 
 所以判断全在 `host/reset.js`，客户端只把用户打的字原样送上去：

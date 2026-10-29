@@ -29,7 +29,7 @@ Session files stay where DSH keeps them. The plugin copies nothing; it only keep
 - Search covers titles, notes and tags, and can opt into conversation content: what the user and the agent said, not tool output (its own index, built on first use). The funnel next to the box opens the scope dialog: where (all locations by default, or the current folder) and which fields, plus a jump to the search index settings
 - Favorites, todos, pins and archive; delete moves a whole session directory to the recycle bin, restorable and purgeable; subagents follow their parent
 - Cut and paste across workspaces; export a session as Markdown or JSONL — what the user said, what the agent answered, every tool call and its output, with compacted history kept verbatim
-- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 488 tests on Windows
+- Zero runtime dependencies, no build step, `lib/` is the source; CI runs 561 tests on Windows
 
 ## What it looks like
 
@@ -134,6 +134,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Move | Cut and paste across workspaces; files, DSH's bookkeeping, tags and notes follow |
 | Export | Detail pane and row menu; Markdown or JSONL — user messages, agent replies, every tool call and output, compacted spans kept verbatim; long tool output is truncated in Markdown (full text in JSONL) |
+| AI fields | A model writes a **title, description and tags** for a session: one click in the detail pane, several sessions at once from the row menu, or a sweep over everything missing a description or tags. Each part is merged on its own: "Use this title" renames, "Add to my note" appends the description below the note you wrote, and tags are ticked — only the ones you leave ticked join your library, and the list refreshes as soon as you click. Generated tags **reuse the library you already have**; a new one is invented only when none of them fits, and a tag you merge becomes part of the library. Each record shows what that one cost in tokens, and the running total is on the settings page (this needs the `llm` service in DSH; a profile with no models greys the group out and says why) |
 
 ## Settings
 
@@ -157,6 +158,9 @@ Settings live in DSH → 会话资源管理器 (Session Navigator), stored in `~
 | Search index cache | Always on | Keeps the conversation-content index on disk (`content-index.v1.json`) so a restart does not re-read every log. There is no switch: the file is derived, and deleting it only costs one rebuild |
 | Build the index when idle | Off | Once turned on, it fills in slowly after startup and nothing waits on it |
 | Rebuild / Delete index | — | Two buttons: rebuild from scratch (results fill in as it goes) or delete the cache file. The search-scope dialog links straight to this group |
+| Fields model | Host default | Pick a model from the DSH catalogue (a dropdown), then a reasoning effort. Efforts are the adapter's own words (low / high), so the pick is cleared when the model changes: the previous model's word may not exist on the new one |
+| What to generate | Title, description, tags all on | Which fields the model writes. This is about the **output**, not the input: the conversation itself is always sent, thinking and tool output never are |
+| Fill in what is missing | — | Queues every session still missing a **description or tags** (a hand-renamed title does not count as done); progress shows on the settings page and at the bottom of the panel, and it can be stopped |
 | Data directory | `~/.dsh-session-navigator` | Change it in settings to migrate |
 
 `DSH_SE_DATA_DIR` overrides the data directory for tests or migrations; a path pointing at a filesystem root, `~/.dsh` or inside it is ignored with a warning.
@@ -168,7 +172,7 @@ Architecture, HTTP API and data directory notes are in [docs/](docs/README.md) (
 ## Development
 
 ```powershell
-node --test "test/*.test.mjs"   # 478 cases
+node --test "test/*.test.mjs"   # 535 cases
 node test/render-smoke.mjs      # render smoke test
 ```
 

@@ -72,8 +72,25 @@ const navigatorShim = { clipboard: { writeText: async () => {} } };
 // Every request the module makes is recorded, so a test can prove that a
 // question asks nothing of the host until it is answered.
 const fetchCalls = [];
+// The bundle closes over this function (the factory is called with it), so a
+// test that wants a different answer sets `summaryRecord` and re-reads the
+// store rather than swapping globalThis.fetch, which the bundle never looks at.
+let summaryRecord = null;
 globalThis.fetch = async (url, init) => {
   fetchCalls.push({ url: String(url), method: init?.method ?? "GET" });
+  const path = String(url);
+  if (path.includes("/summaries") && summaryRecord) {
+    return {
+      status: 200,
+      json: async () => ({
+        ok: true,
+        result: { sessions: { [summaryRecord.id]: summaryRecord.entry }, spend: {} },
+      }),
+    };
+  }
+  if (path.includes("/summarize/state")) {
+    return { status: 200, json: async () => ({ ok: true, result: { running: false } }) };
+  }
   return { json: async () => ({ ok: true, result: {} }), status: 200 };
 };
 
@@ -95,7 +112,7 @@ const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"
   .replace(
     "    exports.apply = apply;",
     [
-      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems, splitDragIds, draggedSessionIds, draggedNodeIds };",
+      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems, splitDragIds, draggedSessionIds, draggedNodeIds, summaryStore };",
       "    exports.apply = apply;",
     ].join("\n"),
   );
@@ -178,7 +195,7 @@ console.log("panel render ok:", Boolean(panelTree));
 // ── surface mode ────────────────────────────────────────────────────────────
 // Two modes only: 浮窗 and 独立窗口. The old "let DSH's Modal host the panel"
 // axis is gone, and with it the data-hosted attribute that marked it.
-const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, draggedSessionIds, draggedNodeIds } = mod.__test;
+const { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, draggedSessionIds, draggedNodeIds, summaryStore } = mod.__test;
 
 const shellNode = findAll(panelTree, hasClass("se-shell"))[0] ?? null;
 if (!shellNode) throw new Error("the panel must render a .se-shell");
@@ -906,6 +923,43 @@ const detailProps = {
   onArchive: noop, onFork: noop, onRename: noop, onRestore: noop, onDelete: noop,
 };
 console.log("DetailPane (session) ok:", Boolean(render({ type: DetailPane, props: { ...detailProps, session, node: null } })));
+// AI 字段 (m00531, m01823) lives right under 备注 in the pane that has a session.
+// With nothing stored it still draws its heading and the one command that can
+// change that — a session without fields must not look like a broken pane.
+const sessionDetail = render({ type: DetailPane, props: { ...detailProps, session, node: null } });
+const detailSections = findAll(sessionDetail, (cls) => cls.split(" ").includes("det-sec")).map((element) => textOf(element));
+const noteAt = detailSections.findIndex((text) => text.trim().startsWith("备注"));
+const fieldsAt = detailSections.findIndex((text) => text.includes("AI 字段"));
+if (fieldsAt < 0) throw new Error("the detail pane must show the AI 字段 section");
+if (noteAt < 0 || fieldsAt !== noteAt + 1) throw new Error("AI 字段 must sit directly under 备注");
+if (!detailSections[fieldsAt].includes("让 AI 写标题和标签")) throw new Error("an empty record must offer the one command that fills it");
+console.log("DetailPane AI 字段 ok: heading + 让 AI 写标题和标签 under 备注");
+
+// A filled record: the three rows, and tags that are toggles rather than
+// labels. Nothing was stored when the pane was first rendered above, so this
+// second render is what proves the filled branch draws at all.
+summaryRecord = {
+  id: session.id,
+  entry: {
+    title: "修复导出",
+    description: "助手的话现在也会导出。",
+    tags: ["导出", "会话"],
+    at: Date.now() - 60_000,
+    model: { provider: "p", model: "m", effort: "" },
+    tokens: { inputTokens: 1200, outputTokens: 60 },
+    applied: { title: false, description: false, tags: false },
+  },
+};
+await summaryStore.refresh();
+const filled = render({ type: DetailPane, props: { ...detailProps, session, node: null } });
+const chips = findAll(filled, (cls) => cls.split(" ").includes("ai-tag"));
+if (chips.length !== 2) throw new Error("a stored record must draw one chip per tag, got " + chips.length);
+if (!chips.every((chip) => chip.props.className.includes("on"))) throw new Error("every tag starts ticked");
+if (!textOf(filled).includes("合并所选（2）")) throw new Error("the tag row must say how many will be merged");
+const mergeRows = findAll(filled, (cls) => cls.split(" ").includes("ai-field")).map((row) => textOf(row));
+if (!mergeRows.some((text) => text.includes("并入我的备注"))) throw new Error("the description must be mergeable on its own");
+if (!mergeRows.some((text) => text.includes("用这个标题"))) throw new Error("the title must be mergeable on its own");
+console.log("DetailPane AI 字段 filled ok: title/description/tags rows, ticked chips, 合并所选（2）");
 console.log("DetailPane (trashed) ok:", Boolean(render({ type: DetailPane, props: { ...detailProps, session: { ...session, trashed: true }, node: null } })));
 const wsDetail = render({ type: DetailPane, props: { ...detailProps, session: null, node: workspaceNode } });
 console.log("DetailPane (workspace) ok:", Boolean(wsDetail));

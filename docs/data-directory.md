@@ -24,6 +24,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 ├── tree.v1.json          文件夹、放置、workspace 顺序、快捷方式、置顶、快速访问
 ├── annotations.v1.json   标签、备注、收藏/待办标记、共享标签库
 ├── settings.v1.json      跨浏览器的偏好（布局在 localStorage）
+├── summaries.v1.json     AI 写出的标题/描述/标签，与累计花费的 token 账本（见 §1.1）
 ├── move-journal.v1.json  正在进行的跨工作区移动（见 §6.2）
 ├── content-index.v1.json 会话内容索引的缓存（派生文件，删了只是要重建一次）
 ├── .location             迁移后留下的指针（只有 copy 模式会留）
@@ -44,6 +45,56 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 **侧车只存 DSH 不知道的东西。** 标题、cwd、时间戳、回合数、归档集、置顶集每次请求都从 DSH 读，
 侧车删掉也不会丢会话——这是 `lib/store/documents.js:1-17` 写明的设计约束（源文档 S8）。
+`summaries.v1.json` 是这条规则唯一要解释的地方：摘要既不是 DSH 的数据，也不是派生缓存——
+它是花过钱换来的文字，删掉就要再花一次钱，所以它按文档对待（坏文件进 `quarantine/`，不当缓存重建）。
+
+## 1.1 `summaries.v1.json`
+
+一件商品是三个字段，不是一段文字：**标题、描述、标签**（用户 m01823：「总结就是让你总结标题 描述 标签」）。
+三个字段各自独立——可以只要标题，也可以只要标签；没被要的字段既不出现在提示词的契约里，也不会覆盖已存的值。
+
+```jsonc
+{
+  "sessions": {                      // 以会话 id 为键，与会话目录无关：会话搬了字段跟着走
+    "<sessionId>": {
+      "title": "修复导出丢字段",      // 最多 TITLE_MAX_LENGTH = 30 字符；只是建议，不自动改会话名
+      "description": "…",            // 最多 DESCRIPTION_MAX_LENGTH = 120 字符，1-3 句
+      "tags": ["导出", "会话"],       // 最多 TAG_LIMIT = 6 个，每个最多 TAG_MAX_LENGTH = 8 字符
+      "at": 1793000000000,           // 写成的时间
+      "sourceAt": 1792990000000,     // 那段对话最后活动的时间，用来看出这组字段有多旧
+      "model": { "provider": "wb-proxy", "model": "deepseek-v4.1-flash", "effort": "low" },
+      "tokens": { "inputTokens": 12000, "outputTokens": 900 },
+      "turns": 42,                   // 送进模型的对话条数（不是会话的全部回合）
+      "applied": { "title": false, "description": false, "tags": false }
+                                     // 用户点过「用这个标题」/「并入我的备注」/
+                                     // 「合并所选」没有；只有点击才改会话名、备注或标签库，
+                                     // 记录本身不自动应用
+    }
+  },
+  "spend": {                         // 累计花费：这一台机器上所有生成尝试的总和
+    "inputTokens": 0, "outputTokens": 0, "totalTokens": 0,
+    "cacheReadTokens": 0, "cacheWriteTokens": 0,
+    "runs": 0,                       // 每次尝试都算，失败的也算（失败同样按 token 计费）
+    "failures": 0
+  }
+}
+```
+
+三个字段全空的记录读盘时就丢弃（`normalizeSummaryEntry()` 返回 `null`）；旧版本写过 `text` 字段的记录也
+按同一条丢掉——它不属于这三个字段，留着会让这个会话看起来"已经有东西了"，于是永远不会重新生成。
+
+超长的字段是**裁剪**而不是整条拒绝：标题截断到 30、描述到 120、标签先截到 8 个字**再**去重（两个不同的长
+标签截到相同的八个字，就是同一个标签，两个都留会在筛选行里出现两条一模一样的）。裁剪后为空、或整条没有
+任何字段时才算失败。
+
+「一键补齐」只看**描述与标签**（用户 m01898：「只检查描述和标签，仅仅手改的名字不算」）。任一半满足即可：
+描述来自 AI 记录或用户自己写的备注，标签来自 AI 记录或用户手动打的标签。标题不参与判定——名字说明不了
+对话里发生了什么。
+
+`spend` 记的是 token，不是钱：`lib/host/summarize.js:recordSpend()` 只把 provider 回来的
+`usage` 累加，provider 没给 `totalTokens` 时用 `input + output` 顶上。没有任何汇率或单价表——
+那需要跟着 provider 改价，而这个文件写在用户机器上。失败的尝试也记 `runs`：只统计成功会让
+累计数看起来像"总花费"，而它其实只是成功那部分的下限。
 
 ## 2. 定位顺序（三级回退）
 
@@ -68,13 +119,14 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 ## 3. 四份侧车文档
 
-`lib/store/documents.js:29` 的 `openDocuments()` 一次打开四份。每份的初始形状：
+`lib/store/documents.js:29` 的 `openDocuments()` 一次打开五份。每份的初始形状：
 
 | 文件 | 初始形状 | 说明 |
 |---|---|---|
 | `tree.v1.json` | `{ folders, placement, workspaceOrder, shortcuts, pins, quickAccess, sessionPlacement }` | `placement` 是 workspace 的显式顺序；`sessionPlacement` 是会话的**显示**归属覆盖；`pins` 是排名、`quickAccess` 是书签带，两张表故意分开（见 tree-and-placement.md §8） |
 | `annotations.v1.json` | `{ sessions: {}, tags: [] }` | `tags` 是共享标签库；`sessions[id]` 是单条注解 |
 | `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js:123` |
+| `summaries.v1.json` | `{ sessions: {}, spend: emptySpend() }` | 见 §1.1 |
 | `trash/index.v1.json` | `{ entries: {} }` | 见第 5 节 |
 
 `settings.v1.json` 的完整形状：
@@ -97,6 +149,13 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
             "dateFormat": "date",        // date | relative，详细日期 vs 距今时间
             "sizeFormat": "auto" },      // auto | kb，自动转换 vs 固定 KB
   "search": { "indexIdle": false },      // 空闲时自动建立索引：唯一的搜索索引开关，默认关
+  "summary": {                           // AI 字段的模型与要生成哪几项
+    "provider": "",                      // 空串 = 让宿主挑（第一个 provider）
+    "model": "",                         // 空串 = 该 provider 的第一个模型
+    "effort": "",                        // 适配器自己定义的词（low/high…），空串 = 用模型默认
+    "fields": { "title": true, "description": true, "tags": true }
+  },                                     // fields 是"生成哪几项"，不是"送什么"：对话正文总是送，
+                                         // 思考过程与工具输出从不送
   "dataDir": { "current": null }
 }
 ```
