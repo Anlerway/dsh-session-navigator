@@ -29,14 +29,14 @@
 <p align="center"><em>浮窗模式：面板浮在聊天之上，随时打开，随时收起</em></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/filter.png" width="600" alt="筛选">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/window.png" width="900" alt="独立窗口全屏">
 </p>
-<p align="center"><em>筛选：范围、收藏、归档、待办，标签可多选</em></p>
+<p align="center"><em>独立窗口：真正像资源管理器，树、列表、详情一起铺开</em></p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/settings.png" width="560" alt="设置界面">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="DSH 聊天在左，会话资源管理器停靠在右，两边各自独立">
 </p>
-<p align="center"><em>设置：更新说明、索引与缓存都在这一页</em></p>
+<p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
 
 ## 安装
 
