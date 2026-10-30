@@ -20,7 +20,7 @@ Manage DSH sessions the way Windows Explorer manages files: a folder tree on the
 
 Session files stay where DSH keeps them. The plugin copies nothing; it only keeps an index under `~/.dsh-session-navigator/` recording which folder a session sits in, what you named it, which tags it carries and what note you wrote. Delete that directory and it is uninstalled.
 
-**Status**: 1.0.4, usable day to day. Copied sessions do not open yet — use Cut instead.
+**Status**: 1.1.0, usable day to day. Copied sessions do not open yet — use Cut instead.
 
 **Who it is for**: DSH users with dozens or hundreds of sessions who look things up by project rather than by scrolling.
 
@@ -107,7 +107,7 @@ No build step: the source runs as installed.
 dsh plugin --profile desktop add dsh-session-navigator@latest
 ```
 
-Reload the app after replacing loaded code. Pinning an exact version (`@1.0.4`) avoids pnpm 10's `minimumReleaseAge` resolving an older release.
+Reload the app after replacing loaded code. Pinning an exact version (`@1.1.0`) avoids pnpm 10's `minimumReleaseAge` resolving an older release.
 
 ### Uninstall
 

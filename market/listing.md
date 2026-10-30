@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.0.4 |
+| 版本 | 1.1.0 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |

@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-navigator",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "会话资源管理器 (Session Navigator) for DeepSeek Harness: virtual folders, tags, notes, trash and multi-workspace session browsing on top of the native DSH session store.",
   "type": "module",
   "engines": {
@@ -10,7 +10,8 @@
   "icon": "./assets/icon.png",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "test:render": "node test/render-smoke.mjs"
+    "test:render": "node test/render-smoke.mjs",
+    "prepack": "node scripts/sync-notes.mjs"
   },
   "exports": {
     ".": "./lib/index.js",
@@ -22,6 +23,7 @@
     "lib/",
     "assets/",
     "cordis.patch.yml",
+    "CHANGELOG.md",
     "README.md",
     "README.en.md",
     "LICENSE"

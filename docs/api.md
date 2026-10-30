@@ -1,7 +1,7 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:623` 的 `ROUTES` 表定义，
-`lib/index.js:2184` 的 `handle()` 分发。共 **76 条**。
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:624` 的 `ROUTES` 表定义，
+`lib/index.js:2195` 的 `handle()` 分发。共 **77 条**。
 
 ## 1. 信封
 
@@ -476,6 +476,8 @@ payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，
 | `GET /update` | `?force=1` 跳过 5 分钟缓存 | `{ current, latest, hasUpdate, url, name, publishedAt, notes, checkedAt }` |
 | `POST /about/open` | `{ target }` | `{ target, url, opened: true }` |
 | `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, skipped, tookMs }` |
+| `GET /release-notes` | — | `{ title, blocks, bytes, updatedAt, version, seen }` |
+| `POST /release-notes/seen` | `{ version }` | `{ version }`（写进去的记录；空版本是 no-op） |
 
 `GET /update` 在 host 侧访问 `api.github.com`（`lib/host/update.js`）：客户端是个网页，
 直连会撞 CORS；独立窗口里 `window.open` 又被主进程拒掉，两条路都不通，所以这件事只能
@@ -509,6 +511,38 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 `quarantine/`（用户自己的坏数据）、DSH 的 `storages/session_projcache` 和会话本身
 **从不**在这里被碰。浏览器缓存也不在其中：面板的 `/ui/*` 一律 `no-store`（§4.10），
 其余页面缓存属于 DSH 自己的渲染进程和独立窗口，不在插件手里。
+
+`GET /release-notes` 是「更新说明」弹窗的正文，而正文是**文档**，不是代码里的字符串
+（`lib/domain/notes.js` + `lib/host/changelog.js`）。改一次文案就是改一个 markdown 文件，
+不用动这个插件的源码，更不用等它被重新构建。
+
+两个候选文件，先到先用：仓库里是包目录上一层的 `更新说明.md`，装好的包里只有随包发出去的
+`CHANGELOG.md`（包不可能带上自己的父目录）。checkout 优先，所以维护者改完下一次打开就能看到；
+打包用的那份就是发布版用户读到的内容，`scripts/sync-notes.mjs` 在 `prepack` 时把它覆盖过去，
+所以打出来的包里永远是维护者刚写完的那一份，不需要谁记得手动复制。
+
+解析只认一个很小的子集：标题、无序/有序列表、分隔线、`**粗体**`、`\`代码\``；认不出的行
+原样当段落显示，不会从弹窗里消失。文件超过 200 KB 直接 `too-large`——那不是一份更新说明；
+两个文件都没有是 `not-found`，弹窗照样打开并把原因写在正文位置，而不是显示一张空卡片。
+
+按 `大小 + mtime` 记住上一次的解析结果：文件几 KB，重新解析一次也不贵，但"改了文案弹窗还是旧的"
+正是这套安排要避免的事，所以键里必须带 mtime。
+
+读这份文档的有两个入口，读的是同一条路由：
+
+- **设置 › 关于 › 更新说明**：随时可看，每次打开都重新读（上面那条缓存只省解析，不省文件读取）。
+- **启动时自己弹一次**：挂在侧栏入口上（`NotesGate`，与面板一起卸载不了），DSH 起来约 3 秒后问一次
+  `/release-notes`，把响应里的 `version` 与同一个响应里的 `seen` 比对（`notesDecision`）：版本不同、或这台机器从没记过版本，
+  就打开；相同就什么也不做。**第一次装也弹**——第一次启动正是这个版本唯一一次"新"的时候，
+  更新说明说的就是它；弹在启动而不是等面板打开，则是"用户可能根本不打开面板，但插件已经更新了"。
+  `version` 随这份响应一起回来，所以判断要不要弹不需要第二次请求，也不需要 `/bootstrap` 去扫会话。
+  "已读"记在**宿主**的 `<dataDir>/notes-seen.v1.json`（`lib/host/notes-seen.js`），不是 localStorage：
+  DSH web GUI 每次启动换一个端口，而浏览器存储按 origin（含端口）隔离，换端口就是空存储——
+  记在那里等于"每次启动都弹"。写回走 `POST /release-notes/seen`（最新的一次覆盖旧的，不需要 revision）；
+  也没写进设置文档，因为"哪个版本看过"不需要一次合并和一条冲突规则。
+  关闭时才算送达（`close` 里写版本）；读失败（`not-found` / `too-large`）在启动路径上**静默**且**不写**记录——
+  启动时弹一张"你的文件坏了"的卡片比沉默更糟——下次启动再试一次。一次页面加载只尝试一次
+  （`notesLayer.asked`），免得侧栏重挂载就再弹一次。
 
 ### 4.12 清除数据
 

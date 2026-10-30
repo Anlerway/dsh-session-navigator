@@ -233,6 +233,24 @@ function idleState() {
   };
 }
 
+/** What `GET /release-notes` answers with: a title and the blocks the host
+ *  parsed out of the document. The shapes here are the contract in
+ *  lib/domain/notes.js — h / p / list / hr. */
+function releaseNotes() {
+  return {
+    title: "更新说明：V1.1.0",
+    bytes: 160,
+    updatedAt: 0,
+    blocks: [
+      { kind: "p", runs: [{ text: "主要改动" }] },
+      { kind: "list", ordered: true, items: [[{ text: "会话内容搜索" }], [{ text: "性能优化" }]] },
+      { kind: "hr" },
+      { kind: "h", level: 2, runs: [{ text: "新增" }] },
+      { kind: "list", ordered: false, items: [[{ text: "更新说明弹窗", bold: true }, { text: "：设置里就能看" }]] },
+    ],
+  };
+}
+
 /** One render of the page, through the driver so its hooks get a stable scope. */
 const page = (driver, api, t) => driver.render(driver.React.createElement(api.SettingsSection, { t }));
 
@@ -264,6 +282,8 @@ async function renderSettings({
   pendingIds = [],
   // What POST /summarize/pending answers, when a case needs the host to refuse.
   pendingReply = null,
+  // 更新说明: the parsed document, or { ok: false } when the host has no file.
+  notes = null,
 } = {}) {
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
@@ -380,6 +400,10 @@ async function renderSettings({
         ok: true,
         result: clear ?? { freedBytes: 0, caches: [], tmp: { removed: 0, bytes: 0 }, downloads: { removed: 0, bytes: 0 }, staging: { removed: 0, bytes: 0 }, skipped: [], tookMs: 1 },
       };
+    }
+    if (path === "/release-notes") {
+      if (notes && notes.ok === false) return notes;
+      return { ok: true, result: notes ?? releaseNotes() };
     }
     if (path === "/about/open") {
       return { ok: true, result: { target: call.body?.target ?? "", url: "", opened: true } };
@@ -528,11 +552,11 @@ test("关于 prints the build it is running", async () => {
   const about = aboutGroup(tree);
   assert.match(textOf(about), /setGroupAbout/);
   assert.equal(textOf(collect(about, byClass("se-set-ver"))[0]), "v1.0.0");
-  // Four things to press, in the order the group explains them: the check, the
-  // clear, and the two pages the project lives on.
+  // Five things to press, in the order the group explains them: the check, the
+  // notes, the clear, and the two pages the project lives on.
   assert.deepEqual(
     collect(about, byClass("se-set-chip")).map(textOf),
-    ["setCheckUpdate", "setCacheGo", "setStarGo", "setIssueGo"],
+    ["setCheckUpdate", "setNotesOpen", "setCacheGo", "setStarGo", "setIssueGo"],
   );
   // Nothing is asked of GitHub until the user presses the button: a settings
   // page that phones home on open is a settings page people remove.
@@ -631,6 +655,74 @@ test("Star opens the repository through the host", async () => {
   const opened = calls.find((call) => call.method === "POST" && call.url.endsWith("/about/open"));
   assert.ok(opened);
   assert.deepEqual(opened.body, { target: "star" });
+});
+
+test("更新说明 is the document, read when it is opened", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings();
+  assert.equal(collect(tree, byClass("se-notes")).length, 0, "nothing is drawn until the row is pressed");
+  assert.ok(!calls.some((call) => /\/release-notes/.test(call.url)), "and nothing is read either");
+
+  chipLabelled(tree, "setNotesOpen").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(calls.filter((call) => /\/release-notes/.test(call.url)).length, 1);
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const layer = collect(after, byClass("se-notes"))[0];
+  assert.ok(layer, "the layer is up once the notes arrive");
+  // The document's own first line, which already carries the version: the
+  // dialog must not put a heading of its own above it.
+  assert.equal(textOf(collect(layer, byClass("se-notes-title"))[0]), "更新说明：V1.1.0");
+  assert.equal(collect(layer, byClass("se-notes-list")).length, 2, "one ordered list and one bulleted");
+  assert.equal(collect(layer, byClass("se-notes-rule")).length, 1);
+  assert.match(textOf(layer), /新增/);
+  assert.match(textOf(layer), /更新说明弹窗/, "**bold** keeps its text");
+
+  // Star and Issue ride at the bottom, and still name a target rather than a
+  // URL — the host owns the allowlist.
+  const footChip = (key) => collect(layer, byClass("se-set-chip")).find((chip) => textOf(chip) === key);
+  footChip("setIssueGo").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const opened = calls.find((call) => call.method === "POST" && call.url.endsWith("/about/open"));
+  assert.deepEqual(opened.body, { target: "issues" });
+});
+
+test("更新说明 closes on the backdrop but not on the card, and reads again next time", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings();
+  const open = async () => {
+    chipLabelled(await driver.settle(() => page(driver, api, t)), "setNotesOpen").props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return driver.settle(() => page(driver, api, t));
+  };
+
+  let after = await open();
+  const self = {};
+  collect(after, byClass("se-notes"))[0].props.onClick({ target: self, currentTarget: self });
+  after = await driver.settle(() => page(driver, api, t));
+  assert.equal(collect(after, byClass("se-notes")).length, 0, "a press outside the card closes it");
+
+  after = await open();
+  const layer = collect(after, byClass("se-notes"))[0];
+  layer.props.onClick({ target: {}, currentTarget: {} });
+  after = await driver.settle(() => page(driver, api, t));
+  assert.equal(collect(after, byClass("se-notes")).length, 1, "a press on the card itself keeps it open");
+
+  // Each open asks again: the file is the source of truth, and remembering the
+  // parse is the host's job (by size + mtime), not the page's.
+  assert.equal(calls.filter((call) => /\/release-notes/.test(call.url)).length, 2);
+});
+
+test("更新说明 says the file could not be read instead of showing an empty card", async () => {
+  const { tree, driver, api, t } = await renderSettings({
+    interpolate: true,
+    notes: { ok: false, code: "not-found", error: "找不到更新说明文件（更新说明.md / CHANGELOG.md）" },
+  });
+  chipLabelled(tree, "setNotesOpen").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const after = await driver.settle(() => page(driver, api, t));
+  const layer = collect(after, byClass("se-notes"))[0];
+  assert.ok(layer, "the layer still opens, so the failure has somewhere to show");
+  assert.match(textOf(layer), /setNotesFailed/);
+  assert.match(textOf(layer), /找不到更新说明文件/);
 });
 
 /** The 危险操作 group, found by its heading. */
