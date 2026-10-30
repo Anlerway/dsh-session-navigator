@@ -24,19 +24,19 @@
 ## 界面
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="分屏">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/float.png" width="880" alt="浮窗模式">
 </p>
-<p align="center"><em>分屏：左边照常聊天，右边的目录树和会话列表一直在</em></p>
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/window.png" width="900" alt="独立窗口全屏">
-</p>
-<p align="center"><em>独立弹窗：目录树、列表、详细信息三栏全展开</em></p>
+<p align="center"><em>浮窗模式：面板浮在聊天之上，随时打开，随时收起</em></p>
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/filter.png" width="600" alt="筛选">
 </p>
 <p align="center"><em>筛选：范围、收藏、归档、待办，标签可多选</em></p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/settings.png" width="560" alt="设置界面">
+</p>
+<p align="center"><em>设置：更新说明、索引与缓存都在这一页</em></p>
 
 ## 安装
 
