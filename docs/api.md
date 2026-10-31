@@ -171,19 +171,18 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 `sessions[]` 的 `home` 是它显示在哪个容器节点里，`homeOverride` 表示这是侧车的虚拟放置而非
 DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户端不重放规则。
 
-两个字段不是 DSH 给的，是插件自己从日志两端读出来的（`lib/sources/logfacts.js`）：
+一个字段不是 DSH 给的，是插件自己从日志里读出来的（`lib/sources/logfacts.js`）：
 
 | 字段 | 含义 | 从哪来 |
 |---|---|---|
-| `blank` | 从未开始过一轮对话的会话 | 日志第一帧起没有 `turn/start`。DSH 的 projcache 也记这个，但它只覆盖 DSH 自己列过的会话；插件走目录扫描，所以以日志为准，读不到时回落到 projcache，两者都没有就是 `null`（未知，不隐藏） |
-| `interrupted` | 已中断：日志停在一轮对话中间 | 日志最后一个事件不是 `turn/end`。DSH 的 `running` 只存在于内存，进程被杀/窗口关掉后磁盘上什么都不会变，所以这个判断只能由日志给出 |
+| `blank` | 从未开始过一轮对话的会话 | 日志里没有 `turn/start`。DSH 的 projcache 也记这个，但它只覆盖 DSH 自己列过的会话；插件走目录扫描，所以以日志为准，读不到时回落到 projcache，两者都没有就是 `null`（未知，不隐藏） |
 
-`interrupted` 与 `running` 可以同时为真（日志还开着、会话也还活着），此时以 `running`
-为准：那是"正在跑"，不是"断了"。`interrupted` 的会话可以删除——它没有活着的进程。
+读取成本：`blank` 只在日志较小时读全文（≤256 KB），较大的日志只读头部 64 KB 的几帧，
+读不到就报未知而不是报空。结果按 `path|size|mtime` 缓存，所以只有正在写的那个会话会被重读。
 
-读取成本被两处夹住：`blank` 只在日志较小时读全文（≤256 KB），较大的日志只读头部
-64 KB 的几帧，读不到就报未知而不是报空；`interrupted` 只读尾部 128 KB。两者的结果按
-`path|size|mtime` 缓存，所以只有正在写的那个会话会被重读。
+日志只回答这一个问题。会话是否正在跑、某一轮是否被切断，插件都不推断——DSH 自己在内存里
+只有一个 `running`（`packages/api/session-controller/src/list.ts:120`），面板报同一个答案
+（列表的状态阶梯见 §5.1），没有 `interrupted` 这种自造字段。
 
 更新检查、缓存清理和三个项目链接在设置页的「关于」组里，单独记在 §4.11。
 
@@ -721,3 +720,28 @@ m01826：「不输出摘要，摘要不是产物」）。三个字段各自独�
 `revision-conflict` 的处理是重新 `GET /bootstrap?refresh=1` 再让用户重试，
 设置页同理——它重读 `GET /settings` 并采用新的 `revision`，否则每个控件都会带着
 同一个陈旧的 `If-Match` 一直 409（`lib/client.js` `SettingsSection.save`）。
+
+### 5.1 列表里的状态
+
+每一行只有一颗点加一句字，档位与 DSH 自己的侧栏完全一致，不额外发明任何一档
+（DSH 的实现：`packages/client/ui-workspace/src/client/rows/Rows.tsx` `sessionStatuses`）：
+
+| 顺序 | 文案 | 点 | 什么条件 |
+|---|---|---|---|
+| 1 | 已删除 | 无 | 在插件的回收站里。这不是存活判断，是"这个载荷为什么打不开" |
+| 2 | 等待审批 / 计划待审 / 等待回答 | 黄 | DSH 的 `pendingInteraction.kind`，只认这三个值，最高优先级 |
+| 3 | 进行中 | 蓝 | DSH 的 `running`；服务不在时回落到插件从宿主读到的同一个 `running` |
+| 4 | {n} 个子智能体运行中 | 蓝 | 本行下面还有正在跑的子会话（子行是 `isSubagent` 且 `parentSession` 指向本行） |
+| 5 | 已完成 | 绿 | DSH 的 `completionUnread`：那一轮结束在别的视图里，本视图还没看过 |
+| 6 | 空闲 | 无 | 以上都不是 |
+
+2、3、4 可以同时成立，DSH 就把它们并成两颗点；插件只画一颗，所以按上表取最靠前的一条。
+
+状态的来源是客户端服务 `uiSession.sessionStatus`（`HostObservable<ReadonlyMap<SessionId, SessionStatus>>`，
+`packages/client/ui-session/src/client/index.ts`），插件用 `useSyncExternalStore` 订阅它，
+所以 DSH 的侧栏变了，面板跟着变，不需要等下一次 `/bootstrap`。宿主没提供这个服务时整张表退化成
+"只看 `running`"，不会报错。
+
+已被删掉的两档不再回来：**已中断**（从日志尾部推断"一轮没关"——一次崩溃和一条收尾事件从外面看
+一模一样，DSH 又在内存里判断存活，结果把正常结束的会话标成了中断）与**异常**
+（`formatVersion !== 4`——DSH 认为那是需要迁移的旧载荷，不是故障）。

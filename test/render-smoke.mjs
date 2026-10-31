@@ -138,7 +138,7 @@ const source = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8"
   .replace(
     "    exports.apply = apply;",
     [
-      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems, splitDragIds, draggedSessionIds, draggedNodeIds, summaryStore };",
+      "    exports.__test = { Trow, SessionRow, ContainerRow, TreePane, ListPane, DetailPane, FilterDialog, SearchScopeDialog, CommandMenu, DialogHost, frameSizeOf, PanelBoundary, iconOfNode, nodeLabel, headerActionsFor, hdrIcon, dialogStore, askConfirm, DialogChannel, DialogHost, SessionHeaderActions, SessionMenuItems, splitDragIds, draggedSessionIds, draggedNodeIds, summaryStore, statusOf, withDshStatus, pendingKindOf };",
       "    exports.apply = apply;",
     ].join("\n"),
   );
@@ -303,13 +303,71 @@ console.log("SessionRow (trashed) ok:", Boolean(render({
   props: { session: { ...session, trashed: true }, selected: false, now: Date.now(), onSelect: noop, checked: false, onCheck: noop, onBeginRename: noop },
 })));
 
-// 已中断 — a log that ends inside a turn without a process writing it. It is
-// neither 运行中 nor 空闲, and unlike 运行中 it can be deleted, so the row must
-// say so in words rather than only through a dot colour.
-const interruptedRow = render({
+// The status badge is DSH's ladder, not a private one (ui-workspace
+// rows/Rows.tsx:344 `sessionStatuses`): a pending interaction outranks live
+// activity, live activity outranks the unread-completion reminder, and 空闲 is
+// what is left. Two states used to be invented here and are gone — 已中断 came
+// from the log tail ending inside a turn, 异常 from `formatVersion !== 4` — so
+// the sweep at the end of this block fails if either comes back.
+const { statusOf, withDshStatus, pendingKindOf } = mod.__test;
+const statusRows = withDshStatus(
+  [
+    { ...session, id: "s-idle" },
+    { ...session, id: "s-live", running: true },
+    { ...session, id: "s-approval", running: true },
+    { ...session, id: "s-plan" },
+    { ...session, id: "s-ask" },
+    { ...session, id: "s-done" },
+    { ...session, id: "s-parent" },
+    { ...session, id: "s-kid-1", isSubagent: true, parentSession: "s-parent", running: true },
+    { ...session, id: "s-kid-2", isSubagent: true, parentSession: "s-parent", running: true },
+  ],
+  new Map([
+    // Pending outranks running: DSH asks the user to act before reporting
+    // activity, and the same session is often both.
+    ["s-approval", { running: true, pendingInteraction: { kind: "approval" }, completionUnread: false }],
+    ["s-plan", { running: false, pendingInteraction: "plan-review", completionUnread: false }],
+    // A question outranks the unread reminder, not the other way round.
+    ["s-ask", { running: false, pendingInteraction: { kind: "question" }, completionUnread: true }],
+    ["s-done", { running: false, pendingInteraction: null, completionUnread: true }],
+    // A kind DSH does not name is not a label: the row keeps its ordinary state.
+    ["s-idle", { running: false, pendingInteraction: { kind: "approval-v2" }, completionUnread: false }],
+  ]),
+);
+const statusById = new Map(statusRows.map((row) => [row.id, statusOf(row)]));
+const expectStatus = (id, text, cls) => {
+  const got = statusById.get(id);
+  if (!got) throw new Error(`no row ${id}`);
+  if (got.text !== text) throw new Error(`${id}: expected "${text}", got "${got.text}"`);
+  if (got.cls !== cls) throw new Error(`${id}: expected dot "${cls}", got "${got.cls}"`);
+};
+expectStatus("s-idle", "空闲", "");
+expectStatus("s-live", "进行中", "run");
+expectStatus("s-approval", "等待审批", "warn");
+expectStatus("s-plan", "计划待审", "warn");
+expectStatus("s-ask", "等待回答", "warn");
+expectStatus("s-done", "已完成", "done");
+// Two running children, both rows the panel already holds: the count is folded
+// from `isSubagent` + `parentSession`, exactly as DSH counts its projection.
+expectStatus("s-parent", "2 个子智能体运行中", "run");
+expectStatus("s-kid-1", "进行中", "run");
+// 回收站 stays: it is not a claim about liveness, it is this plugin's own bin,
+// and those payloads are absent from DSH's list entirely.
+if (statusOf({ ...session, trashed: true }).text !== "已删除") throw new Error("a trashed row must say 已删除, not a liveness state");
+// The panel reports no state DSH does not report.
+for (const row of [...statusRows, { ...session, trashed: true }]) {
+  const { text } = statusOf(row);
+  if (text.includes("已中断") || text.includes("异常")) throw new Error(`invented status: "${text}"`);
+  if (text === "运行中") throw new Error("DSH calls the running state 进行中");
+}
+// The kind parser is a whitelist, so an unknown shape is never a label.
+if (pendingKindOf({ kind: "approval" }) !== "approval" || pendingKindOf("question") !== "question") throw new Error("pendingKindOf must read both the string and the object shape");
+if (pendingKindOf({ kind: "approval-v2" }) !== null || pendingKindOf(null) !== null || pendingKindOf(undefined) !== null) throw new Error("pendingKindOf must refuse kinds DSH does not name");
+// And the label reaches the row's own DOM, not only the helper's return value.
+const approvalRow = render({
   type: SessionRow,
   props: {
-    session: { ...session, interrupted: true, running: false },
+    session: statusRows.find((row) => row.id === "s-approval"),
     selected: false,
     now: Date.now(),
     onSelect: noop,
@@ -318,22 +376,18 @@ const interruptedRow = render({
     onBeginRename: noop,
   },
 });
-console.log("SessionRow (已中断) ok:", textOf(interruptedRow).includes("已中断"));
-// Running wins over interrupted: an open log that belongs to a live session is a
-// turn in progress, not a broken one.
-const runningRow = render({
-  type: SessionRow,
-  props: {
-    session: { ...session, interrupted: true, running: true },
-    selected: false,
-    now: Date.now(),
-    onSelect: noop,
-    checked: false,
-    onCheck: noop,
-    onBeginRename: noop,
-  },
-});
-console.log("SessionRow (运行中 wins) ok:", textOf(runningRow).includes("运行中"));
+if (!textOf(approvalRow).includes("等待审批")) throw new Error("the row must draw the pending label");
+if (findAll(approvalRow, hasClass("dot")).some((node) => String(node.props?.className).includes("int"))) throw new Error("the invented 已中断 dot class is gone");
+// 运行 is blue, 完成 is green — the two colours swapped on purpose, because a
+// running row is the one the user is waiting on, not the one that is finished.
+const dotRule = (name) => {
+  const hit = new RegExp("\\.se-shell \\.dot\\." + name + "\\{background:(#[0-9a-f]{6})").exec(source);
+  return hit ? hit[1] : null;
+};
+if (dotRule("run") !== "#5b8def") throw new Error(`a running row must be blue, got ${dotRule("run")}`);
+if (dotRule("done") !== "#3ecf8e") throw new Error(`a completed row must be green, got ${dotRule("done")}`);
+if (dotRule("warn") !== "#e0a44a") throw new Error(`a waiting row must stay amber, got ${dotRule("warn")}`);
+console.log("SessionRow status ladder ok: 空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中");
 
 // ── 子智能体 rows (P32) ─────────────────────────────────────────────────────
 // A child row is not a session the user can act on: it has no checkbox, no

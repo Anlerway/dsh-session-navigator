@@ -187,13 +187,13 @@ test("a log that never started a turn is blank, and the log outranks the cache",
   // The projcache only knows about sessions DSH itself listed; a log the plugin
   // found by walking the data dir has no record. Its first frame is the witness.
   const view = viewOf([{ id: "s" }], {
-    logFacts: new Map([["s", { turnStart: false, lastType: "session/header", torn: false }]]),
+    logFacts: new Map([["s", { turnStart: false }]]),
   });
   assert.equal(view.sessions[0].blank, true);
 
   // A cache that says "blank" is not the truth when the log holds a turn.
   const view2 = viewOf([{ id: "s" }], {
-    logFacts: new Map([["s", { turnStart: true, lastType: "turn/end", torn: false }]]),
+    logFacts: new Map([["s", { turnStart: true }]]),
   });
   assert.equal(view2.sessions[0].blank, false);
 
@@ -201,29 +201,29 @@ test("a log that never started a turn is blank, and the log outranks the cache",
   assert.equal(viewOf([{ id: "s" }]).sessions[0].blank, null);
 });
 
-test("a log that ends mid-turn is 已中断, not 空闲", () => {
-  // A crash, a killed process, a window closed mid-answer: the last event is a
-  // `turn/start` that never got its `turn/end`. DSH knows liveness only in
-  // memory, so the file itself is the only witness that the turn was cut off.
-  const view = viewOf([{ id: "cut" }, { id: "done" }, { id: "live" }], {
+test("the view carries no liveness inference from the log", () => {
+  // 已中断 was inferred here — "the newest turn boundary is a turn/start" — and
+  // the maintainer removed it: DSH decides liveness in memory and reports one
+  // state, so the panel reports the same one instead of a second opinion. The
+  // rows below differ only in what the log holds, and none of them may turn
+  // that into a status.
+  const view = viewOf([{ id: "cut" }, { id: "done" }, { id: "live" }, { id: "titled" }], {
     logFacts: new Map([
-      ["cut", { turnStart: true, lastType: "turn/start", torn: false }],
-      ["done", { turnStart: true, lastType: "turn/end", torn: false }],
-      ["live", { turnStart: true, lastType: "turn/start", torn: false }],
+      ["cut", { turnStart: true }],
+      ["done", { turnStart: true }],
+      ["live", { turnStart: true }],
+      ["titled", { turnStart: true }],
     ]),
     running: new Set(["live"]),
   });
+  for (const session of view.sessions) {
+    assert.equal("interrupted" in session, false, "no row carries an inferred liveness state: " + session.id);
+  }
+  // What the view still says is what the kernel said, and nothing more.
   const byId = new Map(view.sessions.map((session) => [session.id, session]));
-  assert.equal(byId.get("cut").interrupted, true);
-  assert.equal(byId.get("done").interrupted, false);
-  // Both flags can be true at once; the UI lets `running` win, because an open
-  // log that belongs to a live session is a turn in progress.
-  assert.equal(byId.get("live").interrupted, true);
   assert.equal(byId.get("live").running, true);
-  // A log whose first turn could not be located is never called interrupted:
-  // an unread head must not produce a scary label.
-  const unknown = viewOf([{ id: "u" }], {
-    logFacts: new Map([["u", { turnStart: null, lastType: "turn/start", torn: false }]]),
-  });
-  assert.equal(unknown.sessions[0].interrupted, false);
+  assert.equal(byId.get("cut").running, false);
+  // An unread head is still "unknown", which the row keeps as `blank: null`.
+  const unknown = viewOf([{ id: "u" }], { logFacts: new Map([["u", { turnStart: null }]]) });
+  assert.equal(unknown.sessions[0].blank, null);
 });

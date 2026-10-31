@@ -105,7 +105,8 @@ lib/
 │  ├─ heads.js        233  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）
 │  ├─ projcache.js    228  L1：storages/session_projcache 的每会话小 JSON
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
-│  ├─ logfacts.js     250  日志两端：空白会话 / 已中断（按 path|size|mtime 有界缓存）
+│  ├─ logfacts.js     154  日志只回答一件事：这个会话有没有过一轮对话（空白会话），按 path|size|mtime 有界缓存
+│  ├─ live.js         122  哪些会话真的在跑：只信 ctx.agents 的 status，绝不从 ctx.sessions 或日志推断
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
 │  ├─ content.js      389  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
 │  └─ reader.js       313  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
@@ -135,6 +136,8 @@ lib/
 │  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时，启动收尾而不是留下孤儿
 │  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
+│  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
+│  ├─ storage-watch.js 146  盯 storages/ 目录的 mtime：DSH 改了投影缓存就重读，事件漏了也有兜底
 │  ├─ theme.js        103  调色板令牌白名单与校验
 │  ├─ native-reveal.js 107 koffi → `SHOpenFolderAndSelectItems`，"在文件夹中显示"
 │  ├─ reveal-agent.js  203 常驻 PowerShell：省掉每次 reveal 一秒多的进程启动
@@ -355,6 +358,13 @@ GET /bootstrap  →  一次往返把面板需要的全部东西给客户端
 id 列表）。路由侧统一用 `assertStandalone()` 拒绝单独操作（`subagent-unsupported`），回收站三条
 路由再用 `withDescendants()` 把整条委派链一起带走；归档不写子会话，靠 `sessions.js` 的
 `archivedUp` 从祖先派生。客户端只消费 `session-state` 里的 `subagent` 位，不自己判断。
+
+**状态不在 `/bootstrap` 里。** 一行会话是"进行中 / 等待审批 / 已完成 / 空闲"这件事，只有 DSH
+自己的客户端知道：`uiSession.sessionStatus` 是一个 `HostObservable`，插件用 `useSyncExternalStore`
+订阅它（`useDshSessionStatus`），再用 `withDshStatus` 把 `pendingInteraction` / `running` /
+`completionUnread` / 运行中的子会话数折进列表行，`statusOf` 按 DSH 的阶梯取第一档。这样侧栏和面板
+看的是同一份内存状态，不必等下一次扫描，也不会各自推断出不同的答案——日志只回答"有没有过一轮"，
+不再回答"这轮是不是断了"。
 
 ## 7. 硬约束（写代码前先读这一节）
 
