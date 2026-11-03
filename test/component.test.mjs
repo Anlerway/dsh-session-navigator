@@ -18,10 +18,10 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { ELECTRON_VERSION, componentPaths, runtimePaths } from "../lib/component/layout.js";
 import { downloadAsset } from "../lib/component/downloader.js";
@@ -37,10 +37,39 @@ import {
 } from "../lib/component/install.js";
 import { emptyState, normalizeState, readState, writeState, createProgressWriter } from "../lib/component/state.js";
 import { createComponentManager } from "../lib/component/manager.js";
+import { borrowedPaths, inspectBorrowed, scanBorrowedRuntimes } from "../lib/component/borrow.js";
 
 async function sandbox() {
   const root = await mkdtemp(join(tmpdir(), "se-component-"));
   return { root, cleanup: () => rm(root, { recursive: true, force: true }) };
+}
+
+/**
+ * An Electron tree shaped the way a plugin that downloaded its own copy leaves
+ * one: the platform executable, `resources/` and the `version` file Electron's
+ * zip ships. Nothing here is a real executable — the tests never spawn it.
+ */
+async function fakeRuntime(root, { version = "44.0.0" } = {}) {
+  const paths = borrowedPaths(root, process.platform);
+  await mkdir(dirname(paths.binary), { recursive: true });
+  await writeFile(paths.binary, "");
+  await mkdir(dirname(paths.defaultApp), { recursive: true });
+  await writeFile(paths.defaultApp, "");
+  await writeFile(paths.versionFile, `${version}\n`);
+  return paths;
+}
+
+/** Every entry under `dir`, so a test can prove a tree was left untouched. */
+async function tree(dir) {
+  const out = [];
+  const walk = async (at, prefix) => {
+    for (const entry of await readdir(at, { withFileTypes: true })) {
+      out.push(prefix + entry.name + (entry.isDirectory() ? "/" : ""));
+      if (entry.isDirectory()) await walk(join(at, entry.name), prefix + entry.name + "/");
+    }
+  };
+  await walk(dir, "");
+  return out.sort();
 }
 
 // ── layout ──────────────────────────────────────────────────────────────────
@@ -367,3 +396,171 @@ test("removeTree deletes a runtime that has no asar bundle left", async () => {
     await box.cleanup();
   }
 });
+
+// ── borrowing another plugin's runtime ──────────────────────────────────────
+
+test("inspectBorrowed accepts a tree Electron could start and refuses the near misses", async () => {
+  const box = await sandbox();
+  try {
+    const good = join(box.root, "plugin-a", "electron");
+    await fakeRuntime(good, { version: "43.3.0" });
+    const found = await inspectBorrowed(good);
+    assert.equal(found.root, good);
+    assert.equal(found.electronVersion, "43.3.0");
+    assert.equal(found.binary, borrowedPaths(good).binary);
+    assert.equal(found.hasDefaultApp, true);
+    assert.equal(found.hasApp, false);
+
+    // An empty directory is not a runtime.
+    const empty = join(box.root, "empty");
+    await mkdir(empty, { recursive: true });
+    assert.equal(await inspectBorrowed(empty), null);
+
+    // A binary without `resources/` would start Electron's own default app, so
+    // the window would never become this plugin's window.
+    const bare = join(box.root, "bare");
+    await mkdir(dirname(borrowedPaths(bare).binary), { recursive: true });
+    await writeFile(borrowedPaths(bare).binary, "");
+    assert.equal(await inspectBorrowed(bare), null);
+
+    // Without a version file the settings page could not say what it offers to
+    // start, and a repackaged non-Electron binary would look identical.
+    const unversioned = join(box.root, "unversioned");
+    await fakeRuntime(unversioned);
+    await rm(borrowedPaths(unversioned).versionFile);
+    assert.equal(await inspectBorrowed(unversioned), null);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("scan finds one plugin's runtime and stays out of the bulky trees", async () => {
+  const box = await sandbox();
+  try {
+    const home = join(box.root, "dsh");
+    const wanted = join(home, "dsh-orb", "electron-runtime");
+    await fakeRuntime(wanted, { version: "44.0.0" });
+    // Buried where the scan must not walk: sessions can hold tens of thousands
+    // of directories, and none of them is a runtime.
+    await fakeRuntime(join(home, "sessions", "abc", "electron"), { version: "44.0.0" });
+    await fakeRuntime(join(home, "node_modules", "electron"), { version: "44.0.0" });
+    // One level deeper than the advertised depth.
+    await fakeRuntime(join(home, "a", "b", "c", "d", "electron"), { version: "44.0.0" });
+
+    const found = await scanBorrowedRuntimes({ home });
+    assert.deepEqual(found.map((candidate) => candidate.root), [wanted]);
+
+    // A missing home is "nothing found", not an error: the caller renders an
+    // empty scan rather than a failed one.
+    assert.deepEqual(await scanBorrowedRuntimes({ home: join(box.root, "nowhere") }), []);
+    assert.deepEqual(await scanBorrowedRuntimes({}), []);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a borrowed runtime is started from this plugin's own app and never written to", async () => {
+  const box = await sandbox();
+  try {
+    const dataDir = join(box.root, "data");
+    await mkdir(dataDir, { recursive: true });
+    const borrowed = join(box.root, "other-plugin", "electron-runtime");
+    await fakeRuntime(borrowed, { version: "44.0.0" });
+    const before = await tree(borrowed);
+
+    const manager = createComponentManager(dataDir);
+    const status = await manager.install({ borrowed });
+
+    assert.equal(status.phase, "ready");
+    assert.equal(status.source, "borrowed");
+    assert.equal(status.borrowed, resolve(borrowed));
+    assert.equal(status.electronVersion, "44.0.0");
+    // A borrow costs nothing, so the size figures must not claim otherwise.
+    assert.equal(status.receivedBytes, 0);
+    assert.equal(status.sizeBytes, 0);
+    assert.equal(manager.binary, borrowedPaths(borrowed).binary);
+    // The app is this plugin's, under its own data directory: writing it into
+    // the borrowed tree would mean editing another plugin's install.
+    assert.equal(manager.appDir, componentPaths(dataDir).helperApp);
+    assert.match(await readFile(join(manager.appDir, "index.js"), "utf8"), /DSH_SE_HELPER_MAIN/);
+
+    // The borrowed tree is byte-for-byte what it was, with no `resources/app`
+    // added by us.
+    assert.deepEqual(await tree(borrowed), before);
+    assert.equal(existsSync(join(borrowed, "resources", "app")), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a borrowed runtime that the owning plugin removed degrades to absent", async () => {
+  const box = await sandbox();
+  try {
+    const dataDir = join(box.root, "data");
+    await mkdir(dataDir, { recursive: true });
+    const borrowed = join(box.root, "other-plugin", "electron-runtime");
+    await fakeRuntime(borrowed);
+
+    const manager = createComponentManager(dataDir);
+    await manager.install({ borrowed });
+
+    // The other plugin upgrades or uninstalls while DSH keeps running.
+    await rm(borrowed, { recursive: true, force: true });
+    const status = await manager.status();
+    assert.equal(status.phase, "absent");
+    assert.equal(status.borrowed, null);
+    assert.equal(status.canRemove, false);
+    // Recorded, not just reported: a restart must not resurrect the dead path.
+    assert.equal((await readState(componentPaths(dataDir).state)).phase, "absent");
+    assert.equal((await readState(componentPaths(dataDir).state)).borrowed, null);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("uninstalling a borrow forgets the path and leaves the other plugin's tree alone", async () => {
+  const box = await sandbox();
+  try {
+    const dataDir = join(box.root, "data");
+    await mkdir(dataDir, { recursive: true });
+    const borrowed = join(box.root, "other-plugin", "electron-runtime");
+    await fakeRuntime(borrowed);
+    const before = await tree(borrowed);
+
+    const manager = createComponentManager(dataDir);
+    await manager.install({ borrowed });
+    const removed = await manager.remove({ closeHelper: async () => true });
+
+    assert.equal(removed.phase, "absent");
+    assert.equal(removed.leftover, false);
+    // Forgetting is the whole uninstall: the bytes belong to the other plugin.
+    assert.deepEqual(await tree(borrowed), before);
+    // Our half — the app written under the data directory — is cleaned up.
+    assert.equal(existsSync(componentPaths(dataDir).helperApp), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a borrow is refused for a directory that is not a runtime and for one inside the data directory", async () => {
+  const box = await sandbox();
+  try {
+    const dataDir = join(box.root, "data");
+    await mkdir(dataDir, { recursive: true });
+    const manager = createComponentManager(dataDir);
+
+    const bogus = join(box.root, "not-electron");
+    await mkdir(bogus, { recursive: true });
+    await assert.rejects(() => manager.install({ borrowed: bogus }), { code: "component-borrow-invalid" });
+
+    // Borrowing this plugin's own data directory would make uninstall
+    // ambiguous: it deletes what we own and keeps what we borrow.
+    const inside = join(dataDir, "component", "runtime-x");
+    await fakeRuntime(inside);
+    await assert.rejects(() => manager.install({ borrowed: inside }), { code: "component-borrow-invalid" });
+    assert.equal(manager.snapshot.phase, "absent");
+  } finally {
+    await box.cleanup();
+  }
+});
+

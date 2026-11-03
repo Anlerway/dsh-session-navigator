@@ -1,15 +1,24 @@
 # 浏览器组件
 
 独立弹窗需要一份 DSH 不会给的运行时：DSH 的桌面主进程禁掉了 `window.open`，也不把
-`BrowserWindow` 暴露给插件。所以本插件自带一份**可选**的 Electron 运行时，由用户显式下载，
-装在自己的目录里，带自己的固定校验和。不共享、不借用任何其它插件的东西。
+`BrowserWindow` 暴露给插件。所以本插件自带一份**可选**的 Electron 运行时，由用户显式获取。
+两条路，都由用户按下按钮：
 
-四条设计规则（`lib/component/layout.js:20-30`），其余模块都靠它们成立：
+1. **下载**。装在自己的目录里，带自己的固定校验和。
+2. **借用**。机器上别的插件（比如 dsh-orb）已经装过一份 Electron 时，扫描出来、借它的可执行文件。
+   只读：**不往那棵树里写一个字节**，卸载也只是忘掉这条记录（§8）。
+
+DSH 没有提供"借用运行时"的接口（`ctx.sidebarRight.openTab("browser")` 只是 tab 宿主，不给插件
+注入 Electron 或 Node），所以扫描是本插件自己用 `readdir` 做的有界遍历，见 §8。
+
+五条设计规则（`lib/component/layout.js:20-34`），其余模块都靠它们成立：
 
 1. **从不隐式下载。** 缺席是正常状态，主插件在没有组件时完全可用。
-2. **`ready` 意味着"标记文件和可执行文件都在"。** 别的任何东西都无权宣称就绪。
+2. **`ready` 意味着"能启动的东西确实在"。** 自己装的看标记文件 + 可执行文件，借来的看那棵树上的
+   可执行文件还在（有探测，见 §8）。别的任何东西都无权宣称就绪。
 3. **所有变更（install/cancel/remove）共用一把 promise 锁。** 两次点击不能交错，留下半个解压目录。
 4. **失败的安装绝不删掉上一次能用的安装。** 新字节落在 staging，靠 rename 发布。
+5. **借来的运行时只读。** 应用跟着自己的数据目录走，由命令行参数交进去；卸载只忘掉路径。
 
 ## 1. 装在哪
 
@@ -24,7 +33,13 @@
 ├── download/<asset>.part.json { url, etag, received, totalBytes }
 └── runtime-<stamp>/           一次安装一个**不可变**的运行时
     └── .complete-44.0.0       ← 标记：存在即 "ready"
+
+<dataDir>/detached/helper-app/ 本插件的两文件应用（§6）。借用别人的运行时时，应用写在这里，
+                               由命令行参数交给 Electron——它不在任何人的运行时目录里
 ```
+
+借来的运行时**不在**这棵树里：它在别人的目录下，state 里只记一条绝对路径（`borrowed`）。
+所以迁移数据目录搬不走它，也不需要搬——搬家只丢那条指针，重新扫一次就找回来。
 
 **为什么运行时目录带版本戳。** 安装发布到一个全新的 `runtime-<stamp>` 并把 state 指过去，
 而不是 rename 覆盖 `runtime/`。Windows 在目录里**任何**文件被打开时都会拒绝 rename（EPERM）
@@ -50,7 +65,7 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 ## 3. 镜像
 
-`MIRRORS`（`lib/component/layout.js:71`），按顺序尝试：
+`MIRRORS`（`lib/component/layout.js:76`），按顺序尝试：
 
 | id | 前缀 |
 |---|---|
@@ -61,26 +76,26 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 三个独立的国内镜像排在 GitHub 前面，因为 GitHub 的 release 下载在国内经常 302 到一个会卡住的 CDN。
 它们提供的都是**同一份**官方 zip，固定 SHA-256 仍然会校验，所以镜像换不掉字节。
-`install` 传 `source: "github"` 时顺序反转（`lib/component/manager.js:414`）。
+`install` 传 `source: "github"` 时顺序反转（`lib/component/manager.js:490`、`:532`）。
 
-**续传只能续同一个镜像**（`lib/component/downloader.js:244`）：`.part.json` 里的 `url` 与当前
+**续传只能续同一个镜像**（`lib/component/downloader.js:270-273`）：`.part.json` 里的 `url` 与当前
 镜像不符时先删掉旧片段。另一个镜像的字节是另一条流，追加进去正是"续传出坏包"的成因。
 镜像不支持 Range（对分段请求直接返回整个文件）时，清空重下一次。
 
 下载用系统的 `curl` 子进程，`--progress` 由轮询 `.part` 的大小得到（`PROGRESS_INTERVAL_MS`），
 而不是解析 curl 的输出。
 
-**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`lib/component/downloader.js:42`）：`content-length`
+**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`lib/component/downloader.js:49`）：`content-length`
 超限在写第一个字节前就拒（`component-download-too-large`），实际落盘超限同样拒；curl 侧还有
 `--max-filesize` 兜底。正常的 Electron 包约 110 MB，一个数量级的余量足够，同时把"被劫持的镜像
 先写满磁盘再被摘要拒掉"变成"直接拒掉"。
 
 ## 4. 状态机
 
-`PHASES`（`lib/component/state.js:25`）：`absent` / `downloading` / `verifying` / `extracting` /
+`PHASES`（`lib/component/state.js:27`）：`absent` / `downloading` / `verifying` / `extracting` /
 `ready` / `error`。未知 phase 降级成 `absent`，而不是渲染一个 UI 不认识的状态。
 
-一次 `install` 的顺序（`lib/component/manager.js:380-520`）：
+一次 `install` 的顺序（`lib/component/manager.js:457-650`）：
 
 | # | 步骤 | 细节 |
 |---|---|---|
@@ -96,8 +111,11 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 取消（`component-cancelled`）回到 `absent` 且不留错误；其它失败进 `error` 并把消息写进 state。
 
+`source` 因此有两种取值：`reuse` 是步骤 1 复用自己的残留安装，`borrowed` 是借用别人的运行时
+（§8）。借用**不进上面任何一步**——不下载、不校验、不解压、不扫旧，只写一条记录。
+
 **卸载前先关窗口，而且"关掉了"必须是真的**：`remove()` 调 `closeHelper()`（即
-`api.detached.close()`），只有它返回 `true` 才继续（`lib/component/manager.js:549-552`）。
+`api.detached.close()`），只有它返回 `true` 才继续（`lib/component/manager.js:662-665`）。
 `close()` 的返回值因此是"现在确实没有在跑的 helper"：先发 `close` 消息，1.5 秒后还在就 `SIGTERM`，
 再 0.5 秒后还在就 `SIGKILL`，最后用 `exitCode !== null` 判断（`lib/detached/launcher.js:318-345`）。
 以前它无条件返回 `true`，于是一个不理会退出信号的窗口会让 `remove` 删掉它正在用的可执行文件。
@@ -155,6 +173,17 @@ staging 里就把 app 写好，跟着树一起 rename 发布；每次 `launch()`
 同理不能把绝对 `main.cjs` 交给 `package.json`——`main` 会在 app 目录里解析
 （`ERROR: File "…\\lib\\detached\\main.cjs" ("main.mjs") not found`），这也是那个 shim 存在的原因。
 
+**借来的运行时不写 `resources/app`。** 那棵树属于别的插件，往里写等于替它升级。借用时同一个两文件
+应用写在 `<dataDir>/detached/helper-app`，并作为**第一个命令行参数**交进去：
+
+```
+electron.exe <dataDir>\detached\helper-app --user-data-dir=<dataDir>\detached\chromium\<profile>
+```
+
+Electron 的第一个参数是目录时按应用加载，所以借来的树一个字节都不用变——它自己的
+`resources/default_app.asar` 或 `resources/app` 都不被使用，也不被打开
+（`lib/detached/launcher.js:226-232`、`:247-255`）。
+
 还有一处必须显式清掉的环境变量：DSH 桌面版自己是带着 `ELECTRON_RUN_AS_NODE=1` 跑的，子进程会
 继承它，于是"窗口"变成一个跑完就退的纯 Node 进程。`launch()` 里 `delete env.ELECTRON_RUN_AS_NODE`。
 
@@ -169,8 +198,44 @@ staging 里就把 app 写好，跟着树一起 rename 发布；每次 `launch()`
 | `lib/component/layout.js` | 版本、固定哈希、镜像、路径表、体积常量 |
 | `lib/component/state.js` | phase 集合、state 的读写与归一化、进度写入节流 |
 | `lib/component/downloader.js` | curl 下载、续传、镜像切换、进度轮询 |
-| `lib/component/install.js` | `verifyZip` / `extractZip` / `installHelperApp` / `publishRuntime` / `removeTree` / `freeBytes` |
-| `lib/component/manager.js` | 单飞状态机、`status()`、`install` / `cancel` / `remove` / `retry`、pending 清扫 |
-| `lib/detached/launcher.js` | spawn / 聚焦 / 关闭；spawn 前刷 `resources/app` |
+| `lib/component/install.js` | `verifyZip` / `extractZip` / `writeHelperApp` / `installHelperApp` / `publishRuntime` / `removeTree` / `freeBytes` |
+| `lib/component/borrow.js` | 借用：`borrowedPaths` / `inspectBorrowed` / `scanBorrowedRuntimes`（只 `readdir`，不碰 `.asar`） |
+| `lib/component/manager.js` | 单飞状态机、`status()`、`scan()`、`install` / `cancel` / `remove` / `retry`、pending 清扫 |
+| `lib/detached/launcher.js` | spawn / 聚焦 / 关闭；spawn 前刷 `resources/app`（借来的刷 `helper-app`） |
 | `lib/detached/main.cjs` | Electron 窗口 |
 | `lib/detached/preload.cjs` | 预加载注入 |
+## 8. 借来的运行时
+
+机器上常常已经有 Electron 了：dsh-orb 之类的插件自己就装了一份。为同一个窗口再下 150 MB 说不过去，
+所以设置页有个 **扫描其它插件** 按钮（`GET /component/scan`），把候选列出来，用户挑一个 **借用**。
+
+**扫描是只读的，而且很小。** `scanBorrowedRuntimes()`（`lib/component/borrow.js`）从 DSH 的主目录
+（`dshHome()`：`$DSH_HOME` 或 `~/.dsh`）开始做**宽度优先、最多 3 层**的 `readdir` 遍历：
+
+| 规则 | 理由 |
+|---|---|
+| 命中就停止下钻 | 一棵运行时下面还有几万个文件，进去只会让扫描变慢 |
+| 跳过 `sessions` / `storages` / `cache` / `profiles` / `node_modules` / `attachments` / `skills` 等 | 这些目录与运行时无关，且可能极大 |
+| 跳过以 `.` 开头的目录 | 半成品与临时目录 |
+| 只 `readdir`，不 `stat` 任何 `.asar` | §5 的 EBUSY 就是这么来的：`stat` 一个 `.asar` 会在 DSH 进程里缓存句柄直到退出 |
+
+一个目录要同时满足三条才算候选项（`inspectBorrowed`）：
+
+1. 平台对应的可执行文件在（win32 `electron.exe`、darwin `Electron.app` 目录、其它 `electron`）；
+2. `resources/` 目录在；
+3. 能从 `version` / `version.json` 里解析出一个版本号——列表里要显示"哪一份更新"，猜是没意义的。
+
+**借用本身**是 `POST /component/install` 带 `{ borrowed: "<绝对路径>" }`（不是新路由：状态机只有一台）。
+它先复验（目录可能在这几秒里被删掉）、拒绝数据目录内部的路径，然后只做两件事：把两文件应用写到
+`<dataDir>/detached/helper-app`，把 state 写成 `{ phase: "ready", source: "borrowed", borrowed: <绝对路径> }`。
+失败一律 `component-borrow-invalid`（400），不是 500——路径不对是用户的选择带来的，不是服务器坏了。
+
+**状态不靠标记文件。** 借来的树上没有 `.complete-44.0.0`，所以 `reconcile()` 每次都用
+`inspectBorrowed()` 探一次那条记录里的路径：还在就 `ready`（版本号就地更新，别的插件升级了我们也跟着升），
+不在了就降级成 `absent` 并**清掉记录**——那棵树被别人删了，我们没有任何理由继续声称就绪。
+`status()` 对借来的运行时**不统计体积**（`sizeBytes: 0`）：为了一个数字去遍历别人 400 MB 的树不值得。
+
+**卸载 = 断开借用。** `remove()` 遇到 `state.borrowed` 只删自己的 `helper-app` 和那条记录，一个
+`rm` 都不会落到被借的树上；按钮文案也换成了"断开借用"。这也是借用与 `reuse` 的分界：`reuse` 复用的是
+**我们自己的**残留，可以删；借来的永远是别人的。
+

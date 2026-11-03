@@ -559,3 +559,54 @@ test("the panel tells the Host which language it is drawing in", () => {
   assert.equal(opens.length, 4, "four places open the window");
   for (const args of opens) assert.match(args, /lang: uiLang\(\)/, "open-window call carries the language: " + args);
 });
+
+// ── a borrowed runtime ─────────────────────────────────────────────────────
+// The window may be started from another plugin's Electron. That tree must not
+// be written to, so the app is this plugin's and travels as an argument.
+
+test("a borrowed runtime is started with this plugin's app path, an owned one without", () => {
+  const launcher = read("lib/detached/launcher.js");
+  // The app is refreshed in our own directory for a borrow …
+  assert.match(launcher, /if \(runtime\.appDir\) await writeHelperApp\(runtime\.appDir\);/, "a borrow writes the app outside the borrowed tree");
+  // … and inside the runtime for an install we own.
+  assert.match(launcher, /else await installHelperApp\(dirname\(runtime\.binary\)\);/, "an owned runtime keeps the app at resources/app");
+  // Electron runs a directory given as its first argument as the app, which is
+  // how a borrowed runtime never needs a resources/app of ours.
+  // The template literal's own backtick is built at runtime so this test file
+  // stays free of a stray one.
+  const bt = String.fromCharCode(96);
+  assert.match(
+    launcher,
+    new RegExp("runtime\\.appDir\\s*\\n?\\s*\\? \\[runtime\\.appDir, " + bt + "--user-data-dir=\\$\\{userData\\}" + bt + "\\]"),
+    "the borrowed binary gets the app directory first",
+  );
+  assert.match(launcher, new RegExp(": \\[" + bt + "--user-data-dir=\\$\\{userData\\}" + bt + "\\];"), "an owned runtime gets no path argument");
+});
+
+test("the Host hands the launcher the borrowed app directory and the borrow record", () => {
+  const host = read("lib/index.js");
+  assert.match(host, /appDir: status\.borrowed \? component\.paths\.helperApp : null/, "the runtime thunk names the app directory");
+  assert.match(host, /"GET \/component\/scan": async \(api\) => api\.component\.scan\(\{ home: dshHome\(\) \}\)/, "the scan route reads DSH's home on the Host, never in the page");
+  assert.match(host, /case "component-borrow-invalid":\s*\n?\s*return 400;/, "a refused borrow is a bad request, not a server error");
+});
+
+test("the scan route resolves DSH's home itself, instead of asking the page for it", async () => {
+  // The route's own api object is this plugin's, not the kernel's: it carries
+  // services, never a home path. Reading one there threw "api.dshHome is not a
+  // function" the moment the page asked to scan, so the home is resolved on the
+  // Host — the same rule every other route follows.
+  const { ROUTES } = await import("../lib/index.js");
+  const handler = ROUTES["GET /component/scan"];
+  assert.equal(typeof handler, "function", "the route is registered");
+
+  let seen = null;
+  const scan = (input) => {
+    seen = input;
+    return { home: input.home, candidates: [], current: { phase: "absent" } };
+  };
+  const answer = await handler({ component: { scan } }, {});
+
+  assert.equal(typeof seen.home, "string", "a home path reaches the manager");
+  assert.ok(seen.home.length > 0, "and it is not empty");
+  assert.equal(answer.home, seen.home, "the page is told which tree was scanned");
+});

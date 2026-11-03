@@ -409,22 +409,33 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 | 路由 | body | 返回 |
 |---|---|---|
 | `GET /component/status` | — | 见下 |
-| `POST /component/install` | `{ mirror? }` | 同 status |
+| `GET /component/scan` | — | `{ home, candidates, current }` |
+| `POST /component/install` | `{ mirror?, borrowed? }` | 同 status |
 | `POST /component/cancel` | — | 同 status |
 | `POST /component/remove` | — | 同 status |
 | `POST /component/retry` | — | 同 status（续传已有 `.part`） |
 
-status 的形状（`lib/component/manager.js:345`）：
+status 的形状（`lib/component/manager.js:404-429`，整个 state 加上算出来的几个字段）：
 
 ```jsonc
 {
   "phase": "absent | downloading | verifying | extracting | ready | error",
+  "source": "reuse | borrowed | null",
+  "borrowed": "借来的运行时绝对路径（source=borrowed 时，否则 null）",
   "receivedBytes": 0, "sizeBytes": 0,
   "approxDownloadBytes": 157455369, "approxDiskBytes": 383650096,
   "canRemove": false, "pendingCleanup": 0,
   "error": "上一次失败的原因（phase=error 时）"
 }
 ```
+
+`GET /component/scan` 列的是**别的插件已经装好的** Electron（只 `readdir`，不写、不 `stat` `.asar`），
+`candidates` 每项是 `{ root, binary, electronVersion, hasDefaultApp, hasApp }`，按版本降序；`current` 就是 status，
+扫描不受下载影响（不走同一把锁）。`POST /component/install { borrowed }` 借用其中一份：写自己的
+`helper-app` 和一条 `borrowed` 记录，**不往被借的树里写任何东西**；路径在数据目录内、或不是能启动的
+Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务器坏了）。
+`sizeBytes` 对借来的运行时恒为 0——体积是别人的，也不值得为它遍历几百 MB。细节见
+[component.md §8](component.md)。
 
 轮询而不是 SSE：唯一会变的数字是下载百分比，而看它的那个页面只开几秒。
 `remove` 会先关掉独立窗口（`component-in-use` 的替代路径），并在删不掉时把路径记进

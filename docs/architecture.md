@@ -148,15 +148,16 @@ lib/
 │  ├─ summarize.js    787  AI 字段队列：模型目录、路由、单飞 worker、重试与 token 落账（调 DSH 的 llm 服务）
 │  └─ reset.js        209  清除数据：五份侧车 + 回收站净内容 + 隔离区 + `.tmp`，`DELETE` 把关
 │
-├─ component/               可选 Electron 运行时
-│  ├─ layout.js       226  路径、版本、SHA-256、镜像、体积
-│  ├─ state.js        168  state.v1.json 生命周期机
+├─ component/               可选 Electron 运行时：下载一份，或借用别人装好的
+│  ├─ layout.js       236  路径、版本、SHA-256、镜像、体积
+│  ├─ state.js        182  state.v1.json 生命周期机
 │  ├─ downloader.js   339  curl 流式下载（断点续传、镜像、进度）
-│  ├─ install.js      541  校验 → 解压 → 原子发布
-│  └─ manager.js      688  单飞状态机（install/cancel/remove 共享一把锁）
+│  ├─ install.js      558  校验 → 解压 → 原子发布；helper app 的两份落点
+│  ├─ borrow.js       258  只读扫描别的插件已装的 Electron（有界 readdir）
+│  └─ manager.js      790  单飞状态机（install/cancel/remove 共享一把锁）+ scan()
 │
 ├─ detached/
-│  ├─ launcher.js     415  Host 侧：spawn / 重试 / 聚焦 / 关闭、net 控制通道
+│  ├─ launcher.js     424  Host 侧：spawn / 重试 / 聚焦 / 关闭、net 控制通道
 │  └─ main.cjs        —    跑在 Electron 运行时里，拥有 BrowserWindow
 │
 └─ dsh/
@@ -396,7 +397,7 @@ id 列表）。路由侧统一用 `assertStandalone()` 拒绝单独操作（`sub
 | [data-directory.md](data-directory.md) | 数据目录解析、侧车文件、原子写、七步迁移 |
 | [tree-and-placement.md](tree-and-placement.md) | 树结构、R1–R5、节点 id、快捷方式、虚拟放置 |
 | [bridge-and-theme.md](bridge-and-theme.md) | 浮窗 ↔ 独立窗口的命令总线与调色板同步 |
-| [component.md](component.md) | 浏览器组件：下载、校验、安装、独立窗口进程 |
+| [component.md](component.md) | 浏览器组件：下载或借用运行时、校验、安装、独立窗口进程 |
 | [testing.md](testing.md) | 测试矩阵与怎么跑 |
 
 历史文档（已移出仓库，归档在 `C:\Users\mi\Desktop\project_old\docs-archive\`：`交接文档.md`、

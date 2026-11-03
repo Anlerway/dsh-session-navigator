@@ -265,11 +265,13 @@ test("a percentage preset follows the viewport", () => {
   assert.deepEqual(modalSizeOf({ sizing: "percent" }), { width: "70vw", height: "70vh" });
 });
 
-test("the 会话内容 index keeps its file and does not build itself by default", () => {
+test("the 会话内容 index keeps its file and builds itself while idle by default", () => {
   // Only the timing is a setting (m01916). Keeping the index file is not: it is
   // derived, it lives in the plugin's own data directory, and the whole reason
-  // it exists is the fast answer after a restart.
-  assert.deepEqual(defaultSettings().search, { indexIdle: false });
+  // it exists is the fast answer after a restart. m00001 索引默认开 turned the
+  // one remaining switch on: the build is sliced and bounded, so "off" only
+  // moved the cost onto the first search.
+  assert.deepEqual(defaultSettings().search, { indexIdle: true });
 });
 
 test("a search patch merges without disturbing the rest of the document", () => {
@@ -279,7 +281,7 @@ test("a search patch merges without disturbing the rest of the document", () => 
 });
 
 test("a search value that is not a boolean falls back to the default", () => {
-  assert.deepEqual(normalizeSettings({ search: { indexIdle: 1 } }).search, { indexIdle: false });
+  assert.deepEqual(normalizeSettings({ search: { indexIdle: 1 } }).search, { indexIdle: true });
   assert.deepEqual(normalizeSettings({ search: { indexIdle: true } }).search, { indexIdle: true });
 });
 

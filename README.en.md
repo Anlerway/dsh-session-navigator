@@ -173,7 +173,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Open mode | Floating panel | Floating panel / detached window; the detached window needs an extra browser runtime download and is Windows-only |
+| Open mode | Floating panel | Floating panel / detached window; the detached window needs a browser runtime — download one, or borrow the Electron another plugin already installed — and is Windows-only |
 | Session header button style | Auto | It can also be fixed to icon only |
 | Auto collapse | Off | Collapse sibling folders after entering one |
 | Show archived | On | Turned off, archived sessions are no longer listed at the bottom |
@@ -181,7 +181,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Collapse subagents | On | Click the arrow to expand |
 | Date format | Exact date | Or time since then |
 | Size unit | Auto | Switch between B / KB / MB / GB, or fix it to KB |
-| Build the index when idle | Off | Once on, it fills the index in slowly in the background after startup and holds up no request |
+| Build the index when idle | On | It fills the index in slowly in the background after startup and holds up no request; when a session's content changes, only that session is rebuilt on the next pass |
 | Rebuild / delete index | — | Rebuild from scratch, or delete the cache file |
 | Fields model | Host default | Pick a model and a reasoning effort from the DSH model catalogue |
 | Fill in what is missing | — | Queues every session missing a **description or tags**; progress shows on the settings page and at the bottom of the panel, and it can be stopped at any time |

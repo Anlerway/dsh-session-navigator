@@ -34,10 +34,16 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 │   ├── index.v1.json     回收站索引
 │   └── <trashId>/        被删会话的 payload（整个会话目录）
 ├── component/            可选的 Electron 运行时（见 component.md）
+│   ├── state.v1.json     生命周期记录（phase、来源、借用路径）
+│   └── runtime-<stamp>/  解压后的那份 Electron，装一次不可变
 └── detached/
     ├── window.json       独立窗口的几何与控制端口
+    ├── helper-app/       本插件的两文件应用；借用别人的运行时时，它在这里而不在那边
     └── chromium/<hash>/  helper 专用 Chromium profile
 ```
+
+借来的运行时**不在**这棵树下（见 component.md §8）：它是别的插件的安装，`component/state.v1.json`
+里只记一条绝对路径。所以迁移数据目录搬不走它、也不需要搬——重新扫一次就能指回去。
 
 `detached/chromium/<hash>` 的 `<hash>` 是 `sha256(dataDir)` 的前 16 位十六进制
 （`lib/detached/launcher.js:40`）：必须给 helper 一个专属的 `--user-data-dir`，
@@ -148,7 +154,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
             "hideBlank": true,           // 过滤空会话：开关，默认过滤
             "dateFormat": "date",        // date | relative，详细日期 vs 距今时间
             "sizeFormat": "auto" },      // auto | kb，自动转换 vs 固定 KB
-  "search": { "indexIdle": false },      // 空闲时自动建立索引：唯一的搜索索引开关，默认关
+  "search": { "indexIdle": true },       // 空闲时自动建立索引：唯一的搜索索引开关，默认开
   "summary": {                           // AI 字段的模型与要生成哪几项
     "provider": "",                      // 空串 = 让宿主挑（第一个 provider）
     "model": "",                         // 空串 = 该 provider 的第一个模型
@@ -173,6 +179,10 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 数字永远在，语言跟着面板当前的语言）；`auto` 在 B / KB / MB / GB 里挑合适的单位，`kb` 一列只用一个单位，方便竖着比大小。
 两者的默认值都等于改造之前的样子，所以升级不会改变任何人的列表。
 
+`indexIdle` 的默认值从 `false` 改成 `true`（m00001 第 3 条）：不打开这个开关，搜索就永远停在「没索引」，
+用户得先撞一次空结果才知道有这个东西。空闲索引本来就有上限——一次只做一个会话、给真请求让路、
+15 秒复查一次——所以默认开不会把机器拖住；不想用它的人关掉即可，关机前那点残留写入由 `nudge()` 立刻收尾。
+
 `mergeSettings()` 只认已知键，未知键在归一化时被丢掉，而不是落盘等下个版本困惑。
 `search` 现在只剩 `indexIdle` 一个键：1.0.6 的 `indexCache` 控制的那份派生缓存已经恒开（见 §3.1）。
 
@@ -190,6 +200,12 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
   搜索范围弹窗里跳过去的那一组，以及「清除数据」。
 - `version` 不匹配就当没有（不回写迁移）；文件坏了、临时目录不可写，搜索照常工作，只是每次重读。
 - 「清除数据」也会删它，并且不把它算进四份侧车那份清单里。
+
+**`sig` 是变更检测的全部依据。** 三个字段里有两个随对话增长而变（`sizeBytes`、`activityAt`），所以
+「内容变了」是一个可比对的事实，不是「mtime 看着不对」。空闲索引每一轮复查都重算 `sig`：对不上的
+会话重读日志重建，对得上的原样留在内存里（`lib/sources/content.js` 的 `sigOf`）。这就是 `indexIdle`
+默认为开后还安全的原因——一次正在进行的对话不会让整份索引失效，只会让那一个会话在下一次复查
+（`recheckDelayMs`，默认 15 秒）里更新，而且复查可以被 `nudge()` 提前成真跑。
 
 ## 4. 原子写与乐观锁
 
@@ -318,6 +334,7 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 | `lib/store/documents.js` | 四份文档的初始形状与迁移函数 |
 | `lib/domain/settings.js` | 设置形状的唯一出处、`mergeSettings`、`normalizeSettings` |
 | `lib/sources/content.js` | 会话内容索引：内存 + 恒落盘、按签名失效、`flush` / `clear` / `rebuild` |
+| `lib/component/borrow.js` | 借用：扫描别的插件已装的 Electron（只读）、探测、路径表 |
 | `lib/host/datadir.js` | `describeDataDir` / `inspectDataDir` / `migrateDataDir` |
 | `lib/host/trash.js` | 移动字节、维持索引、对账、恢复阶梯 |
 | `lib/host/move.js` | 跨工作区移动/复制、回滚、`reconcileMoves` |

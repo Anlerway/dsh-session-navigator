@@ -447,6 +447,40 @@ test("删除缓存 stops the build, and resume starts it again", async () => {
   }
 });
 
+test("a log that changed while the panel sat idle is re-indexed on its own", async () => {
+  // m00001 内容变动重建: the queue emptying is not the index finishing. A
+  // conversation keeps growing, and after a 移动 / 还原 its logPath changes too,
+  // so a finished pass queues a "look again" instead of stopping; sync() then
+  // queues exactly the sessions whose sig (logPath|sizeBytes|activityAt) moved
+  // on, and only those are read again.
+  const logs = { "C:/logs/a.zstd": ["alpha beta"] };
+  const { index, reads } = fixture(logs);
+  /** @type {any[]} */
+  let sessions = [session("a")];
+  const api = {
+    documents: { settings: { read: async () => ({ search: { indexIdle: true } }) } },
+    reader: { snapshot: async () => ({ sessions }) },
+    content: index,
+  };
+  const builder = createIndexBuilder({ idleDelayMs: 1, idleSliceMs: 1_000, recheckDelayMs: 5 });
+  try {
+    builder.nudge(api);
+    for (let i = 0; i < 80 && reads.length < 1; i += 1) await settleFor(5);
+    assert.equal(index.search("beta")[0]?.id, "a", "the first pass indexed the log");
+    assert.equal(index.state().pending, 0);
+
+    // The conversation grew: same path, longer log, newer activity.
+    logs["C:/logs/a.zstd"] = ["alpha beta gamma"];
+    sessions = [session("a", { sizeBytes: 200, activityAt: 2_000 })];
+    for (let i = 0; i < 120 && reads.length < 2; i += 1) await settleFor(5);
+    assert.equal(reads.length, 2, "the changed session was read again with no request");
+    assert.equal(index.search("gamma")[0]?.id, "a");
+    assert.equal(reads.length, 2, "an unchanged neighbour is not re-read");
+  } finally {
+    builder.stop();
+  }
+});
+
 /**
  * A log shaped the way a real one is: `time`, `data.message.content` on the
  * model's messages, `source.kind` on the user's, and tool output in its own

@@ -284,7 +284,14 @@ async function renderSettings({
   pendingReply = null,
   // 更新说明: the parsed document, or { ok: false } when the host has no file.
   notes = null,
+  // 浏览器组件 (m00001): what a scan of DSH's home finds. Mutable below, so an
+  // install or a borrow can change what the next status read says.
+  scan = null,
+  // The status payload, when a case needs more than a phase — a borrowed runtime
+  // is ready *and* remembers whose tree it is.
+  componentInfo = null,
 } = {}) {
+  let componentState = componentInfo ?? { phase: component, version: "1.0.0", installed: component === "ready" };
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
     if (path === "/settings" && call.method === "GET") {
@@ -385,7 +392,25 @@ async function renderSettings({
       };
     }
     if (path === "/component/status") {
-      return { ok: true, result: { phase: component, version: "1.0.0", installed: component === "ready" } };
+      return { ok: true, result: componentState };
+    }
+    // The manual scan is read-only on the host and never touches the runtimes it
+    // finds, so the stub only has to name them.
+    if (path === "/component/scan") {
+      if (scan && scan.ok === false) return scan;
+      return { ok: true, result: { home: "C:/Users/me/.dsh", candidates: [], ...(scan ?? {}) } };
+    }
+    // Borrowing arrives as an install with a path in the body; a real host then
+    // reports ready + borrowed, which is what the page must render.
+    if (path === "/component/install") {
+      componentState = call.body?.borrowed
+        ? { phase: "ready", version: "1.0.0", installed: true, source: "borrowed", sizeBytes: 0, borrowed: call.body.borrowed }
+        : { phase: "downloading", version: "1.0.0", installed: false, receivedBytes: 0, totalBytes: 100 };
+      return { ok: true, result: componentState };
+    }
+    if (path === "/component/remove") {
+      componentState = { phase: "absent", version: "1.0.0", installed: false };
+      return { ok: true, result: componentState };
     }
     // 关于: the update check, the cache clear and the link opener are the only
     // routes on this page that do something irreversible-ish, so the stub
@@ -1147,4 +1172,106 @@ test("a host with no model configured says so instead of drawing an empty row", 
   assert.match(textOf(group), /aiModelNone/);
   // With no pending work and no model, the sweep cannot run either.
   assert.equal(chipLabelled(group, "aiRunNow").props.disabled, true);
+});
+
+// ── 浏览器组件：借用别的插件已经装好的 Electron (m00001) ────────────────────
+// 150 MB is a lot to ask for twice on one machine. When another plugin already
+// has an Electron, this group can borrow it — read-only, nothing written into
+// that tree — so these cases check both halves of that promise: the page asks
+// the host for a scan and shows what it found, and the borrow it sends carries a
+// path instead of starting a download.
+
+const componentGroup = (tree) =>
+  collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupComponent"));
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+const CANDIDATE = { root: "C:/Users/me/.dsh/dsh-orb/electron-runtime", electronVersion: "44.0.0", hasDefaultApp: true };
+
+test("扫描其它插件 lists what DSH already has, and 借用 only writes the choice", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({
+    component: "absent",
+    scan: { candidates: [CANDIDATE] },
+  });
+  // Nothing is scanned on open — the host would walk someone's plugin tree every
+  // time the settings page is drawn. Two chips: download, or look around first.
+  const chips = collect(componentGroup(tree), byClass("se-set-chip"));
+  assert.deepEqual(chips.map(textOf), ["setCompDownload", "setCompScan"]);
+
+  chips[1].props.onClick();
+  await tick();
+  const scanCall = calls.find((call) => call.url.endsWith("/component/scan"));
+  assert.ok(scanCall, "the button asks the host, which is where the files are");
+
+  const afterScan = await driver.settle(() => page(driver, api, t));
+  const group = componentGroup(afterScan);
+  // The version tells a user which install is newer; the path tells them whose
+  // plugin it came from, which is the whole reason to look before borrowing.
+  assert.match(textOf(group), /Electron 44\.0\.0/);
+  assert.ok(textOf(group).includes(CANDIDATE.root), "the borrowed tree is named on the page");
+  const borrowChip = collect(group, byClass("se-set-chip")).find((chip) => textOf(chip) === "setCompBorrow");
+  assert.ok(borrowChip, "each hit offers 借用");
+
+  borrowChip.props.onClick();
+  await tick();
+  // A borrow is an install that names a path — the same route, so the host has
+  // one place to validate and one state machine to move.
+  const install = calls.find((call) => call.method === "POST" && call.url.endsWith("/component/install"));
+  assert.ok(install, "borrowing posts an install");
+  assert.deepEqual(install.body, { borrowed: CANDIDATE.root });
+  assert.equal(
+    calls.filter((call) => call.method === "PUT").length,
+    0,
+    "no settings are written: the runtime is state, not a preference",
+  );
+
+  const afterBorrow = await driver.settle(() => page(driver, api, t));
+  const ready = componentGroup(afterBorrow);
+  assert.deepEqual(collect(ready, byClass("se-set-chip")).map(textOf), ["setCompOpen", "setCompForget"]);
+  // 断开借用, not 卸载: the files belong to someone else and must survive it.
+  assert.match(textOf(ready), /setCompBorrowedFrom/);
+});
+
+test("a borrowed runtime is described by whose tree it is, not by a size", async () => {
+  const { tree } = await renderSettings({
+    componentInfo: { phase: "ready", version: "1.0.0", installed: true, source: "borrowed", sizeBytes: 0, borrowed: CANDIDATE.root },
+    interpolate: true,
+  });
+  const group = componentGroup(tree);
+  // 0 bytes is what a borrow reports (walking someone else's 400 MB tree on every
+  // status poll is not worth a number), so the line has to be absent rather than
+  // claim the install is empty.
+  assert.doesNotMatch(textOf(group), /setCompInstalledSize/);
+  assert.match(textOf(group), /setCompBorrowedFrom\(C:\/Users\/me\/\.dsh\/dsh-orb\/electron-runtime\)/);
+});
+
+test("a scan that finds nothing says so instead of showing an empty list", async () => {
+  const { tree, driver, api, t } = await renderSettings({ component: "absent", scan: { candidates: [] } });
+  const chips = collect(componentGroup(tree), byClass("se-set-chip"));
+  chips[1].props.onClick();
+  await tick();
+  const after = await driver.settle(() => page(driver, api, t));
+  assert.match(textOf(componentGroup(after)), /setCompScanNone/);
+  assert.equal(
+    collect(after, byClass("se-set-chip")).filter((chip) => textOf(chip) === "setCompBorrow").length,
+    0,
+    "no hits, no borrow buttons",
+  );
+});
+
+test("sending a borrowed runtime back offers the download again", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({
+    componentInfo: { phase: "ready", version: "1.0.0", installed: true, source: "borrowed", sizeBytes: 0, borrowed: CANDIDATE.root },
+  });
+  const forget = chipLabelled(componentGroup(tree), "setCompForget");
+  assert.ok(forget, "a borrowed runtime can be let go");
+
+  forget.props.onClick();
+  await tick();
+  assert.ok(
+    calls.some((call) => call.method === "POST" && call.url.endsWith("/component/remove")),
+    "the same route as an uninstall, because the state machine is the same",
+  );
+  const after = await driver.settle(() => page(driver, api, t));
+  assert.deepEqual(collect(componentGroup(after), byClass("se-set-chip")).map(textOf), ["setCompDownload", "setCompScan"]);
 });
