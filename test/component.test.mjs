@@ -510,9 +510,50 @@ test("a borrowed runtime that the owning plugin removed degrades to absent", asy
     assert.equal(status.phase, "absent");
     assert.equal(status.borrowed, null);
     assert.equal(status.canRemove, false);
+    // The source names where the bytes came from; there are none left to name.
+    assert.equal(status.source, null);
     // Recorded, not just reported: a restart must not resurrect the dead path.
-    assert.equal((await readState(componentPaths(dataDir).state)).phase, "absent");
-    assert.equal((await readState(componentPaths(dataDir).state)).borrowed, null);
+    const persisted = await readState(componentPaths(dataDir).state);
+    assert.equal(persisted.phase, "absent");
+    assert.equal(persisted.borrowed, null);
+    assert.equal(persisted.source, null);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("an owned runtime that vanished from disk is forgotten down to its source", async () => {
+  const box = await sandbox();
+  try {
+    const dataDir = join(box.root, "data");
+    await mkdir(dataDir, { recursive: true });
+    const paths = componentPaths(dataDir);
+    await mkdir(dirname(paths.marker), { recursive: true });
+    await writeFile(paths.marker, "");
+    await mkdir(dirname(paths.binary), { recursive: true });
+    await writeFile(paths.binary, "");
+    await writeState(paths.state, dataDir, {
+      ...emptyState(),
+      phase: "ready",
+      electronVersion: ELECTRON_VERSION,
+      source: "reuse",
+      runtimeName: paths.runtimeName,
+    });
+
+    const manager = createComponentManager(dataDir);
+    const ready = await manager.status();
+    assert.equal(ready.phase, "ready");
+    // "reuse" means an earlier install's bytes were adopted instead of downloaded.
+    assert.equal(ready.source, "reuse");
+
+    // Something deleted the runtime behind the plugin's back.
+    await rm(paths.runtime, { recursive: true, force: true });
+    const gone = await manager.status();
+    assert.equal(gone.phase, "absent");
+    assert.equal(gone.source, null);
+    const persisted = await readState(paths.state);
+    assert.equal(persisted.phase, "absent");
+    assert.equal(persisted.source, null);
   } finally {
     await box.cleanup();
   }
