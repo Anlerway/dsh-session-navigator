@@ -140,7 +140,10 @@ test("the shipped CHANGELOG.md is a real document, and matches the checkout note
   const shipped = await readFile(NOTE_FILES[1], "utf8");
   const parsed = parseNotes(shipped);
   assert.ok(parsed.title.length > 0, "it introduces itself");
-  assert.ok(parsed.blocks.length >= 5, "it has a body");
+  // Only the version being shipped is in the document — the list of what changed
+  // is short on purpose, and an older release's notes are not carried forward.
+  // Two blocks is the floor: the separator and the list of changes.
+  assert.ok(parsed.blocks.length >= 2, "it has a body");
 
   // NOTE_FILES[0] is the checkout copy, which exists only in a checkout. The
   // two are allowed to differ between edits: `scripts/sync-notes.mjs` copies
