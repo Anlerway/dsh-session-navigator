@@ -24,12 +24,11 @@ An index lives under `~/.dsh-session-navigator/`: folders, names, tags, notes.
 **Who it is for**: people with many sessions — sort, move, delete, annotate and rename your sessions and workspaces as you please, put sessions on a to-do list, in favorites or at the top, and session management is as simple as file management.
 
 - The folder tree is built from your workspaces; make folders of your own, nest them as deep as you like, and drag workspaces and sessions in and out
-- All sessions is cut into one band per workspace, captioned with the workspace's name; click a caption to fold the whole band, and the folded set is saved together with the layout
-- Sidecar projections are reused by file size + mtime, so unchanged sessions are never re-read: 141 ms → 2 ms for the listing, 129 ms → 4 ms when the panel reopens
+- All sessions, grouped by workspace, with folders you can mix and arrange as you like
 - Titles, tags and notes are your own words, written whenever you like
-- Search covers titles, notes and tags, and a "conversation content" tick also searches the dialogue itself (what the user said and what the agent replied, not tool output); the funnel on the right of the box opens the search-scope dialog, where the place is all locations (the default) or the current folder, with one link straight to the search index settings
+- Search covers titles, notes and tags, and a "conversation content" tick also searches the dialogue itself
 - Favorites, todos, pins and archive; a recycle bin comes with them, so a delete can be taken back
-- Cut and paste across workspaces; export a session as Markdown or JSONL: what the user said, what the agent answered, every tool call and its output, with compacted history kept verbatim
+- Cut and paste across workspaces; export a session as Markdown or JSONL
 - AI in one click: let a model rename a session, tag it and write its note
 
 ## What it looks like
@@ -154,7 +153,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Box select | Drag a box with the mouse the way Windows does; a click on empty space clears the selection |
 | Rename | The edit button, or the detail pane on the right |
 | Tag / note | Right-hand detail pane; tags can be made in advance, and AI can generate them in one click |
-| Search | The box searches titles, notes, tags and conversation content; the funnel on its right opens the search-scope dialog |
+| Search | The box searches titles, notes, tags and conversation content |
 | Favorite / to-do | Select rows, then favorite them or put them on the to-do list |
 | Shortcut | Right-click → "Create a shortcut in this directory"; a shortcut can live in any folder |
 | Pin | Folders and workspaces pin to the front, in sync with the sessions DSH itself pins |
@@ -162,7 +161,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Archive | Listed at the bottom by default; hide them in settings |
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Change workspace | Cut / paste across workspaces; the session moves as it is |
-| Export | Detail pane and row menu; Markdown or JSONL — what the user said, what the agent answered, every tool call and output, with compacted history kept verbatim |
+| Export | Detail pane and row menu; Markdown or JSONL |
 | AI fields | A model writes a **title, description and tags** for a session: one click in the "AI fields" group of the detail pane, several sessions at once from the row menu, or one sweep over every session still missing a description or tags in settings |
 
 ## Settings
@@ -173,7 +172,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Open mode | Floating panel | Floating panel / detached window; the detached window needs a browser runtime — download one, or borrow the Electron another plugin already installed — and is Windows-only |
+| Open mode | Floating panel | Floating panel / detached window; the detached window needs a browser runtime and is Windows-only |
 | Session header button style | Auto | It can also be fixed to icon only |
 | Auto collapse | Off | Collapse sibling folders after entering one |
 | Show archived | On | Turned off, archived sessions are no longer listed at the bottom |

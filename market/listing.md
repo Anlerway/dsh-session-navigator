@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.1.2 |
+| 版本 | 1.1.3 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |
@@ -37,6 +37,13 @@
   <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="DSH 聊天在左，会话资源管理器停靠在右，两边各自独立">
 </p>
 <p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
+
+## 本版更新（1.1.3）
+
+- 独立窗口的状态徽章不再慢一拍：状态一到就当场重绘，不用等下一次列表刷新
+- 独立窗口不在前台时也按秒核对状态，切回前台看到的就是当前状态
+- 会话收尾时徽章不再先跳「进行中」再落到「空闲」
+- 独立窗口与主面板互相同步：在 DSH 侧栏或独立窗口删会话，两边都跟着更新
 
 ## 安装
 
