@@ -58,6 +58,14 @@ test("a workspace with a real id is ranked in workspaceOrder", async () => {
   assert.equal(api.state.tree.workspaceOrder["ws-1"], 4);
 });
 
+test("a rank parked under the node id is cleared when the workspace is reordered", async () => {
+  const api = fakeApi();
+  api.state.tree.workspaceOrder["w-ws-1"] = 0;
+  const result = await call(api, "w-ws-1", { order: 7 });
+  assert.equal(result.order, 7);
+  assert.deepEqual(api.state.tree.workspaceOrder, { "ws-1": 7 });
+});
+
 test("a workspace id that names nothing is refused instead of ranked", async () => {
   const api = fakeApi();
   await assert.rejects(() => call(api, "w-w-ws-1", { order: 2 }), (error) => {

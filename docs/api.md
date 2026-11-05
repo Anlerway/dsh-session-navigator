@@ -261,7 +261,8 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
   `名称（2）`……，响应里的 `folder.name` 才是最终名字，客户端提示要用它。改名（`PATCH`）与移动仍然拒绝重名。
 - `POST /nodes/:id/move` 先过 `canMove()`（`lib/domain/tree.js`），不合法直接带规则码抛错。
 - `POST /nodes/:id/reorder` 写同级里的名次（`order`），文件夹、快捷方式与 workspace 都吃这一条；
-  workspace 的名次落在 `workspaceOrder`，也就是左栏 目录 的顺序。不是数字时 `400 order must be a number`；
+  workspace 的名次落在 `workspaceOrder[workspaceId]`（裸 id，树推导读的就是这个键），也就是左栏 目录 的顺序；
+  写成 `workspaceOrder["w-<id>"]` 的名字不会被读到，所以写入时顺手清掉。不是数字时 `400 order must be a number`；
   节点不存在时 `404 node-not-found`——workspace 只活在登记表里，不查一遍就会给一个没人画的行写名次。
 - `POST /sessions/placement` 默认只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的
   `cwd` 推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
