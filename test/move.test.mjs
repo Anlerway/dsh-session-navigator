@@ -1,5 +1,5 @@
 /**
- * Tests for cross-workspace move / copy (P5).
+ * Tests for cross-workspace move / copy.
  *
  *   node --test test/move.test.mjs
  *
@@ -33,6 +33,7 @@ import {
 } from "../lib/sources/artifact.js";
 import { moveSessions, reconcileMoves } from "../lib/host/move.js";
 import { recordMove, journalPath } from "../lib/host/move-journal.js";
+import { dataPaths } from "../lib/paths.js";
 
 const LOG = "session.v4.jsonl.zstd";
 
@@ -415,6 +416,14 @@ test("an unknown target workspace is refused before anything moves", async () =>
 
 // ── intent journal ──────────────────────────────────────────────────────────
 
+test("the paths a boot hands over carry the data directory the journal lives in", () => {
+  // The journal is written beside the sidecars, so the paths object has to name
+  // the directory: without this key every journal write is skipped and reconcile
+  // becomes a no-op that reports nothing.
+  const dir = join(tmpdir(), "se-paths-data");
+  assert.equal(dataPaths(dir).dataDir, dir);
+});
+
 test("a move interrupted after the payload arrived is finished at the next start", async () => {
   const box = await sandbox();
   try {
@@ -422,7 +431,7 @@ test("a move interrupted after the payload arrived is finished at the next start
     await mkdir(workspacePath, { recursive: true });
     const registry = fakeRegistry([{ id: "w-target", title: "target", path: workspacePath, sessionIds: [] }]);
     const api = apiWith(box.home, registry);
-    api.paths = { dataDir: join(box.root, "data") };
+    api.paths = dataPaths(join(box.root, "data"));
     await mkdir(api.paths.dataDir, { recursive: true });
 
     // The state a crash leaves behind: the payload is at the destination, the
@@ -455,7 +464,7 @@ test("a journal entry whose payload never left is dropped, not repaired", async 
   try {
     const registry = fakeRegistry([{ id: "w-target", title: "target", path: join(box.root, "t"), sessionIds: [] }]);
     const api = apiWith(box.home, registry);
-    api.paths = { dataDir: join(box.root, "data") };
+    api.paths = dataPaths(join(box.root, "data"));
     await mkdir(api.paths.dataDir, { recursive: true });
     await recordMove(api.paths, {
       sessionId: "s1",

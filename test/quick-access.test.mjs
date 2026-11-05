@@ -63,19 +63,31 @@ test("unknown ids are skipped and the rest still lands", () => {
   assert.equal(draft.quickAccess[FIXED_NODES.trash], undefined);
 });
 
-test("a bookmark the drag never mentioned keeps its sequence and stays put", () => {
-  const draft = draftOf("d-a", "d-b", "d-keep");
-  draft.quickAccess = { "d-keep": 5 };
-  applyQuickAccessOrder(draft, ["d-a", "d-b"], 4000);
-  assert.equal(draft.quickAccess["d-keep"], 5, "untouched, not swallowed by the rewrite");
-  assert.ok(draft.quickAccess["d-a"] > draft.quickAccess["d-keep"]);
+test("a bookmark the drag never mentioned leaves the strip", () => {
+  const draft = draftOf("d-a", "d-b", "d-gone");
+  draft.quickAccess = { "d-gone": 5 };
+  const { order } = applyQuickAccessOrder(draft, ["d-a", "d-b"], 4000);
+  assert.deepEqual(order, ["d-a", "d-b"]);
+  assert.equal(draft.quickAccess["d-gone"], undefined, "the list is the whole strip");
 });
 
-test("a body that is not a list is refused by the caller, not silently emptied", () => {
-  // The route checks the shape before it opens a transaction; this pins the
-  // domain layer's side of that contract: non-arrays simply do nothing.
+test("a row for a container that no longer exists goes even when unlisted", () => {
   const draft = draftOf("d-a");
-  draft.quickAccess = { "d-a": 7 };
-  assert.deepEqual(applyQuickAccessOrder(draft, null, 5000), { order: [], skipped: [] });
-  assert.deepEqual(draft.quickAccess, { "d-a": 7 });
+  // A folder deleted by a build that did not clean up after itself: nothing in
+  // the request names it, and it still has to leave.
+  draft.quickAccess = { "d-a": 9, "d-deleted": 8 };
+  applyQuickAccessOrder(draft, ["d-a"], 6000);
+  assert.deepEqual(Object.keys(draft.quickAccess), ["d-a"]);
+});
+
+test("a body that is not a list leaves the strip alone", () => {
+  // The route refuses the shape before it opens a transaction; this pins the
+  // domain layer's side: "the list is the whole strip" only holds for a list,
+  // and a null would otherwise read as "the strip is empty".
+  const draft = draftOf("d-a", "d-b");
+  draft.quickAccess = { "d-a": 7, "d-b": 6 };
+  assert.deepEqual(applyQuickAccessOrder(draft, null, 5000), { order: ["d-a", "d-b"], skipped: [] });
+  assert.deepEqual(draft.quickAccess, { "d-a": 7, "d-b": 6 });
+  assert.deepEqual(applyQuickAccessOrder(draft, "d-a", 5000), { order: ["d-a", "d-b"], skipped: [] });
+  assert.deepEqual(draft.quickAccess, { "d-a": 7, "d-b": 6 });
 });

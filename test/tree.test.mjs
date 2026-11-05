@@ -294,7 +294,7 @@ test("an empty registry still yields a navigable tree", () => {
   assert.ok(tree.children[FIXED_NODES.root].includes(FIXED_NODES.ungrouped));
 });
 
-// ── user folders (P2) ────────────────────────────────────────────────────────
+// ── user folders ─────────────────────────────────────────────────────────────
 
 test("a user folder holds a workspace and aggregates its sessions", () => {
   const tree = buildAutoTree({

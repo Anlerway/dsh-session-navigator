@@ -1,7 +1,7 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:624` 的 `ROUTES` 表定义，
-`lib/index.js:2195` 的 `handle()` 分发。共 **77 条**。
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:691` 的 `ROUTES` 表定义，
+`lib/index.js:2447` 的 `handle()` 分发。共 **80 条**。
 
 ## 1. 信封
 
@@ -17,8 +17,9 @@
 - 请求体上限 8 MiB，非 JSON 或超限都是 `bad-request`（`lib/http.js:57-79`）。
 - 空 body 解析成 `{}`。
 
-**四条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件）、
-`GET /ui*`（静态资源）。`handle()` 在 `headersSent` 后不再追加信封（`lib/index.js:2218`）。
+**九条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件），
+以及七个静态资源（`GET /ui` 与六个 `/ui/*`，见 §4.10）。`handle()` 在 `headersSent` 后不再追加信封
+（`lib/index.js:2447` 一带）。
 
 ## 2. 通用约定
 
@@ -36,12 +37,12 @@
 bad-request`，而不是悄悄当没给——否则一个写错的头会变成"最后写入者赢"。
 
 两者都不给 = 最后写入者赢（单窗口用户的预期）。给了但落后 = `409 revision-conflict`，
-客户端应重新拉取后重试。实现见 `lib/index.js:1932`（读期望值）与 `lib/store/sidecar.js`（比对）。
+客户端应重新拉取后重试。实现见 `lib/index.js:2173`（读期望值）与 `lib/store/sidecar.js`（比对）。
 
 ### 迁移守卫
 
 数据目录迁移期间（`api.migration !== null`），**除 `/datadir*` 之外的所有非 GET/HEAD 请求**
-一律 `409 migration-in-progress`（`lib/index.js:2208`）。否则写入会落进正在被复制的旧目录。
+一律 `409 migration-in-progress`（`lib/index.js:2470`）。否则写入会落进正在被复制的旧目录。
 
 ### id 约定
 
@@ -58,7 +59,7 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 
 ## 3. 错误码 → HTTP 状态
 
-`lib/index.js:2310`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
+`lib/index.js:2573`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
 
 | code | 状态 | 含义 |
 |---|---|---|
@@ -66,10 +67,12 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 | `session/title-invalid` / `workspace/name-conflict` | 400 | DSH 拒绝的标题 / 重名 |
 | `subagent-unsupported` | 400 | 子智能体会话不能单独操作：它跟随父会话（见 §3.2） |
 | `session/not-found` / `workspace/not-found` / `trash-not-found` | 404 | 目标不存在 |
+| `session-not-found` / `workspace-not-found` / `node-not-found` / `trash-not-found` | 404 | 同上，连字符拼写；树、注解、放置这些插件自己的路由用这一套 |
 | `component-not-installed` | 404 | 浏览器组件未就绪 |
 | `target-exists` / `session-active` / `session-corrupt` | 409 | 目标已存在 / 会话在跑 / 日志损坏 |
 | `workspace/session-active` | 409 | workspace 里还有在跑的会话 |
 | `revision-conflict` | 409 | 乐观锁失败 |
+| `tag-library-full` | 409 | 标签库满了（120），先删掉不用的再加（§4.2） |
 | `datadir-same` / `datadir-not-empty` / `migration-in-progress` | 409 | 数据目录迁移的三种拒绝 |
 | `component-busy` / `component-in-use` | 409 | 组件正在被别的操作占用 / 窗口开着不能删 |
 | `nothing-pending` | 409 | 一键补齐时所有会话都已经有描述和标签了（这不是错误，是"没活干"） |
@@ -119,7 +122,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 
 子智能体是父会话一次委派的产物，DSH 仍然把它写成完整的会话目录，但它不是用户可以
 单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口
-`assertStandalone(api, ids)`（`lib/index.js:1828`）：
+`assertStandalone(api, ids)`（`lib/index.js:2068`）：
 
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
@@ -207,14 +210,24 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 
 删除库里的标签**不会**把它从会话上摘掉——那些会话仍然带着它，只是不再出现在候选列表的库段。
 
+库有上限（`TAG_LIBRARY_LIMIT = 120`）：满了回 `409 tag-library-full`，消息说明「标签库最多 120 个标签，
+先删掉不用的再加」，不会静默丢掉这一次添加。只存在于会话上、还没进库的标签不占这个额度。
+
 ### 4.3 会话注解
 
 | 路由 | body | 返回 |
 |---|---|---|
-| `PATCH /annotations/:id` | `{ tags?, note?, favorite?, todo? }` | `{ id, annotation, revision, tags, favorites, todos }` |
+| `PATCH /annotations/:id` | `{ tags?, note? }` | `{ id, annotation, revision, tags, favorites, todos }` |
 | `GET /session-state/:id` | — | `{ id, favorite, todo, archived, trashed }` |
 
 `PATCH` 的 `annotation` 在该条目已被清空时是 `null`——注解不存"空壳"，一旦没有任何信息就整条删除。
+
+`favorite` / `todo` **不在**这条路由的 body 里：收藏和待办是树上的快捷方式（`f-favorites` / `f-todos`
+两个固定节点的子项），注解文档只放标签与备注。传这两个键回 `400 bad-request`，消息指向 `POST /shortcuts`；
+旧版本写进注解文档的标志由 `migrateFlagsToShortcuts` 一次性搬成快捷方式（`lib/host/flags.js`）。
+所以响应里的 `favorites` / `todos` 读的是树（`shortcutSessionTargets`），不是注解文档；两份都是**成员表**，
+同一个会话被两条快捷方式指到也只出现一次。
+未知会话 id 回 `404 session-not-found`，不写孤儿条目。
 
 `:id` 必须是合法会话 id（`isAnnotationId`：非空、≤ 上限、不在 `__proto__` / `constructor` /
 `prototype` 里、只含 `[A-Za-z0-9._:-]`），否则 `400 session id is not a valid id`。注解文档用会话 id
@@ -222,7 +235,7 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 `patchAnnotation` 里各挡一次。
 
 `GET /session-state/:id` 是给 DSH 自己的会话标题栏和行菜单用的：它们没有 bootstrap 快照，
-只想知道三个布尔。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
+只想知道三个布尔，其中 `favorite` / `todo` 同样按树上的快捷方式判（`lib/domain/session-state.js`）。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
 任一为真即"不在"（`lib/domain/session-state.js:32`）。
 
 ### 4.4 树：文件夹、快捷方式、置顶、快速访问、放置
@@ -236,7 +249,8 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 | `DELETE /shortcuts/:id` | — | `{ removed, revision }` |
 | `POST /nodes/:id/pin` | `{ pinned?: boolean }` | `{ nodeId, pinned, revision }` |
 | `POST /nodes/:id/quick-access` | `{ quickAccess?: boolean }` | `{ nodeId, quickAccess, revision }` |
-| `POST /quick-access` | `{ ids }`（整条顺序，首行在前） | `{ order, quickAccess, revision }` |
+| `POST /nodes/:id/reorder` | `{ order }`（数字或数字字符串） | `{ nodeId, order, revision }` |
+| `POST /quick-access` | `{ ids }`（整条顺序，首行在前） | `{ order, skipped, quickAccess, revision }` |
 | `POST /nodes/:id/move` | `{ parent }` | `{ nodeId, parent, revision }` |
 | `POST /sessions/placement` | `{ ids, parent?, move? }` | `{ ids, parent, revision, sessionPlacement, moved, failed }` |
 
@@ -246,6 +260,9 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 - `POST /folders` 撞名不报错：同一父节点下已有同名（`trim` + 小写比较）时自动编号成 `名称（1）`、
   `名称（2）`……，响应里的 `folder.name` 才是最终名字，客户端提示要用它。改名（`PATCH`）与移动仍然拒绝重名。
 - `POST /nodes/:id/move` 先过 `canMove()`（`lib/domain/tree.js`），不合法直接带规则码抛错。
+- `POST /nodes/:id/reorder` 写同级里的名次（`order`），文件夹、快捷方式与 workspace 都吃这一条；
+  workspace 的名次落在 `workspaceOrder`，也就是左栏 目录 的顺序。不是数字时 `400 order must be a number`；
+  节点不存在时 `404 node-not-found`——workspace 只活在登记表里，不查一遍就会给一个没人画的行写名次。
 - `POST /sessions/placement` 默认只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的
   `cwd` 推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
   能接受会话的容器是「未分组」、任何工作区，以及**工作区里的普通文件夹**（`acceptsSessions()`，
@@ -262,13 +279,15 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
   客户端把「剪切→粘贴到工作区内的文件夹」和拖放都走这条路，撤销时先清 placement、再按原
   workspaceId 把 payload 搬回去（见 `placeSessions`）。
 - `POST /nodes/:id/quick-access` 只写侧车的 `quickAccess[id]`（`quickAccess: false` 删掉它），只有真实容器能当书签
-  （`isBookmarkable`：文件夹还在的 `d-…`，或 `w-…`）。视图、收藏 / 待办、快捷方式都不是「地方」——它们在左栏
-  已经是一行。它和 `POST /nodes/:id/pin` 是两件事：pin 是**在本来的带子里排前面**，quick-access 是**同一容器多一个
+  （`isBookmarkable`：文件夹还在的 `d-…`，或 `w-…`），否则 `400 this node cannot be bookmarked`。视图、收藏 / 待办、快捷方式都不是「地方」——它们在左栏
+  已经是一行。节点本身不在了是 `404 node-not-found`，pin 同样先查这一条。它和 `POST /nodes/:id/pin` 是两件事：pin 是**在本来的带子里排前面**，quick-access 是**同一容器多一个
   入口**（共用一张表时，置顶一个文件夹会把它从 目录 里挪走）。
-- `POST /quick-access` 一次写整条带子。加一个（把容器拖到带上）和重排（把一个书签拖到另一个上）是同一句话
-  「现在就是这个顺序」，所以没有「移到第 N 位」这种单行接口。不合法或已消失的 id 被**跳过**而不是 400（手势来自
-  一棵活的树，一条过期行不该作废整个动作），返回的 `order` 只含真正写进去的行；已经在带里但没出现在 `ids` 里的
-  书签保留原序号，排到新写的下面。
+- `POST /quick-access` 一次写整条带子，**请求就是整份快照**：加一个（把容器拖到带上）、重排（把一个书签拖到另一个上）、
+  删一个（把最后一行拖走）都是同一句话
+  「现在就是这个顺序」，所以没有「移到第 N 位」这种单行接口。`ids` 里没出现的书签会被删除；不合法或已消失的
+  id 被**跳过**而不是 400（手势来自一棵活的树，一条过期行不该作废整个动作），`skipped` 报出被跳过的 id，
+  `order` 只含真正写进去的行。`ids` 不是数组时 `400 ids must be an array of node ids`，而不是把整条带子清空；
+  只想删一行时用 `POST /nodes/:id/quick-access { quickAccess: false }`。
 
 ### 4.5 会话操作
 
@@ -296,8 +315,8 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 - 归档不搬文件，只在列表里降级；有会话在跑时需 `stopActivity: true`。
 - `fork` 省略 `atSeq` 时与官方默认一致：从最后一个完成的回合继续。
 - 派生失败的子代理会话返回 `subagent-unsupported`。
-- 所有"单独改存储"的路由（`/move`、`/copy`、`/annotate`、`/archive`、`/title`、`/fork`、
-  `/sessions/placement`）先过 `assertStandalone`：ids 里只要有一个子智能体就整单拒绝
+- 所有"单独改存储"的路由（`PATCH /annotations/:id`、`POST /move`、`POST /sessions/placement`，
+  以及改名 / 归档 / 置顶这一组会话动作）先过 `assertStandalone`：ids 里只要有一个子智能体就整单拒绝
   `subagent-unsupported`，不做"跳过后继续"。规则在 `lib/domain/subagents.js`，理由在 §3.2。
 - `/trash`、`/restore`、`/purge` **不过** `assertStandalone`：删除是子智能体唯一能单独做的写操作
   （见 §3.2）。它们仍然用 `withDescendants` 把父会话的整条委派链一起带走，所以删父会话会连带
@@ -350,7 +369,8 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 **全部**失败时把第一条错误抛出来，避免回一个全是 `ok: false` 的 200——客户端只看信封的
 `code`，看不了逐条结果。
 
-`POST /trash` 是真移动：会话目录离开 DSH 的 sessions 树，所以 DSH 自己的侧栏里也会消失。
+`POST /trash` 的 `ids` 必须是非空数组，否则 `400 ids must be a non-empty array`：「删 0 个」不可能是用户的意思，
+多半是勾选状态丢了。它也是真移动：会话目录离开 DSH 的 sessions 树，所以 DSH 自己的侧栏里也会消失。
 同样是逐条的：`trashed` 是搬走的，`skipped` 是本来就在回收站或没有日志的，`errors` 是搬失败
 的（`session-active` 等），三者合起来正好是请求的 id 集合。并发删除同一会话时，先在文档锁里
 认领条目（`pending: true`）再搬文件，后到者看见条目已存在就记 `skipped`，不会各写一个 trashId
@@ -359,7 +379,8 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 `POST /restore` 是**逐条**的：某一条恢复不了（目标路径又被占了、payload 中途消失）不会取消整批，
 失败的那条进 `errors: [{ sessionId, code, message }]` 并同时计入 `skipped`，其余照常恢复。
 
-`GET /export` 对回收站里的会话返回 `session/not-found`——payload 已经不在 DSH 的树里了，
+`GET /export` 的 `format` 只认 `md` 与 `jsonl`，其它值是 `400 unknown export format: …`，不会退回默认格式。
+对回收站里的会话返回 `session/not-found`——payload 已经不在 DSH 的树里了，
 回收站只留一份描述。导出**容忍正在写入的尾部**（`readArtifact(…, { tolerateTail: true })`）：
 最后一个不完整的帧或半行被丢掉，前面的完整事件照常导出。读来重写的路径（move/trash）不能
 容忍——它必须保留每一个字节的去向。
@@ -388,9 +409,6 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 Markdown 默认带工具调用与输出，单条输出超过 `toolResultLimit`（4000 字符）时截断并注明"完整输出见
 JSONL 导出"；JSONL 一条回合一行，参数与输出全量。思考过程（`reasoning`）两种格式都默认不写。
 
-文件名按**码点**截断到 80（`Array.from(...).slice(0, 80)`），不是 `slice(0, 80)`：后者按 UTF-16
-切，标题末尾是 emoji 时会切出孤立代理项，`encodeURIComponent` 随即抛 `URIError`，一次导出变成 500。
-
 渲染时不认识的 block 类型不会让整条消息消失：它被写成一个可读的占位块，所以一条只含图片或
 只含工具结果的助手消息仍然出现在 md 与 jsonl 里。
 
@@ -398,7 +416,7 @@ JSONL 导出"；JSONL 一条回合一行，参数与输出全量。思考过程�
 
 | 路由 | body | 返回 |
 |---|---|---|
-| `POST /workspaces/:id/rename` | `{ title }` | `{ workspaceId, title }` |
+| `POST /workspaces/:id/rename` | `{ title }`（也收 `{ name }`） | `{ workspaceId, title }` |
 | `POST /workspaces/:id/delete` | — | `{ workspaceId, deleted }` |
 | `POST /workspaces/:id/path` | — | `{ path, name }` |
 | `POST /workspaces/:id/reveal` | — | `{ path, opened }` |
@@ -425,7 +443,9 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 | `POST /datadir/migrate` | `{ target, mode? }` | `{ target, mode, steps, revision }` |
 
 `inspect` 是预检，不碰任何东西：目标必须是绝对路径、不是文件系统根、不是当前目录、可写、
-且不含另一套安装。`mode` 由是否同卷决定（同卷 `move`，跨卷 `copy`），`move` 是唯一会删旧目录的模式。
+且不含另一套安装。盘符不存在（`Z:\\nope`）也是 `400 bad-request`，不是"不可写"——那台机器上根本没有那条路。
+`mode` 由是否同卷决定（同卷 `move`，跨卷 `copy`），`move` 是唯一会删旧目录的模式。
+`POST /datadir/migrate` 的 body 只带 `target`：`mode` 以预检算出来的计划为准，请求改不动它。
 详见 [data-directory.md](data-directory.md)。
 
 ### 4.8 浏览器组件
@@ -434,7 +454,7 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 |---|---|---|
 | `GET /component/status` | — | 见下 |
 | `GET /component/scan` | — | `{ home, candidates, current }` |
-| `POST /component/install` | `{ mirror?, borrowed? }` | 同 status |
+| `POST /component/install` | `{ source?, borrowed? }` | 同 status |
 | `POST /component/cancel` | — | 同 status |
 | `POST /component/remove` | — | 同 status |
 | `POST /component/retry` | — | 同 status（续传已有 `.part`） |
@@ -452,6 +472,10 @@ status 的形状（`lib/component/manager.js:404-429`，整个 state 加上算�
   "error": "上一次失败的原因（phase=error 时）"
 }
 ```
+
+`POST /component/install` 只认两个键：`source`（`mirror` / `github`，缺省走镜像）与 `borrowed`（一份借来的
+运行时路径，来自 `/component/scan`）。别的键一律 `400 unknown install option: …`——下载是 150 MB 的动作，
+一个拼错的键不该换来一次下载。`POST /component/retry` 收同一个 body（续传）。
 
 `GET /component/scan` 列的是**别的插件已经装好的** Electron（只 `readdir`，不写、不 `stat` `.asar`），
 `candidates` 每项是 `{ root, binary, electronVersion, hasDefaultApp, hasApp }`，按版本降序；`current` 就是 status，
@@ -472,7 +496,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 | `POST /bridge/commands` | `{ kind, payload? }` | `{ seq, kind }` |
 | `GET /bridge/events` | `?since=<cursor>` | SSE 流 |
 | `POST /detached/open` | — | `{ open: true, ... }` |
-| `POST /detached/close` | — | `{ closed: boolean }` |
+| `POST /detached/close` | — | `{ closed, wasOpen }` |
 
 `kind ∈ {open-session, new-session, reveal, refresh, open-settings}`（`lib/host/bridge.js:148`），
 payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自截断到 200 字符。
@@ -496,6 +520,7 @@ payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，
 | `GET /ui/client.js` | `lib/client.js` | `text/javascript` |
 | `GET /ui/react.js` | `assets/vendor/react.production.min.js` | `text/javascript` |
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
+| `GET /ui/icon.png` | `assets/icon.png` | `image/png` |
 
 路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js:97`）。
 全部 `no-store`：面板和窗口必须跑同一份代码，缓存一份旧的正是这套安排要消除的漂移。
@@ -508,10 +533,14 @@ payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，
 | 路由 | body / query | 返回 |
 |---|---|---|
 | `GET /update` | `?force=1` 跳过 5 分钟缓存 | `{ current, latest, hasUpdate, url, name, publishedAt, notes, checkedAt }` |
+| `GET /version` | — | `{ build, version }` |
 | `POST /about/open` | `{ target }` | `{ target, url, opened: true }` |
 | `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, skipped, tookMs }` |
 | `GET /release-notes` | — | `{ title, blocks, bytes, updatedAt, version, seen }` |
 | `POST /release-notes/seen` | `{ version }` | `{ version }`（写进去的记录；空版本是 no-op） |
+
+`GET /version` 是客户端模块的构建戳：`build` 是 `lib/client.js` 的 hash，`version` 是 `package.json` 的版本号。
+面板把自己那份和它对一下，不一致就提示刷新——插件更新后没刷新的面板还在跑旧模块，看着就像坏了。
 
 `GET /update` 在 host 侧访问 `api.github.com`（`lib/host/update.js`）：客户端是个网页，
 直连会撞 CORS；独立窗口里 `window.open` 又被主进程拒掉，两条路都不通，所以这件事只能
@@ -624,7 +653,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 | 路由 | body | 返回 |
 |---|---|---|
-| `GET /search/content` | `?q=<needle>` | `{ query, ready, indexed, total, hits }` |
+| `GET /search/content` | `?q=<needle>&limit=<n>` | `{ query, ready, indexed, total, hits, matched, truncated, needleTruncated }` |
 
 面板里 会话名 / 标签 / 备注 三个字段本来就在列表行上，读一遍内存就有答案；**会话内容**只在会话日志里
 ——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以这里不是每次按键读文件，而是一个
@@ -639,10 +668,11 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 - `ready: false` = 索引还没建完，`indexed / total` 是进度；`hits` 是**已经建到的那部分**的答案。
   冷启动的第一次搜索先给一半答案，比转 6 秒钟好；客户端 240ms 防抖，未就绪时每 700ms 续查一次。
 - `hits` 每项 `{ id, count, snippet }`：`count` 数的是出现次数（上限 999），最多 200 个会话，
-  `snippet` 取命中前后 30 / 70 字符、折成一行、两端带省略号。
+  `snippet` 取命中前后 30 / 70 字符、折成一行、两端带省略号。`limit` 收窄返回条数（缺省与上限都是 200，
+  `truncated` 说明还有更多，`matched` 是收窄前的总数）；needle 超过 120 字符时先截断再搜，`needleTruncated` 说出来。
 - 检索是**纯读**：不产生 revision，读不出的日志只记一次空文本、不无限重试。
 
-索引总是落盘一份（`content-index.v1.json`），进程重启后不必重读日志；它没有开关（m01916 去掉了），重建与删除见 §4.14。
+索引总是落盘一份（`content-index.v1.json`），进程重启后不必重读日志；它没有开关，重建与删除见 §4.14。
 缓存 payload 带 `version`（当前 2）：v1 只存了用户那一半正文，签名（`logPath|size|activityAt`）却一样，
 留着它就会永远回答"没搜到"而不自愈，所以版本一升旧条目即被忽略并就地覆盖。文件名里的 `.v1` 是槽位
 不是版本号，改名只会把旧文件变成垃圾。
@@ -685,8 +715,8 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 ### 4.15 AI 字段
 
-产物是**标题、描述、标签**三个字段，不是一段摘要文字（用户 m01823：「总结就是让你总结标题 描述 标签」；
-m01826：「不输出摘要，摘要不是产物」）。三个字段各自独立，`settings.summary.fields` 决定要哪几个。
+产物是**标题、描述、标签**三个字段，不是一段摘要文字——摘要不是产物。三个字段各自独立，
+`settings.summary.fields` 决定要哪几个。
 
 | 路由 | body / query | 返回 |
 |---|---|---|

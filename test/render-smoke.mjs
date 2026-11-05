@@ -389,7 +389,7 @@ if (dotRule("done") !== "#3ecf8e") throw new Error(`a completed row must be gree
 if (dotRule("warn") !== "#e0a44a") throw new Error(`a waiting row must stay amber, got ${dotRule("warn")}`);
 console.log("SessionRow status ladder ok: 空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中");
 
-// ── 子智能体 rows (P32) ─────────────────────────────────────────────────────
+// ── 子智能体 rows ─────────────────────────────────────────────────────────
 // A child row is not a session the user can act on: it has no checkbox, no
 // rename pencil and no drag handle, and it says so with a bound glyph and a 子
 // tag. The parent row, in turn, carries the count and the twist that opens it.

@@ -1,5 +1,5 @@
 /**
- * Tests for the browser component (P6).
+ * Tests for the browser component.
  *
  *   node --test test/component.test.mjs
  *

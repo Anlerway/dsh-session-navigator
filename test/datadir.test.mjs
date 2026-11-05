@@ -161,7 +161,11 @@ test("migrate moves every sidecar and records the new location", async () => {
   }
 });
 
-test("migrate in copy mode keeps the source and leaves a location pointer", async () => {
+test("a request cannot talk the plan out of a move", async () => {
+  // move vs copy follows the volumes, not a request field: only a migration that
+  // stays on one volume may delete the source. The copy branch is reachable only
+  // from a cross-volume plan, which a single-volume sandbox cannot build, so this
+  // pins the half that can happen here: the body is ignored.
   const box = await sandbox();
   try {
     const current = join(box.root, "current");
@@ -172,12 +176,13 @@ test("migrate in copy mode keeps the source and leaves a location pointer", asyn
     });
 
     const result = await migrateDataDir(api, { target, mode: "copy" });
-    assert.equal(result.mode, "copy");
+    assert.equal(result.mode, "move");
     assert.ok(result.steps.includes("pointer"));
+    assert.ok(result.steps.includes("removed"));
 
-    // The old directory survives, still readable, and points at the new one.
-    assert.equal(existsSync(join(current, "tree.v1.json")), true);
-    assert.deepEqual(readLocation(current), { movedTo: target, mode: "copy" });
+    assert.equal(existsSync(current), false, "the old directory is gone, as a move says");
+    assert.equal(existsSync(join(target, "tree.v1.json")), true);
+    assert.equal(readLocation(target), null, "the new directory has nowhere to point");
   } finally {
     await box.cleanup();
   }

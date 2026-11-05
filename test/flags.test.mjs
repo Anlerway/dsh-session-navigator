@@ -1,5 +1,5 @@
 /**
- * Tests for the 收藏 / 待办 flag migration (P13).
+ * Tests for the 收藏 / 待办 flag migration.
  *
  *   node --test test/flags.test.mjs
  *
@@ -85,11 +85,12 @@ test("a favorite flag becomes a shortcut and the flag is cleared", async () => {
   assert.equal(shortcut.targetId, "session-a");
   assert.equal(shortcut.parent, "f-favorites");
   assert.equal(shortcut.id.startsWith("s-"), true);
-  // The flag is gone, the note and tags it sat next to are not.
+  // The flag is gone, the note and tags it sat next to are not: clearing means
+  // deleting the key, so nothing can read a leftover `false` as a decision.
   const kept = state.annotations.sessions["session-a"];
   assert.deepEqual(kept.tags, ["release"]);
-  assert.equal(kept.favorite, false);
-  assert.equal(kept.todo, false);
+  assert.equal("favorite" in kept, false);
+  assert.equal("todo" in kept, false);
   // The entry is still there because the tags are: only the flags were cleared.
   assert.equal(typeof kept.updatedAt, "number");
   // A session that was never flagged keeps its entry untouched: the migration

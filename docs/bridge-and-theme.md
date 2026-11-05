@@ -6,7 +6,7 @@
 
 ## 1. 命令总线
 
-`lib/host/bridge.js:40` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
+`lib/host/bridge.js:58` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
 
 | 参数 | 值 | 理由 |
 |---|---|---|
@@ -17,12 +17,12 @@
 `since(cursor)` 返回 `seq > cursor` **且** 未过期的命令：游标太旧时返回的只是还留着的那些，
 补发一部分总比什么都不补发好。
 
-总线**故意是哑的**（`lib/host/bridge.js:60-66`）：它不校验 payload 的语义，只搬运。
+总线**故意是哑的**（`lib/host/bridge.js:67-72`）：它不校验 payload 的语义，只搬运。
 认识某个 kind 的监听者自己处理，不认识的忽略。这样新面板可以对着旧窗口说话，不需要升 schema。
 
 ## 2. 允许的 kind，以及谁执行
 
-`WINDOW_COMMANDS`（`lib/host/bridge.js:133`）是窗口唯一被允许发的五种命令，其余一律 `bad-request`。
+`WINDOW_COMMANDS`（`lib/host/bridge.js:148`）是窗口唯一被允许发的五种命令，其余一律 `bad-request`。
 另外两种由 **host 自己**发，用来通知页面窗口的生命周期。
 
 | kind | 谁发 | 谁执行 | 作用 |
@@ -150,10 +150,10 @@ shim **会拦掉**窗口发出的 `POST /theme`（`assets/detached/shim.js:93`�
 
 ## 5. 独立窗口
 
-`POST /detached/open` / `POST /detached/close`（`lib/index.js:1776-1786`）。窗口本体是 DSH 的
+`POST /detached/open` / `POST /detached/close`（`lib/index.js:2010-2026`）。窗口本体是 DSH 的
 Electron 窗口，加载 `/session-navigator/api/ui`，需要浏览器组件就绪，否则 404 `component-not-installed`。
 
-窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js:179-180`），
+窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js:191-192`），
 页面据此更新"默认打开方式"的状态和按钮文案。
 
 窗口的几何（`shell.window.bounds` / `alwaysOnTop`）存在设置里：`bounds` 为 `null` 表示"还没放过"，
@@ -178,15 +178,51 @@ shim 四样全给：
 shim **故意不做**两件事：不上报主题（见上），不订阅命令桥（窗口只向 host 请求导航，
 执行由 DSH 页面里的面板完成）。
 
-## 7. 相关文件
+## 7. 面板与独立窗口之间的对等总线
+
+命令总线（§1）是纵向的：窗口 → host → 页面。两边的**数据一致性**走的是另一条横向通道——
+浏览器自己的 `BroadcastChannel("dsh-session-navigator")`（`lib/client.js:2202`）。同源的两个
+document 直接对话，host 不参与，也不需要知道有几个人在看着同一份树。
+
+| 消息 | 谁发 | 谁收 | 作用 |
+|---|---|---|---|
+| `{ kind: "refresh", path }` | 任何刚写完数据的 document | 另一个 | 重读 `/bootstrap`（`lib/client.js:7249`） |
+| `{ kind: "status", rows }` | 拿得到 DSH 会话服务的一侧 | 另一侧 | 抄来 `running` / `pendingInteraction` / `completionUnread`（`lib/client.js:2883`） |
+
+`refresh` 在 `apiSend` 的非 GET/HEAD 成功分支里发出（`lib/client.js:2349`）。这是插件自己的写
+路径——删进回收站、跨工作区搬会话、改树、改设置——唯一能让**另一个 document** 知道的信号：
+这些写入不经过 DSH，宿主的 `sessions-changed` 与 workspace.json 监听都看不见它们。
+
+`status` 的存在理由更直接：独立窗口跑在 shim 上，`uiSession` 是空实现，
+`sessionStatus` 永远是 `null`，于是「等待回答 / 等待审批 / 计划待审 / 已完成（未读）」
+这些只存在于 DSH 客户端服务里的状态**在窗口里结构上就取不到**。窗口不发自己的表，
+只收面板的那一份。
+
+三条约束值得记下来，改这段代码时最容易踩的也是它们：
+
+- **回声必须防住。** `status` 只由拿得到 `uiSession` 的一侧发（`if (!local) return;`，
+  `lib/client.js:2884`），收到的一侧不转发；`useMemo` 的依赖写 `[local, version]` 而不是
+  `[local, version, peerStatus]`，否则两个窗口会互相触发、来回广播。
+- **本地优先。** 同一个 id 两边都有时用本地那份（`lib/client.js:2875-2878`）：本地读的是活的
+  服务，peer 的行只是它最后一次广播的快照。
+- **写入方不刷新自己。** BroadcastChannel 不把消息回送给发送它的 document，所以写窗口照旧走
+  自己的 `load()`，不需要额外的「这是我发的」标记。
+
+没有 `BroadcastChannel` 的环境拿到 `null`，两条通道静默退化成「各画各的」，别的功能不受影响。
+`channel.unref?.()` 只是为了让导入 `lib/client.js` 的 Node 测试能够退出——否则那个 handle 会
+一直挂着。
+
+## 8. 相关文件
 
 | 文件 | 职责 |
 |---|---|
 | `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand` |
 | `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
-| `lib/index.js:1680` | `POST /bridge/commands` |
-| `lib/index.js:1693` | `GET /bridge/events`（SSE） |
-| `lib/client.js:11130` | `reportTheme()` + `resolveThemeValue()`（`lib/client.js:11092`）+ MutationObserver |
-| `lib/client.js:828` | `subscribeBridge()` |
-| `lib/client.js:14210` | `apply()` 里装配桥与主题监听 |
+| `lib/index.js:1914` | `POST /bridge/commands` |
+| `lib/index.js:1927` | `GET /bridge/events`（SSE） |
+| `lib/client.js:11988` | `reportTheme()` + `resolveThemeValue()` + MutationObserver |
+| `lib/client.js:877` | `subscribeBridge()` |
+| `lib/client.js:2202` | 对等总线的 `BroadcastChannel`、`publishPeer()` / `subscribePeer()` / `subscribePeerStatus()` |
+| `lib/client.js:2823` | `useDshSessionStatus()`：本地表与 peer 表的合并（见 §7） |
+| `lib/client.js:15369` | `apply()` 里装配桥与主题监听 |
 | `assets/detached/shim.js` | 窗口的假 DSH 外壳、主题拉取、回声守卫 |

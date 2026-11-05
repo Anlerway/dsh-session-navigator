@@ -20,7 +20,6 @@ import { openDocuments } from "../lib/store/documents.js";
 import {
   TAG_LIMIT,
   TAG_MAX_LENGTH,
-  idsWithFlag,
   normalizeAnnotation,
   normalizeTags,
   patchAnnotation,
@@ -223,16 +222,16 @@ test("a patch merges into the existing annotation and stamps updatedAt", () => {
   assert.equal(next.updatedAt, 20);
 });
 
-test("favorite and todo are independent flags", () => {
+test("an annotation does not carry 收藏 or 待办", () => {
+  // Both facts live in the tree as shortcuts. A copy here would be read by
+  // nobody, and a click against it would report a change that never showed.
   const document = { sessions: {} };
-  patchAnnotation(document, "s1", { favorite: true }, 1);
-  assert.deepEqual(idsWithFlag(document, "favorite"), ["s1"]);
-  assert.deepEqual(idsWithFlag(document, "todo"), []);
-  patchAnnotation(document, "s1", { todo: true }, 2);
-  assert.deepEqual(idsWithFlag(document, "todo"), ["s1"]);
-  patchAnnotation(document, "s1", { favorite: false }, 3);
-  assert.deepEqual(idsWithFlag(document, "favorite"), []);
-  assert.deepEqual(idsWithFlag(document, "todo"), ["s1"]);
+  assert.equal(patchAnnotation(document, "s1", { favorite: true, todo: true }, 1), null);
+  assert.deepEqual(Object.keys(document.sessions), []);
+  const next = patchAnnotation(document, "s1", { note: "hi", favorite: true }, 2);
+  assert.equal(next.note, "hi");
+  assert.equal(next.favorite, false);
+  assert.equal(next.todo, false);
 });
 
 test("the tag index counts distinct sessions per tag, most used first", () => {
@@ -337,7 +336,7 @@ test("a duplicate folder name is numbered among its siblings and order keeps cou
   draft.folders[a].order = 5;
   const c = createFolder(draft, { name: "C" }, tree, () => "5");
   assert.equal(draft.folders[c].order, 6);
-  assert.throws(() => renameFolder(draft, c, "A"), /already exists/);
+  assert.throws(() => renameFolder(draft, c, "A"), /已经有了/);
 });
 
 test("moveNode places a workspace in a folder and lifts it back to the root", () => {
