@@ -33,8 +33,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/live-state.test.mjs` | 124 | 「进行中」只在核说自己拿着的时候才亮：假「进行中」比漏标更糟（它锁住一行、挡住归档与删除），所以出处不是 `ctx.sessions` 而是核给的持有序 |
-| `test/session-sync.test.mjs` | 278 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历、没人听的事件不入队（面板反正会读整份状态） |
-| `test/storage-watch.test.mjs` | 153 | 存储目录的轮询：第一次读只是基线不是通知、`storages/workspace.json` 被改写只报一次（带 `refresh`、`structural`、在跑的会话 id）、没变就继续安静、没订阅者就不排队 |
+| `test/session-sync.test.mjs` | 282 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历；**没有订阅者也照发**（轮询读同一根总线，静默等于让兜底也聋掉） |
+| `test/storage-watch.test.mjs` | 214 | 存储目录的轮询：第一次读只是基线不是通知、`storages/workspace.json` 被改写只报一次（带 `refresh`、`structural`、在跑的会话 id）、没变就继续安静、**没有订阅者也照样发布**（否则 `/bridge/poll` 永远问不到东西）；`sessions/` 下多一个或少一个会话目录也算结构变化（`reason: "sessions"`、`structural: true`），而在会话目录里追加日志不算 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
 | `test/trash.test.mjs` | 425 | 回收站：删除、恢复阶梯、清空、对账 |
 | `test/trash-subagent.test.mjs` | 182 | 子智能体自己进回收站：只搬它自己的 payload、父会话的日志留着、`parentSession` 记在条目上；删父会话时整条链（父 + 子 + 孙）一起走；正在跑的那一条被跳进 `skipped` 而不是让整批失败 |
@@ -56,6 +56,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
 | `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上而不是屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
 | `test/reorder.test.mjs` | 94 | 名次那条路由：workspace 的名次落在 `workspaceOrder`、快捷方式落在自己的 `order`；一个名字对不上任何节点的 id（例如多打一层 `w-`）回 `404 node-not-found` 而不是给没人画的行写名次；`order` 不是数字不进文档；过期 revision 仍由侧车挡 |
+| `test/bridge-poll.test.mjs` | 201 | 桥的两条路径：独立窗口的刷新只能作为 `refresh` 命令走出进程（面板自己拉、窗口只发命令）、轮询按游标追问且同一条 `seq` 不执行两次、**没收到 `ready` 时的第一次轮询只是取位置而不是放历史**、`ready` 的游标比本地小就是宿主重启（当作一次 `host-restart` 重载，且不声称谁知道哪些会话在跑）、首次连接吸收游标（不重放挂载前的 `open-session`）；断开时流被关掉 |
+| `test/dsh-refresh.test.mjs` | 67 | 谁有资格替 DSH 重读会话列表：面板拿得到 `sessions` 服务，独立窗口的 shim 也答应同一个 `refresh`（空函数），所以「有 refresh 就算」在窗口里会误判成能刷；判据改成 shim 那个 `hostBridge` 成员在就不算，写的一方据此才敢发 `needsDsh` |
 | `test/double-press.test.mjs` | 48 | 双击时限：同一行两次按下都在 `DOUBLE_CLICK_MS` 内才算、慢一拍就是两次单击（而且那次慢按成为新的一对的开始）、换一行不配对、一次双击用掉这一对所以第三下重新开始、没有名字的目标永远不算 |
 | `test/drag-set.test.mjs` | 67 | 多选拖动的那一次拆分：容器与会话按树和索引分流而不是按 id 前缀、陌生 id 丢掉而不是猜、重复 id 只走一次、容器永远不会被当会话、没有索引时非容器都算会话、空集拆成空集 |
 | `test/quick-access.test.mjs` | 93 | 快速访问是一条序列：只有真实容器能当书签、整份快照语义：没列出的书签会被删掉、陌生 id 进 `skipped`、不是容器的行一律清掉 |

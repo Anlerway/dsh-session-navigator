@@ -80,7 +80,28 @@ data: {"seq":43,"kind":"open-session","payload":{…},"createdAt":1730000000000}
 `Last-Event-ID` 重连，从它真正收到的最后一帧继续，而不是让缓冲无限增长。同时订阅者上限 32
 （`MAX_LISTENERS`，`lib/host/bridge.js:35`），满了回 `503`：重连风暴不能把卡住的响应再叠一层。
 
-SSE 而不是轮询：命令是**事件**，而唯一会变的数字（下载百分比）走的是轮询——两者的性质不同。
+主路径是 SSE，因为它推而不问；但条流**可以静默死掉**：文档被隐藏久了会被节流、一端以为连接还在、
+或者宿主在整个插件底下重启了一次。那时两边都停在旧列表上，只有重启 DSH 才能救——这正是「删了会话另一边
+不更新，手动刷新也没用」的那份报告。
+
+所以同一条总线还有第二个入口（`lib/client.js` 的 `subscribeBridge`）：
+
+```
+GET /bridge/poll?since=<cursor>
+→ { "cursor": 45, "commands": [ { "seq": 44, … } ] }
+```
+
+- 每 `BRIDGE_POLL_MS`（4 秒）问一次，文档处于 `hidden` 时跳过（本来就要被节流，回到前台有自己的刷新）；
+- 两条路径同时在跑，`seq` 去重：同一条命令只执行一次，游标始终是「已经执行过的最大 seq」；
+- `ready` 帧带回的 `cursor` **小于**本地的 → 宿主重启过，编号从头来，这中间的增删从来没被播报过。
+  此时直接当作一次 `sessions-changed`（`reason: "host-restart"`、`refresh: true`、`structural: true`，
+  不带 `running`，避免把运行态清空），让它重读一遍，而不是继续等下一帧；
+- 首次连接把 `cursor` 抬到 `ready.cursor`：30 秒环形缓冲里可能还压着用户点过的 `open-session`，
+  刚挂载的面板不该替那条历史命令开门。
+
+**零订阅者也发布**。`session-sync` / `storage-watch` 曾经用 `bridge.listeners > 0` 当门，理由是
+「没人听就别广播」；可轮询读的是同一根总线，门一关，兜底也就跟着聋了。现在无条件 `publish`：
+环形缓冲 64 条、30 秒过期，没有订阅者时它的成本就是一次数组 push。
 
 ## 4. 主题
 
@@ -186,12 +207,25 @@ document 直接对话，host 不参与，也不需要知道有几个人在看着
 
 | 消息 | 谁发 | 谁收 | 作用 |
 |---|---|---|---|
-| `{ kind: "refresh", path }` | 任何刚写完数据的 document | 另一个 | 重读 `/bootstrap`（`lib/client.js:7249`） |
+| `{ kind: "refresh", path, needsDsh }` | 任何刚写完数据的 document | 另一个 | 重读 `/bootstrap`；`needsDsh` 为真时，手上有 DSH 会话服务的一侧顺手再拉一次 DSH 自己的列表 |
 | `{ kind: "status", rows }` | 拿得到 DSH 会话服务的一侧 | 另一侧 | 抄来 `running` / `pendingInteraction` / `completionUnread`（`lib/client.js:2883`） |
 
 `refresh` 在 `apiSend` 的非 GET/HEAD 成功分支里发出（`lib/client.js:2349`）。这是插件自己的写
 路径——删进回收站、跨工作区搬会话、改树、改设置——唯一能让**另一个 document** 知道的信号：
 这些写入不经过 DSH，宿主的 `sessions-changed` 与 workspace.json 监听都看不见它们。
+
+独立窗口连「顺手把 DSH 列表也拉一次」都做不了：它跑在 shim 上，没有 hostCtx，`serviceOf("sessions")`
+是 `null`，`refreshDshViews()` 静默无效。所以写的一方用 `needsDsh` 声明「我这半边拉不动 DSH」，
+收到的一侧在 `canRefreshDsh()` 为真（也就是面板）时替它补上这一次刷新。
+
+**但这根横向通道不出进程**。`BroadcastChannel` 只在同源、同一进程组里送达；独立窗口是另一个
+Electron 进程，它发的 `refresh` 到不了 DSH 页面——于是「窗口里删一条会话，DSH 侧栏还挂着它，
+怎么刷新都不动，只能重启」。补的是纵向那条路：窗口 `apiSend` 写成功后在 `windowHost()` 为真时
+`POST /bridge/commands {kind:"refresh"}`（`requestDshRefresh()`，`lib/client.js:1170`），host 收到这个
+kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里），再播给订阅者；页面那一端在
+`apply()` 的桥回调里把它翻译成一次 `refreshDshViews()` + 一次面板重载。
+
+「更多 → 刷新」也走同一个函数：`load(true)` 只重读这份列表，用户按下刷新时指的显然是两边都对齐。
 
 `status` 的存在理由更直接：独立窗口跑在 shim 上，`uiSession` 是空实现，
 `sessionStatus` 永远是 `null`，于是「等待回答 / 等待审批 / 计划待审 / 已完成（未读）」
@@ -219,10 +253,12 @@ document 直接对话，host 不参与，也不需要知道有几个人在看着
 | `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand` |
 | `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
 | `lib/index.js:1914` | `POST /bridge/commands` |
-| `lib/index.js:1927` | `GET /bridge/events`（SSE） |
+| `lib/index.js:1927` | `GET /bridge/events`（SSE 主路径，见 §3） |
+| `lib/index.js:1963` | `GET /bridge/poll`（轮询兜底，同一根总线） |
 | `lib/client.js:11988` | `reportTheme()` + `resolveThemeValue()` + MutationObserver |
-| `lib/client.js:877` | `subscribeBridge()` |
+| `lib/client.js:886` | `subscribeBridge()`：SSE + `/bridge/poll`、`seq` 去重、宿主重启检测 |
+| `lib/client.js:1170` | `requestDshRefresh()`：能拉就拉，拉不动就走桥 |
 | `lib/client.js:2202` | 对等总线的 `BroadcastChannel`、`publishPeer()` / `subscribePeer()` / `subscribePeerStatus()` |
 | `lib/client.js:2823` | `useDshSessionStatus()`：本地表与 peer 表的合并（见 §7） |
-| `lib/client.js:15369` | `apply()` 里装配桥与主题监听 |
+| `lib/client.js:15814` | `apply()` 里装配桥与主题监听 |
 | `assets/detached/shim.js` | 窗口的假 DSH 外壳、主题拉取、回声守卫 |

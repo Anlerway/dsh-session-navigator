@@ -74,7 +74,10 @@ test("a rewritten workspace file is reported once", async () => {
   await rm(dshHome, { recursive: true, force: true });
 });
 
-test("no listener means no queued event", async () => {
+test("a change is published even with no stream listener", async () => {
+  // The bus used to stay silent while no EventSource was attached, which made the
+  // poll fallback useless: it asks the bus, and the bus had never been told. A
+  // ring buffer of 64 events that expire in 30 s costs nothing to fill.
   const dshHome = await home();
   const bridge = fakeBridge(0);
   const watch = createStorageWatch({ dshHome, bridge, intervalMs: 1_000_000 });
@@ -84,8 +87,9 @@ test("no listener means no queued event", async () => {
   const result = await watch.check();
   watch.dispose();
   assert.equal(result.changed, true, "the change is still detected");
-  assert.equal(result.published, false, "but nothing is pushed at a closed panel");
-  assert.equal(bridge.published.length, 0);
+  assert.equal(result.published, true, "a closed panel is not a reason to stay silent");
+  assert.equal(bridge.published.length, 1);
+  assert.equal(bridge.published[0].payload.refresh, true);
   await rm(dshHome, { recursive: true, force: true });
 });
 
@@ -147,6 +151,67 @@ test("dispose stops the ticks", async () => {
   assert.equal(watch.disposed, true);
   await writeFile(join(dshHome, "storages", "workspace.json"), "{\"version\":2,\"y\":3}\n");
   const result = await watch.check();
+  assert.equal(result.changed, false);
+  assert.equal(bridge.published.length, 0);
+  await rm(dshHome, { recursive: true, force: true });
+});
+test("a session directory that disappears is a structural change", async () => {
+  const dshHome = await home();
+  const workspace = join(dshHome, "sessions", "ws-1");
+  await mkdir(join(workspace, "session-a"), { recursive: true });
+  await mkdir(join(workspace, "session-b"), { recursive: true });
+  const bridge = fakeBridge(1);
+  const watch = createStorageWatch({ dshHome, bridge, intervalMs: 1_000_000 });
+  await settle();
+  assert.equal((await watch.check()).changed, false, "the baseline is quiet");
+
+  // What DSH's own sidebar does: the directory goes away, no event is emitted.
+  await rm(join(workspace, "session-b"), { recursive: true, force: true });
+  const result = await watch.check();
+  watch.dispose();
+
+  assert.equal(result.changed, true);
+  assert.equal(result.reason, "sessions");
+  assert.equal(bridge.published.length, 1);
+  assert.equal(bridge.published[0].payload.reason, "sessions");
+  assert.equal(bridge.published[0].payload.structural, true, "the row is gone, so caches are invalid");
+  assert.equal(bridge.published[0].payload.refresh, true);
+  await rm(dshHome, { recursive: true, force: true });
+});
+
+test("a new session directory is reported too", async () => {
+  const dshHome = await home();
+  const workspace = join(dshHome, "sessions", "ws-1");
+  await mkdir(join(workspace, "session-a"), { recursive: true });
+  const bridge = fakeBridge(1);
+  const watch = createStorageWatch({ dshHome, bridge, intervalMs: 1_000_000 });
+  await settle();
+  await watch.check();
+
+  await mkdir(join(workspace, "session-b"), { recursive: true });
+  const result = await watch.check();
+  watch.dispose();
+
+  assert.equal(result.changed, true);
+  assert.equal(result.reason, "sessions");
+  await rm(dshHome, { recursive: true, force: true });
+});
+
+test("writing inside a session directory is not a structural change", async () => {
+  const dshHome = await home();
+  const workspace = join(dshHome, "sessions", "ws-1");
+  await mkdir(join(workspace, "session-a"), { recursive: true });
+  const bridge = fakeBridge(1);
+  const watch = createStorageWatch({ dshHome, bridge, intervalMs: 1_000_000 });
+  await settle();
+  await watch.check();
+
+  // A busy conversation rewrites its log constantly; that must never look like
+  // a session appearing or leaving.
+  await writeFile(join(workspace, "session-a", "session.v4.jsonl.zstd"), "payload");
+  const result = await watch.check();
+  watch.dispose();
+
   assert.equal(result.changed, false);
   assert.equal(bridge.published.length, 0);
   await rm(dshHome, { recursive: true, force: true });

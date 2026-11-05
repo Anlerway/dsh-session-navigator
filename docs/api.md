@@ -496,6 +496,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 |---|---|---|
 | `POST /bridge/commands` | `{ kind, payload? }` | `{ seq, kind }` |
 | `GET /bridge/events` | `?since=<cursor>` | SSE 流 |
+| `GET /bridge/poll` | `?since=<cursor>` | `{ cursor, commands }` |
 | `POST /detached/open` | — | `{ open: true, ... }` |
 | `POST /detached/close` | — | `{ closed, wasOpen }` |
 
@@ -508,6 +509,11 @@ payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，
 命令帧带 `id: <seq>`，重连时服务端优先读 `Last-Event-ID` 头而不是 URL 里的 `since`；订阅者
 上限 32，满了回 `503`；`res.write()` 返回 `false` 时直接结束流，让客户端带 `Last-Event-ID`
 重连，而不是让缓冲涨下去。细节见 [bridge-and-theme.md](bridge-and-theme.md)。
+
+`GET /bridge/poll` 是同一根总线的第二个入口：流会静默死掉（文档被节流、连接一端以为还在、
+宿主重启过），客户端每 4 秒按游标补问一次，`since` 缺省或非数字按 0 处理。两条路径并存，
+`seq` 让重叠的那一帧只执行一次。总线**不再**因为「没有 SSE 订阅者」就不发布：轮询读的是
+同一根总线，那扇门一关，兜底也就不起作用了。
 
 `POST /detached/open` 在组件未 `ready` 时返回 404 `component-not-installed`。
 

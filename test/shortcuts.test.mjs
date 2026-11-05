@@ -8,12 +8,30 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createShortcut, deleteShortcut, dropShortcutsTo, isShortcutContainer, isShortcutNodeId, normalizeShortcut } from "../lib/domain/shortcuts.js";
+import { moveNode } from "../lib/domain/folders.js";
 import { FIXED_NODES } from "../lib/constants.js";
 
 const ids = () => {
   let n = 0;
   return () => "x" + ++n;
 };
+
+test("a move cannot stack two references at one target in one container", () => {
+  const draft = {};
+  const next = ids();
+  const first = createShortcut(draft, { kind: "session", targetId: "sess-1", parent: "d-one" }, next);
+  const second = createShortcut(draft, { kind: "session", targetId: "sess-1", parent: "d-two" }, next);
+
+  // Two containers may each hold a copy; dragging one onto the other may not
+  // make the pair, because the container would then show two identical rows.
+  assert.throws(() => moveNode(draft, second, "d-one"), /已经有指向它的快捷方式/);
+  assert.equal(draft.shortcuts[second].parent, "d-two");
+
+  // A different target is still welcome, and the moved row lands last.
+  const other = createShortcut(draft, { kind: "session", targetId: "sess-2", parent: "d-two" }, next);
+  assert.equal(moveNode(draft, other, "d-one").parent, "d-one");
+  assert.ok(draft.shortcuts[other].order >= draft.shortcuts[first].order);
+});
 
 test("shortcut ids are recognisable and never collide with folders", () => {
   assert.equal(isShortcutNodeId("s-abc"), true);

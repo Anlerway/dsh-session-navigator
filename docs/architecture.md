@@ -137,7 +137,7 @@ lib/
 │  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
 │  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
-│  ├─ storage-watch.js 146  盯 storages/ 目录的 mtime：DSH 改了投影缓存就重读，事件漏了也有兜底
+│  ├─ storage-watch.js 224  盯两个签名：`storages/workspace.json` 的改动与 `sessions/` 下各会话目录的 mtime——DSH 侧栏删掉一条没在跑的会话时不会发 `session/disposed`，只能靠目录消失被看见
 │  ├─ theme.js        103  调色板令牌白名单与校验
 │  ├─ native-reveal.js 107 koffi → `SHOpenFolderAndSelectItems`，"在文件夹中显示"
 │  ├─ reveal-agent.js  203 常驻 PowerShell：省掉每次 reveal 一秒多的进程启动

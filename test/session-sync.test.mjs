@@ -225,13 +225,17 @@ test("an event outside the vocabulary is ignored instead of waking the panel", (
   assert.equal(sync.flush(), null);
 });
 
-test("nothing listening means nothing published", () => {
+test("an event is published even with no stream listener", () => {
+  // A zero listener count means "no EventSource right now", not "nobody cares":
+  // the poll fallback reads the same ring buffer, and it is what keeps a panel
+  // that lost its stream in step with DSH.
   const bridge = fakeBridge(0);
   const { ctx, sync } = start({ bridge });
   ctx.emit("session/created", { id: "session-new" });
   const result = sync.flush();
-  assert.equal(result.published, false);
-  assert.deepEqual(bridge.published, []);
+  assert.equal(result.published, true);
+  assert.equal(bridge.published.length, 1);
+  assert.equal(bridge.published[0].kind, "sessions-changed");
   assert.equal(bridge.listeners, 0);
 });
 
