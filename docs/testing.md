@@ -13,11 +13,12 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 五十六个测试文件，各自钉住什么
+## 1. 六十四个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
-| `test/tree.test.mjs` | 651 | 树投影的规则 R1–R5：嵌套、计数、降级、环、`sessionHome` |
+| `test/tree.test.mjs` | 680 | 树投影的规则 R1–R5：嵌套、计数、降级、环、`sessionHome`、每个节点都带 `homeWorkspaceId`（它属于哪个工作区，与 `workspaceId` 不是一回事） |
+| `test/new-session-workspace.test.mjs` | 130 | 新建会话的工作区解析：树节点 id、窗口传来的裸 uuid、当前目录三个 id 空间落到同一个答案；已知但没有归属的节点回 `null`，不回退当前目录——这个 `null` 就是入口的开关。`canStartDraft` 只认有 `homeWorkspaceId` 的地方（工作区、工作区里的文件夹），根目录 / 未分组 / 工作区外的文件夹全关；`draftFolderOf` 只在「要求的那一行确实是这个工作区里的文件夹」时才给落点：工作区行、固定视图、别的工作区里的文件夹、树里没有的 id 都不给 |
 | `test/tree-mirror.test.mjs` | 178 | 客户端只持有**遍历**、不持有**规则**——同一问题在两处必须同答案 |
 | `test/sessions.test.mjs` | 229 | 合并视图：一个会话"是什么"的唯一判定处 |
 | `test/store.test.mjs` | 432 | 侧车存储、原子写、revision、损坏隔离，以及改它的两个规则模块 |
@@ -40,6 +41,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/trash-subagent.test.mjs` | 182 | 子智能体自己进回收站：只搬它自己的 payload、父会话的日志留着、`parentSession` 记在条目上；删父会话时整条链（父 + 子 + 孙）一起走；正在跑的那一条被跳进 `skipped` 而不是让整批失败 |
 | `test/move.test.mjs` | 532 | 跨 workspace 移动/复制的三件事一个事务 |
 | `test/placement-move.test.mjs` | 264 | 往工作区里的文件夹放会话：同工作区只写 placement、日志不动；跨工作区不带 `move:true` 直接 400「这个文件夹只接受它所在工作区里的会话」且一个字没写；带了就先按 /move 把 payload 搬过去再写 placement（header 的 cwd 跟着改）；一批里有一条正在跑，那条进 `failed`、其余照摆；整批都搬不动就抛 `session-active`，revision 不动 |
+| `test/placement-pending.test.mjs` | 108 | 文件夹里新建会话的**意图**路由：工作区里的文件夹与工作区行都能 arm，带上此刻已有的会话 id 当基线；没给 parent、树里没有的节点、装不下会话的容器（根目录、工作区外的文件夹）都在 arm 之前就 400，未分组能装会话但装不进草稿，单独一句 400 |
+| `test/pending-drafts.test.mjs` | 247 | 意图落地的判据（全部是"不是它"的理由）：点击之后出现的那一条才进文件夹；已在基线里、早于意图 3 秒以上、别的工作区、子智能体、回收站、已归档、已经带 placement 的都不碰；没有 `createdAt` 时只靠基线；过了 120 秒作废、父节点在此期间消失就丢弃、同一文件夹只留最新一条、两个文件夹各等各的、host 拒绝一次就放弃（同一个请求会被同样拒绝）、arm 缺参数抛错、cancel / dispose 之后什么都不剩、轮询真的会在没人调 `settle()` 时把会话摆进去 |
 | `test/datadir.test.mjs` | 410 | 数据目录迁移：预检、七步、回滚、`.location` |
 | `test/component.test.mjs` | 607 | 组件状态机：单飞锁、复用、校验、pending 清扫；以及借用——`inspectBorrowed` 的三种否决（空目录、只有二进制、没有版本号）、有界扫描（命中即停、跳过 `node_modules` 与超深目录）、借用后 `phase` / `source` / `borrowed`、被借的树逐字未变、树被删后自动降级 `absent`、卸载只删自己的 `helper-app`、数据目录内路径一律 `component-borrow-invalid` |
 | `test/component-install.test.mjs` | 87 | 安装入参的守卫：只认 `source`（mirror / github）与 `borrowed`，别的键一律 400 `unknown install option`；设置页「扫描其它插件 → 借用」发的那一份 body 有回归用例（它一度被这道校验挡掉）；`retry` 走同一套校验 |
@@ -56,7 +59,9 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
 | `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上而不是屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
 | `test/reorder.test.mjs` | 94 | 名次那条路由：workspace 的名次落在 `workspaceOrder`、快捷方式落在自己的 `order`；一个名字对不上任何节点的 id（例如多打一层 `w-`）回 `404 node-not-found` 而不是给没人画的行写名次；`order` 不是数字不进文档；过期 revision 仍由侧车挡 |
-| `test/bridge-poll.test.mjs` | 201 | 桥的两条路径：独立窗口的刷新只能作为 `refresh` 命令走出进程（面板自己拉、窗口只发命令）、轮询按游标追问且同一条 `seq` 不执行两次、**没收到 `ready` 时的第一次轮询只是取位置而不是放历史**、`ready` 的游标比本地小就是宿主重启（当作一次 `host-restart` 重载，且不声称谁知道哪些会话在跑）、首次连接吸收游标（不重放挂载前的 `open-session`）；断开时流被关掉 |
+| `test/bridge-poll.test.mjs` | 201 | 桥的两条路径：独立窗口的刷新只能作为 `refresh` 命令走出进程（面板自己拉、窗口只发命令），而窗口一挂载就先发一条 `status-request` 要状态快照（两条命令走同一个 `POST /bridge/commands`，所以断言按 kind 数而不是按条数）、轮询按游标追问且同一条 `seq` 不执行两次、**没收到 `ready` 时的第一次轮询只是取位置而不是放历史**、`ready` 的游标比本地小就是宿主重启（当作一次 `host-restart` 重载，且不声称谁知道哪些会话在跑）、首次连接吸收游标（不重放挂载前的 `open-session`）；断开时流被关掉 |
+| `test/bridge-events.test.mjs` | 203 | 两份 document 的对等通知：写请求落地后 host 自己发一条 `changed`（读请求不发，`/bridge/`、`/component/`、`/search/`、`/summarize` 这些自己会刷新或自己会重载页面的前缀也不发），发的是匹配到的路由而不是原始 URL；调色板**真的变了**才发 `theme-changed`（同一份重复上报不算，只换了 token 值也算变了）；`POST /bridge/commands` 回包带 `listeners`（窗口自己算一个，用它判断有没有人在听）；`lang-changed` 只认 `zh` / `en`；`session-status` 的 `rows` 由路由重建——未知的 `pending` 猜成已知就等于凭坏数据挂上「等待审批」，所以那种值单独出现时整行丢掉、带着 `running` 时留下但 `pending` 归 `null`，`id` 截 200、最多 500 行 |
+| `test/session-status.test.mjs` | 143 | 会话状态怎么跨进程：只投影有信号的三样（在跑 / 在等 / 未读完成），空投影是一条消息而不是沉默（窗口要靠它擦掉上一份徽章）；同一份快照不重复发（总线只留 30 秒、64 个槽，重绘会把握手挤掉），但 `status-request` 的问话必须用 `force` 回答一次——问的人从没见过这份快照；发出的是 `POST /bridge/commands` 上的 `session-status`，窗口侧收到就走 `applyPeerStatus` |
 | `test/dsh-refresh.test.mjs` | 67 | 谁有资格替 DSH 重读会话列表：面板拿得到 `sessions` 服务，独立窗口的 shim 也答应同一个 `refresh`（空函数），所以「有 refresh 就算」在窗口里会误判成能刷；判据改成 shim 那个 `hostBridge` 成员在就不算，写的一方据此才敢发 `needsDsh` |
 | `test/double-press.test.mjs` | 48 | 双击时限：同一行两次按下都在 `DOUBLE_CLICK_MS` 内才算、慢一拍就是两次单击（而且那次慢按成为新的一对的开始）、换一行不配对、一次双击用掉这一对所以第三下重新开始、没有名字的目标永远不算 |
 | `test/drag-set.test.mjs` | 67 | 多选拖动的那一次拆分：容器与会话按树和索引分流而不是按 id 前缀、陌生 id 丢掉而不是猜、重复 id 只走一次、容器永远不会被当会话、没有索引时非容器都算会话、空集拆成空集 |

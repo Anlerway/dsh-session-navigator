@@ -114,7 +114,7 @@ lib/
 ├─ domain/                  纯规则，无 IO，可直接单测
 │  ├─ sessions.js     310  合并三源 → 扁平会话列表（header 定身份，cache 只填空）
 │  ├─ tree.js         477  树投影：workspace 节点 + 固定节点 + 用户文件夹
-│  ├─ tree-rules.js   487  规则表 R1–R5 的唯一实现（accepts / scope / ref 装饰）
+│  ├─ tree-rules.js   557  规则表 R1–R5 的唯一实现（accepts / scope / ref / homeWorkspaceId 装饰）
 │  ├─ folders.js      335  新建/重命名/移动/删除文件夹（改 tree draft）
 │  ├─ shortcuts.js    259  快捷方式：引用而非移动
 │  ├─ annotations.js  276  标签、备注、收藏/待办
@@ -138,6 +138,7 @@ lib/
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
 │  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
 │  ├─ storage-watch.js 224  盯两个签名：`storages/workspace.json` 的改动与 `sessions/` 下各会话目录的 mtime——DSH 侧栏删掉一条没在跑的会话时不会发 `session/disposed`，只能靠目录消失被看见
+│  ├─ pending-drafts.js 271 文件夹里新建会话的意图：DSH 的 `startSession` 只认工作区、会话 id 也由它给，所以草稿出现后由 host 补一条 placement（基线 + 3 秒容差，120 秒作废）
 │  ├─ theme.js        103  调色板令牌白名单与校验
 │  ├─ native-reveal.js 107 koffi → `SHOpenFolderAndSelectItems`，"在文件夹中显示"
 │  ├─ reveal-agent.js  203 常驻 PowerShell：省掉每次 reveal 一秒多的进程启动
@@ -264,7 +265,8 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 - 主题上报：`reportTheme()` + `MutationObserver` 监听 `documentElement` 的
   `class` / `data-theme` / `style`（`:12913-12926`）；
 - 桥订阅：`subscribeBridge(...)`，处理 `open-session` / `new-session` / `open-settings` /
-  `reveal` / `window-closed`（`:12928-12985`）；
+  `reveal` / `window-open` / `window-closed` / `changed` / `theme-changed` / `lang-changed`
+  （`:12928-12985`）；
 - 词典注册：`ctx.locale.register(NS, { zh, en })`（`:12986`）。
 
 **导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:13066-13070`）。
@@ -345,8 +347,22 @@ GET /bootstrap  →  一次往返把面板需要的全部东西给客户端
 ```
 
 客户端**不重算任何规则**：`tree-rules.js` 在节点上装饰 `accepts` / `scope` / `ref` /
-`hasWorkspace`，客户端只读这些字段、只沿 `children` 走两件事（子树、父链）。
+`hasWorkspace` / `homeWorkspaceId`，客户端只读这些字段、只沿 `children` 走两件事（子树、父链）。
+
+两个 workspace 字段名字相近，含义不同，混用会出真 bug：`workspaceId` 只出现在工作区节点上，
+意思是"**这个节点就是那个工作区**"（拖放据此区分搬 payload 与纯摆放）；`homeWorkspaceId` 每个节点
+都有，意思是"**它属于哪个工作区**"——靠 `nearestWorkspace` 沿父链算出来，文件夹自己从不存这个 id。
+`新建会话` 曾经读 `node.workspaceId`，于是站在文件夹里新建的会话全都落到了 DSH 的默认工作区。
 `test/tree-mirror.test.mjs` 守着这条线：客户端可以留一个"拖拽时先灰掉"的谓词，但不能有第二套规则表。
+
+工作区里的**文件夹**是 DSH 不认识的一层：`uiWorkspace.startSession(workspaceId)` 只接受工作区，
+会话 id 也由 DSH 给，所以草稿不可能一次就落在文件夹里。面板因此分两步走：先
+`POST /sessions/placement/pending` 记下"这个文件夹、这个工作区、以及此刻已有的会话"，
+再让 DSH 开草稿；`host/pending-drafts.js` 轮询快照，把之后出现在同一工作区里的第一个
+新会话写进 placement。判据全是"不是它"的理由：别的工作区、子智能体、回收站、已归档、
+已经有 placement、或早于意图 3 秒以上。入口只在 `homeWorkspaceId` 有值的地方出现
+（`canStartDraft`）：根目录、未分组、收藏 / 待办 / 回收站里都不显示，因为在那些地方
+DSH 只会把草稿开进默认工作区。
 
 归属（`workspaceId`）在 `domain/sessions.js` 里定，且**沿父链继承**：DSH 的
 `workspace.sessionIds` 只登记用户从工作区打开的会话，子代理是父会话创建的，永远不在里面。
@@ -366,6 +382,13 @@ id 列表）。路由侧统一用 `assertStandalone()` 拒绝单独操作（`sub
 `completionUnread` / 运行中的子会话数折进列表行，`statusOf` 按 DSH 的阶梯取第一档。这样侧栏和面板
 看的是同一份内存状态，不必等下一次扫描，也不会各自推断出不同的答案——日志只回答"有没有过一轮"，
 不再回答"这轮是不是断了"。
+
+**而这份内存状态只有页面那一侧能读。** 独立窗口是另一个 Electron 进程：`uiSession` 在那里是 shim 的
+空实现（`sessionStatus` 永远是 `null`），同进程的 `BroadcastChannel` 也到不了它。于是状态行要过
+宿主总线：页面在快照变化时发 `session-status { rows }`，窗口挂载 / 回到前台时发 `status-request`
+要一份，host 侧 `normalizeStatusRows` 重建数组再播出去。发布点有两个——`useDshSessionStatus` 的
+effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅（独立弹窗模式，没有面板）。
+细节见 [bridge-and-theme.md](bridge-and-theme.md) §7。
 
 ## 7. 硬约束（写代码前先读这一节）
 

@@ -155,7 +155,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | `GET /settings` | — | `{ settings, revision, capabilities, dataDir, version }` |
 | `PUT /settings` | 局部设置文档 | `{ settings, revision }` |
 | `GET /theme` | — | `null` 或 `{ mode, tokens, at }` |
-| `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme` |
+| `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme`（调色板真的变了才广播 `theme-changed`） |
 
 `GET /bootstrap`（`lib/index.js:631`）是面板唯一的一次往返，字段：
 
@@ -180,6 +180,11 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 
 `sessions[]` 的 `home` 是它显示在哪个容器节点里，`homeOverride` 表示这是侧车的虚拟放置而非
 DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户端不重放规则。
+
+`tree.nodes` 上每个节点除 `accepts` / `scope` / `ref` / `hasWorkspace` 外还带 `homeWorkspaceId`：
+**它属于哪个工作区**（沿父链找最近的工作区，工作区节点就是它自己，没有归属是 `null`）。
+这与 `workspaceId` 不是一回事——后者只出现在工作区节点上，意思是「这个节点就是那个工作区」。
+文件夹节点从不存 `workspaceId`，客户端要判断「在这个位置新建的会话该归谁」时读 `homeWorkspaceId`。
 
 一个字段不是 DSH 给的，是插件自己从日志里读出来的（`lib/sources/logfacts.js`）：
 
@@ -253,6 +258,7 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 | `POST /quick-access` | `{ ids }`（整条顺序，首行在前） | `{ order, skipped, quickAccess, revision }` |
 | `POST /nodes/:id/move` | `{ parent }` | `{ nodeId, parent, revision }` |
 | `POST /sessions/placement` | `{ ids, parent?, move? }` | `{ ids, parent, revision, sessionPlacement, moved, failed }` |
+| `POST /sessions/placement/pending` | `{ parent }` | `{ parent, workspaceId, since, expiresAt }` |
 
 - `DELETE /folders/:id` 默认把内容**上提到父节点**（`lift` 默认 1）；`?lift=0` 时若文件夹非空
   则拒绝。同时会连带删掉指向该文件夹的快捷方式——指向已删节点的行比没有这行更糟。
@@ -279,6 +285,16 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
   整批都搬不动时沿用 `/move` 的约定直接抛错，而不是回一个 200 空结果。
   客户端把「剪切→粘贴到工作区内的文件夹」和拖放都走这条路，撤销时先清 placement、再按原
   workspaceId 把 payload 搬回去（见 `placeSessions`）。
+- `POST /sessions/placement/pending` 是**意图**，不是写入：它只说「下一步会在 `parent` 这个
+  文件夹里新建一个会话」，并附上此刻已经存在的会话 id 作为基线（响应里的 `since` 是主机时钟）。
+  DSH 的 `uiWorkspace.startSession(workspaceId)` 只认工作区、且会话 id 由它自己决定，所以文件夹
+  内的落位只能**等会话出现之后**补一条 placement（`lib/host/pending-drafts.js`）。命中条件是：
+  同一个工作区里、基线里没有、`createdAt` 不早于 `since` 减 3 秒（两条请求走的是不同的线，草稿
+  可能快一点）、不是子智能体 / 回收站 / 已归档、且没有已经写好的 placement。一个文件夹同时只留
+  一条意图（再点一次就是覆盖），120 秒后作废——点一下却没建会话的用户，不该让十分钟后他
+  自己在 DSH 侧栏建的会话跑进这个文件夹。父节点在此期间被删掉，意图跟着丢弃。
+  容器校验与 placement 相同（存在、能接受会话），除此之外还要求它在某个工作区里：
+  未分组能装会话但装不进草稿，那边回 `400`（这个位置不在任何工作区里，DSH 没法在那里新建会话）。
 - `POST /nodes/:id/quick-access` 只写侧车的 `quickAccess[id]`（`quickAccess: false` 删掉它），只有真实容器能当书签
   （`isBookmarkable`：文件夹还在的 `d-…`，或 `w-…`），否则 `400 this node cannot be bookmarked`。视图、收藏 / 待办、快捷方式都不是「地方」——它们在左栏
   已经是一行。节点本身不在了是 `404 node-not-found`，pin 同样先查这一条。它和 `POST /nodes/:id/pin` 是两件事：pin 是**在本来的带子里排前面**，quick-access 是**同一容器多一个
@@ -494,15 +510,42 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 
 | 路由 | body / query | 返回 |
 |---|---|---|
-| `POST /bridge/commands` | `{ kind, payload? }` | `{ seq, kind }` |
+| `POST /bridge/commands` | `{ kind, payload? }` | `{ seq, kind, listeners }` |
 | `GET /bridge/events` | `?since=<cursor>` | SSE 流 |
 | `GET /bridge/poll` | `?since=<cursor>` | `{ cursor, commands }` |
 | `POST /detached/open` | — | `{ open: true, ... }` |
 | `POST /detached/close` | — | `{ closed, wasOpen }` |
 
-`kind ∈ {open-session, new-session, reveal, refresh, open-settings}`（`lib/host/bridge.js:148`），
-payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自截断到 200 字符。
-其它 kind 一律 `bad-request`——桥是一根窄管子，不是插件的遥控器。
+`kind ∈ {open-session, new-session, reveal, refresh, open-settings, lang-changed, session-status, status-request}`
+（`lib/host/bridge.js:160`），payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自
+截断到 200 字符（`lang-changed` 例外：它只带 `lang`，取值 `zh` 或 `en`，别的一律丢掉）。其它 kind
+一律 `bad-request`——桥是一根窄管子，不是插件的遥控器。
+
+两个 `status` 相关的 kind 是会话状态的跨进程通道（窗口跑在 shim 上，`uiSession` 是空实现，
+`BroadcastChannel` 又不出进程）：
+
+```jsonc
+// 页面 → 窗口：一次快照变化
+{ "kind": "session-status", "payload": { "rows": [{ "id": "session-…", "running": true, "pending": "approval", "completed": false }] } }
+// 窗口 → 页面：我刚打开（或刚回到前台），发我一份当前状态
+{ "kind": "status-request", "payload": {} }
+```
+
+`rows` 由 `normalizeStatusRows()` 重建（`lib/host/bridge.js:188`）：只认四个键，`id` 截 200、`pending`
+只认 `approval` / `plan-review` / `question`、两个布尔只认 `true`，最多 500 行；缺 id 或三样信号
+都没有的行被丢掉。原因是它决定另一侧画哪个徽章，把未知的等待类型猜成已知的，等于凭坏数据挂上
+「等待审批」。`status-request` 带什么都会丢。页面收到请求后用 `force` 回答一次，跳过去重：问的人
+从没见过这份快照，而总线只保留 30 秒。
+
+`listeners` 是发布那一刻的订阅者数量；窗口自己也算一个，所以 `listeners <= 1` 等于「没有别人在听」
+（窗口据此判断「已在 DSH 主窗口打开设置」这句话还成不成立）。
+
+反过来，host 自己会发三种不需要窗口请求的命令：`window-open` / `window-closed`（窗口生命周期）、
+`theme-changed`（调色板变了）、以及每次写请求成功后的 `changed { path, method }`。
+`changed` 只发一次、不分接收方，两份 document 收到都只是重读一次 `/bootstrap`；`/bridge/`、
+`/component/`、`/detached/`、`/datadir/`、`/search/`、`/summarize`、`/cache/`、`/theme`、
+`/update`、`/about/`、`/release-notes` 这些前缀下的写入不发（理由见
+[bridge-and-theme.md](bridge-and-theme.md) §2）。
 
 `GET /bridge/events` 先发 `event: ready`（带当前 `cursor` 和允许的 kinds），再补发
 `since` 之后的命令，之后是实时的 `event: command`；每 15 秒一条 `: keep-alive` 注释帧。

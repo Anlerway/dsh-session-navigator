@@ -649,3 +649,32 @@ test("快速访问 and 置顶 are two lists: a bookmark adds a strip row, a pin 
   assert.deepEqual(pinOnly.quickAccessNodes, []);
   assert.deepEqual(pinOnly.pinnedNodes, [workspaceNodeId("wb")]);
 });
+
+// ── homeWorkspaceId: the workspace a node belongs to ────────────────────────
+test("every node carries the workspace it belongs to", () => {
+  const tree = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: {
+        "d-out": { id: "d-out", name: "Out", parent: FIXED_NODES.root, order: 0 },
+        "d-in": { id: "d-in", name: "In", parent: "w-wa", order: 0 },
+        "d-deep": { id: "d-deep", name: "Deep", parent: "d-in", order: 0 },
+      },
+    },
+  });
+  // A workspace node *is* its own home.
+  assert.equal(tree.nodes["w-wa"].homeWorkspaceId, "wa");
+  // A folder inside a workspace answers with it, however deep it sits.
+  assert.equal(tree.nodes["d-in"].homeWorkspaceId, "wa");
+  assert.equal(tree.nodes["d-deep"].homeWorkspaceId, "wa");
+  // Above every workspace, and the fixed views, belong to none — which is what
+  // 新建会话 turns into startSession(undefined), DSH's default workspace.
+  assert.equal(tree.nodes["d-out"].homeWorkspaceId, null);
+  assert.equal(tree.nodes[FIXED_NODES.root].homeWorkspaceId, null);
+  assert.equal(tree.nodes[FIXED_NODES.ungrouped].homeWorkspaceId, null);
+  // Derived, and never confused with the field that says "this node is a
+  // workspace" — the drop handlers read that one to tell 搬 payload from 摆放.
+  assert.equal(tree.nodes["d-deep"].workspaceId, undefined);
+  assert.equal(tree.nodes["w-wa"].workspaceId, "wa");
+});

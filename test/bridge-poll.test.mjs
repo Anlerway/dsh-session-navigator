@@ -100,10 +100,13 @@ test("a window asks the Host to refresh DSH instead of pretending it can", async
   assert.equal(api.canRefreshDsh(), false);
   await api.requestDshRefresh();
   assert.equal(pulled, 0, "the shim's refresh is not a pull");
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].method, "POST");
-  assert.equal(calls[0].url, "/session-navigator/api/bridge/commands");
-  assert.deepEqual(calls[0].body, { kind: "refresh", payload: {} });
+  const handed = calls.filter((call) => call.url === "/session-navigator/api/bridge/commands");
+  // Mounting a window also asks the page for the session states it has never
+  // seen (its own uiSession is the shim's stub), and that ask uses the same
+  // route — so the refresh is picked out by kind, not by position.
+  assert.deepEqual(handed.map((call) => call.body.kind), ["status-request", "refresh"]);
+  assert.equal(handed[1].method, "POST");
+  assert.deepEqual(handed[1].body, { kind: "refresh", payload: {} });
 });
 
 test("the panel pulls DSH itself and sends no command", async () => {

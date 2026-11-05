@@ -617,4 +617,39 @@
       if (await applyTheme()) return;
     }
   })();
+
+  /**
+   * The two repaints the panel's module asks for (see `shimHooks` in
+   * lib/client.js).
+   *
+   * This file holds no bridge stream of its own on purpose: a long-lived
+   * connection is the scarce resource on HTTP/1.1 and the module loaded below is
+   * already holding one. So the handover is a plain object — re-read the
+   * palette, reload in the other language — and the module calls it when the
+   * Host says the theme or the language moved.
+   */
+  window.__seShimHooks = {
+    applyTheme: () => applyTheme(),
+    /**
+     * Reload this page in the other language.
+     *
+     * The dictionary is picked once, from the URL, because the panel reads the
+     * language per render and a mounted tree cannot swap dictionaries under
+     * itself. The same value means nothing to do — the Host repeats the message
+     * whenever the panel re-reports.
+     *
+     * @param {unknown} lang
+     */
+    setLang: (lang) => {
+      const next = lang === "en" ? "en" : "zh";
+      if (next === LANG) return;
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("lang", next);
+        window.location.replace(url.toString());
+      } catch {
+        /* a location that will not parse: keep drawing the old language */
+      }
+    },
+  };
 })();
