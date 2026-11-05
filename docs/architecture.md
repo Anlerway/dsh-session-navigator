@@ -138,6 +138,7 @@ lib/
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
 │  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
 │  ├─ storage-watch.js 224  盯两个签名：`storages/workspace.json` 的改动与 `sessions/` 下各会话目录的 mtime——DSH 侧栏删掉一条没在跑的会话时不会发 `session/disposed`，只能靠目录消失被看见
+│  ├─ status-board.js  70  会话状态的最后一格缓存：窗口每秒经 `GET /bridge/status` 读它，挂载与回到前台时用 `status-request` 问同一份（推送在后台文档里会被节流，只靠推会一直停在旧状态）
 │  ├─ pending-drafts.js 271 文件夹里新建会话的意图：DSH 的 `startSession` 只认工作区、会话 id 也由它给，所以草稿出现后由 host 补一条 placement（基线 + 3 秒容差，120 秒作废）
 │  ├─ theme.js        103  调色板令牌白名单与校验
 │  ├─ native-reveal.js 107 koffi → `SHOpenFolderAndSelectItems`，"在文件夹中显示"
@@ -335,6 +336,36 @@ groups.push({ key, title, icon, count, rows });
 再藏起来——被折的行既不在 DOM 里，也不进框选，删不掉看不见的东西。状态随布局记忆落盘
 （`foldedBands: [...foldedBands]`，`lib/client.js:6672`）。
 
+### 5.3 图标：工具栏与右键菜单是两色，别处是单色
+
+`ICONS`（`lib/client.js:2742`）是一张 16×16、`stroke-width` 1.3、圆头圆角的静态表，
+`Icon`（`lib/client.js:2810`）把它交给 `svg` 的 `dangerouslySetInnerHTML`。
+
+两色**只给按钮和菜单**，也就是工具栏那一条（`lib/client.js:12244` 起）和行的右键菜单
+（`lib/client.js:11425` 起）：中性一半跟 `currentColor` 走，画命令**作用于什么**（一张纸、
+一个桶、一个文件夹）；带 `class="accent"` 的一半跟 `--sm-accent` 走，画**做什么**
+（压在前面的那张纸、门）。这两处一共 25 个字形——`plus`（新建）保持原来的纯十字，
+`trash`（删除）整枚单色：红色已经说完了这个命令要做什么，再给桶盖上一块蓝只是把同一句话写成两半。
+
+其余调用点保持单色——面包屑、搜索框、树行、列表行、状态栏。那些地方图标是**标签**而不是
+按钮，两色只会让一行树看起来像两个控件。为此 `search` / `home` / `monitor` / `chat` /
+`list` / `filter` 是单色原样，和本来就单色的 `back` / `fwd` / `up` / `chevdown` /
+`chevright` / `check` / `x` / `minus` / `more` 一起。
+
+一张字形表一个名字，而 `folder` 同时是「在文件管理器中显示」和树里的文件夹行，`pin` 同时是
+工具栏置顶与树上的置顶小图钉，`star` / `todo` 同时是工具栏按钮和侧栏的收藏/待办页标题。
+因为是**选择器**而不是拆名字来分：`.se-shell .accent` 默认为 `currentColor`，只有
+`.se-shell .cmd .accent` 与 `.se-shell .mi .accent` 覆盖成 `--sm-accent`，所以同一个名字
+在树行里仍然是单色。
+
+选择器写在 `.se-shell .accent`，不是 `.se-shell .ic svg .accent`：`Icon` 把 `className`
+直接给 `svg`，有的调用点（`lib/client.js:4610`）的 `svg` 自己就带 `.ic`，窄选择器在
+那条路径上匹配不到。`.cmd.danger` 仍把强调半边退回 `currentColor`，危险按钮的两色字形
+不会闪出蓝色。
+
+字形本身也不爱套框：`star`（收藏）是一颗裸星，`shortcut`（快捷方式）直接用「外部打开」那枚
+出走箭头——快捷方式这一行本来就是在说「它指向别处」，和「外部打开」同义，分开画只会多一个要认的图形。
+
 ## 6. 数据流
 
 ```
@@ -385,10 +416,19 @@ id 列表）。路由侧统一用 `assertStandalone()` 拒绝单独操作（`sub
 
 **而这份内存状态只有页面那一侧能读。** 独立窗口是另一个 Electron 进程：`uiSession` 在那里是 shim 的
 空实现（`sessionStatus` 永远是 `null`），同进程的 `BroadcastChannel` 也到不了它。于是状态行要过
-宿主总线：页面在快照变化时发 `session-status { rows }`，窗口挂载 / 回到前台时发 `status-request`
-要一份，host 侧 `normalizeStatusRows` 重建数组再播出去。发布点有两个——`useDshSessionStatus` 的
+宿主总线：页面在快照变化时发 `session-status { rows }`，host 侧 `normalizeStatusRows` 重建数组再
+播出去，窗口按自己的节拍读回来。发布点有两个——`useDshSessionStatus` 的
 effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅（独立弹窗模式，没有面板）。
 细节见 [bridge-and-theme.md](bridge-and-theme.md) §7。
+
+**页面这条路只靠推送不够，所以 host 也记一份。** 两个坑都在时间上，不在内容上：总线里的命令 30 秒后过期，
+而页面在快照没变时不会重复播，于是「开得晚一点的窗口」问到的是一根空总线；反过来，
+后台文档会被浏览器节流，页面**确实发了**的播报可能晚几分钟才到，窗口分不出「晚」和「没发」，
+徽章就一直停在旧档，直到用户点回 DSH。`host/status-board.js` 只留最新一格快照（外加它自己的
+时间戳 `at`）：`status-request` 由 host 立刻用缓存答，窗口每秒 `GET /bridge/status` 拉一次，
+页面那一侧再加一个 1 秒的自查定时器（投影一遍、JSON 不变就不发）。窗口在挂载与回到前台时
+另外发一次 `status-request`，页面收到就强制重播一遍，第一条状态不必等一个节拍。
+窗口按 `at` 比较，晚到的旧快照不会把新的顶回去——推送和拉取本来就会互相超车。
 
 ## 7. 硬约束（写代码前先读这一节）
 

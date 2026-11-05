@@ -44,6 +44,7 @@ const EXPOSE = [
   "publishReveal",
   "bridgeActions",
   "FooterAction",
+  "flushBridgeBursts",
 ];
 
 /**
@@ -403,6 +404,7 @@ test("the detached window follows a reveal command that names a session", async 
     const source = sources.at(-1);
     assert.match(source.url, /\/bridge\/events\?since=0$/);
     source.emit("command", { seq: 4, kind: "reveal", payload: { sessionId: "s1" } });
+    api.flushBridgeBursts();
     assert.deepEqual(revealed, ["s1"]);
   });
 });
@@ -423,6 +425,7 @@ test("the DSH page ignores a reveal it published itself", async () => {
     // This is the command 独立弹窗 publishes from `revealInExplorer`; acting on
     // it here would raise the panel over the window it just opened.
     sources.at(-1).emit("command", { seq: 5, kind: "reveal", payload: { sessionId: "s1" } });
+    api.flushBridgeBursts();
     assert.deepEqual(revealed, []);
   });
 });
@@ -510,7 +513,10 @@ async function withPage({ hostBridge, uiWorkspace } = {}) {
     bundle.apply(host);
     page.bundle = bundle;
     page.api = api;
-    page.emit = (command) => sources.at(-1).emit("command", command);
+    page.emit = (command) => {
+      sources.at(-1).emit("command", command);
+      api.flushBridgeBursts();
+    };
   });
   return page;
 }

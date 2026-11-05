@@ -39,7 +39,7 @@ function load(host, respond) {
   const fetchImpl = recordingFetch(respond);
   const { bundle, test: api } = loadClientBundle({
     fetch: fetchImpl,
-    expose: ["subscribeBridge", "requestDshRefresh", "canRefreshDsh"],
+    expose: ["subscribeBridge", "requestDshRefresh", "canRefreshDsh", "flushBridgeBursts"],
   });
   if (host) bundle.apply(host);
   return { api, calls: fetchImpl.calls };
@@ -101,12 +101,14 @@ test("a window asks the Host to refresh DSH instead of pretending it can", async
   await api.requestDshRefresh();
   assert.equal(pulled, 0, "the shim's refresh is not a pull");
   const handed = calls.filter((call) => call.url === "/session-navigator/api/bridge/commands");
-  // Mounting a window also asks the page for the session states it has never
-  // seen (its own uiSession is the shim's stub), and that ask uses the same
-  // route — so the refresh is picked out by kind, not by position.
+  // Mounting a window spends two slots on purpose: the ask covers a state that
+  // changed while it was closed, and the refresh is what it cannot do itself.
+  // Both signs travel through the one POST, so this counts kinds.
   assert.deepEqual(handed.map((call) => call.body.kind), ["status-request", "refresh"]);
-  assert.equal(handed[1].method, "POST");
-  assert.deepEqual(handed[1].body, { kind: "refresh", payload: {} });
+  const asked = handed.filter((call) => call.body.kind === "refresh");
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].method, "POST");
+  assert.deepEqual(asked[0].body, { kind: "refresh", payload: {} });
 });
 
 test("the panel pulls DSH itself and sends no command", async () => {
@@ -138,12 +140,14 @@ test("the poll is a second path to the same bus, and a sequence runs once", asyn
   const stream = FakeStream.last;
   stream.emit("ready", { cursor: 0, kinds: [] });
   stream.emit("command", { seq: 1, kind: "sessions-changed", payload: { reason: "turn" } });
+  api.flushBridgeBursts();
   assert.deepEqual(seen, [1], "the stream still delivers first");
 
   // The stream went quiet without saying so; the poll carries the same command.
   for (let round = 0; round < 2; round += 1) {
     ticks[0].fn();
     await settle();
+    api.flushBridgeBursts();
   }
   off();
 
@@ -167,10 +171,12 @@ test("a poll with no ready frame before it is history, not news", async (t) => {
   const off = api.subscribeBridge((command) => seen.push(command));
   ticks[0].fn();
   await settle();
+  api.flushBridgeBursts();
   assert.deepEqual(seen, [], "a panel mounting must not replay an older open-session");
 
   ticks[0].fn();
   await settle();
+  api.flushBridgeBursts();
   off();
   assert.deepEqual(seen.map((command) => command.seq), [8], "only what came after the position it took");
 });
@@ -186,9 +192,11 @@ test("a restarted Host is a reload, not silence", async (t) => {
   // than this document, so a panel mounting now must not replay it.
   stream.emit("ready", { cursor: 12, kinds: [] });
   stream.emit("command", { seq: 11, kind: "open-session", payload: { sessionId: "session-old" } });
+  api.flushBridgeBursts();
   assert.deepEqual(seen, [], "a replayed command from before the mount is ignored");
 
   stream.emit("command", { seq: 13, kind: "sessions-changed", payload: { reason: "turn" } });
+  api.flushBridgeBursts();
   assert.equal(seen.length, 1);
 
   // The Host restarted: its bus is young again and its cursor went backwards.

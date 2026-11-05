@@ -148,7 +148,7 @@ test("session states travel as rows, and the route rebuilds them", async () => {
   bridge.subscribe((command) => heard.push(command));
 
   assert.ok(WINDOW_COMMANDS.includes("session-status"), "the page may announce states");
-  assert.ok(WINDOW_COMMANDS.includes("status-request"), "the window may ask for them");
+  assert.ok(WINDOW_COMMANDS.includes("status-request"), "kept as the cache's on-demand entry");
 
   const sent = await ROUTES["POST /bridge/commands"]({ bridge }, {
     body: {

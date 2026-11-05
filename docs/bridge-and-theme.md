@@ -34,7 +34,7 @@
 | `reveal` | DSH 页面 | **窗口** | 在资源管理器里定位会话文件 |
 | `refresh` | 窗口 | DSH 页面 | 我的写入落地了，重读；顺带让 host 丢掉会话缓存 |
 | `session-status` | DSH 页面 | **窗口** | 会话状态行（`running` / `pending` / `completed`），跨进程唯一的路 |
-| `status-request` | 窗口 | DSH 页面 | 我刚打开（或刚回到前台），把当前状态行发我一份 |
+| `status-request` | 窗口（挂载 / 回到前台），页面也听 | host 的状态板缓存 | 现在的状态行是什么，用缓存直接答 |
 | `changed` | host | 两边 | 有写入落地了（`{ path, method }`），不是我这半边发的也要重读 |
 | `theme-changed` | host | **窗口** | 调色板变了，重读 `/theme` 并重画 |
 | `window-open` | host | DSH 页面 | 窗口已打开 |
@@ -295,24 +295,39 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 | 载体 | 谁 → 谁 | 何时 |
 |---|---|---|
 | `BroadcastChannel` `{ kind: "status", rows }` | 同进程的另一个 document | 每次快照变化 |
-| 总线 `session-status` / `status-request` | 页面 ↔ 窗口 | 每次快照变化；窗口挂载、focus、visibilitychange |
+| 总线 `session-status` | 页面 → host → 窗口 | 每次快照变化 |
 
-发布只有一个入口 `publishStatusSnapshot(rows, force?)`：快照没变就不发（总线只有 64 个位置、30 秒
+发布只有一个入口 `publishStatusSnapshot(rows)`：快照没变就不发（总线只有 64 个位置、30 秒
 寿命，一次重绘不该把真正的命令挤出去），而跨进程那一条只在 `!windowHost()` 时发。订阅点有两处——
 `useDshSessionStatus` 的 effect（面板挂着时）和 `apply()` 里的一个 effect（读
 `serviceOf("uiSession")?.sessionStatus`，服务晚到就 `hostCtx.inject` 等它）。后者是**独立弹窗**
 模式下唯一能发布的地方：那里根本没有面板组件挂载过。
 
-窗口那一侧在 `apply()` 里立刻发一次 `status-request`，并在 `focus` / `visibilitychange` 时再发一次。
-面板只播「变化」，所以一个在会话**已经**开始等待之后才打开的窗口，不主动问就永远是空的。页面
-收到 `status-request` 用 `publishStatusSnapshot(undefined, true)` 回答：`force` 跳过去重，因为问的人
-从没见过这份快照，而上一次广播可能已经超过 30 秒、被总线丢掉了。
+窗口那一侧两条路一起走，因为它们的失效方式不一样。一条是节拍：它在 `apply()` 里起一个定时器，
+每秒 `GET /bridge/status` 读一次 host 状态板（`STATUS_PULL_MS`），读回来交给
+`applyPeerStatus(rows, at)`——不依赖谁记得去发。另一条是问话：挂载时、以及 `focus` / 转可见时发一次
+`status-request`，host 用状态板缓存立刻作答；页面若也收到这条，就用
+`publishStatusSnapshot(undefined, true)` 强制重播一遍（`force` 跳过去重），让刚打开的窗口不必等一个节拍。
+节拍怕定时器被节流，问话怕页面的 document 在后台被节流、回答晚几分钟——两条先到哪条都不算错，
+`at` 会挡住更旧的那份。
+
+**问话救不了的就是时间上的这两个洞。** 问话要送到页面，而页面的 document 在后台时被浏览器节流，
+回答可能晚几分钟——窗口分不出「晚」和「没发」，徽章就停在旧档；反过来，总线里那条广播 30 秒后过期，
+而页面在快照没变时不会重播，于是更晚打开的窗口问到的是一根空总线。所以 host 记一格
+（`lib/host/status-board.js`），窗口不问也读得到：
+
+| 载体 | 谁 → 谁 | 何时 |
+|---|---|---|
+| `session-status` 的缓存 | host 存最后一格，谁问都答同一份 | 每次发布 |
+| `GET /bridge/status` | 窗口拉 host | 每秒（`STATUS_PULL_MS`） |
+
+发布出去的那一帧带 `at`（快照自己的时间，不是响应时间），缓存里也是同一个值：窗口按它比较，晚到的旧快照不许把新的顶回去——推送与拉取本来就会互相超车。页面那一侧另加一个 1 秒的自查定时器（`STATUS_TICK_MS`）：投影一遍、和上次的 JSON 比一次，变了才发，兜住「观察源没通知」这种静默漏报。
 
 四条约束值得记下来，改这段代码时最容易踩的也是它们：
 
-- **回声必须防住。** 只有拿得到 `uiSession` 的一侧发布（`if (!local) return;`）；收
-  `session-status` 的一侧 `if (!windowHost()) return;` 不转发，发 `status-request` 的一侧
-  `if (windowHost()) return;` 不听自己。`useMemo` 的依赖写 `[local, version]` 而不是
+- **回声必须防住。** 只有拿得到 `uiSession` 的一侧发布（`if (!local) return;`），跨进程那条还要
+  `if (!windowHost()) return;`（窗口自己不发）；收 `session-status` 的一侧 `if (!windowHost()) return;`
+  不听自己。`useMemo` 的依赖写 `[local, version]` 而不是
   `[local, version, peerStatus]`，否则两个窗口会互相触发、来回广播。
 - **空快照也是一条消息。** 接收侧清空重建，某个会话不在下一份里就等于它不再等待——不需要墓碑，
   也不会留下一个永远转圈的「等待回答」。
@@ -330,6 +345,7 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 | 文件 | 职责 |
 |---|---|
 | `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand`、`normalizeStatusRows`（:188） |
+| `lib/host/status-board.js` | 会话状态的最后一格缓存：`set` / `snapshot` / `clear`，带快照自己的时间戳 |
 | `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
 | `lib/index.js:1914` | `POST /bridge/commands` |
 | `lib/index.js:1927` | `GET /bridge/events`（SSE 主路径，见 §3） |
@@ -338,7 +354,7 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 | `lib/client.js:886` | `subscribeBridge()`：SSE + `/bridge/poll`、`seq` 去重、宿主重启检测 |
 | `lib/client.js:1170` | `requestDshRefresh()`：能拉就拉，拉不动就走桥 |
 | `lib/client.js:2374` | 对等总线的 `BroadcastChannel`、`publishPeer()` / `subscribePeer()` / `subscribePeerStatus()` |
-| `lib/client.js:2509` | `publishStatusSnapshot()`：两根管子一起发、去重、`status-request` 的强制回答 |
+| `lib/client.js:2782` | `publishStatusSnapshot()`：两根管子一起发、去重、跨进程那条只在非窗口时发 |
 | `lib/client.js:16080` | `apply()` 里对 `uiSession.sessionStatus` 的那次订阅（独立弹窗模式下唯一的发布点） |
 | `lib/client.js:2823` | `useDshSessionStatus()`：本地表与 peer 表的合并（见 §7） |
 | `lib/client.js:15814` | `apply()` 里装配桥与主题监听 |

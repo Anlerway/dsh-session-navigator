@@ -191,7 +191,6 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 | 字段 | 含义 | 从哪来 |
 |---|---|---|
 | `blank` | 从未开始过一轮对话的会话 | 日志里没有 `turn/start`。DSH 的 projcache 也记这个，但它只覆盖 DSH 自己列过的会话；插件走目录扫描，所以以日志为准，读不到时回落到 projcache，两者都没有就是 `null`（未知，不隐藏） |
-
 读取成本：`blank` 只在日志较小时读全文（≤256 KB），较大的日志只读头部 64 KB 的几帧，
 读不到就报未知而不是报空。结果按 `path|size|mtime` 缓存，所以只有正在写的那个会话会被重读。
 
@@ -513,6 +512,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 | `POST /bridge/commands` | `{ kind, payload? }` | `{ seq, kind, listeners }` |
 | `GET /bridge/events` | `?since=<cursor>` | SSE 流 |
 | `GET /bridge/poll` | `?since=<cursor>` | `{ cursor, commands }` |
+| `GET /bridge/status` | — | `{ rows, at, cursor }` |
 | `POST /detached/open` | — | `{ open: true, ... }` |
 | `POST /detached/close` | — | `{ closed, wasOpen }` |
 
@@ -525,17 +525,31 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 `BroadcastChannel` 又不出进程）：
 
 ```jsonc
-// 页面 → 窗口：一次快照变化
+// 页面 → host → 窗口：一次快照变化
 { "kind": "session-status", "payload": { "rows": [{ "id": "session-…", "running": true, "pending": "approval", "completed": false }] } }
-// 窗口 → 页面：我刚打开（或刚回到前台），发我一份当前状态
+// 问一句「现在的状态行是什么」：窗口挂载时与回到前台时各发一次，host 用状态板缓存直接答
 { "kind": "status-request", "payload": {} }
 ```
 
 `rows` 由 `normalizeStatusRows()` 重建（`lib/host/bridge.js:188`）：只认四个键，`id` 截 200、`pending`
 只认 `approval` / `plan-review` / `question`、两个布尔只认 `true`，最多 500 行；缺 id 或三样信号
 都没有的行被丢掉。原因是它决定另一侧画哪个徽章，把未知的等待类型猜成已知的，等于凭坏数据挂上
-「等待审批」。`status-request` 带什么都会丢。页面收到请求后用 `force` 回答一次，跳过去重：问的人
-从没见过这份快照，而总线只保留 30 秒。
+「等待审批」。`status-request` 带什么都会丢。窗口在挂载与回到前台时发它；页面若收到这条，
+就用 `publishStatusSnapshot(undefined, true)` 立刻重播一遍手里的快照（`force` 跳过去重），
+这样刚打开的窗口不必等下一个节拍，host 也会同时用下面那份缓存回答。
+
+Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时间存进状态板
+（`lib/host/status-board.js`），发布出去的那一帧带 `at`。于是
+
+- `status-request` 由 Host 立刻用缓存回答，同时页面自己也重播一遍快照，问的人两条路都拿到；
+- `GET /bridge/status` 把同一份缓存交出来，窗口每秒拉一次——它不等谁去发，也不依赖
+  「页面这一侧还醒着」。
+
+缓存只有一格、没有历史：快照就是全部现状，某条状态不在列表里，正是徽章该消失的方式。`at` 是
+**快照自己的时间**（不是响应时间），窗口按它比较，晚到的旧快照不会把新的顶回去——推送与拉取会
+互相超车，没有这个时间戳就会出现「明明刚显示等待审批，又被改回空闲」。页面这一侧另有一个
+1 秒的自查定时器：投影一遍、和上次的 JSON 比一次，变了才发，用来兜住「观察源没有通知」这种
+静默漏报。
 
 `listeners` 是发布那一刻的订阅者数量；窗口自己也算一个，所以 `listeners <= 1` 等于「没有别人在听」
 （窗口据此判断「已在 DSH 主窗口打开设置」这句话还成不成立）。

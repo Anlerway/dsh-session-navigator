@@ -8,8 +8,8 @@
  * therefore only ever appeared in the panel.
  *
  * What both surfaces do share is the Host, so the rows travel there: the page
- * announces them (`session-status`), a window that opens late asks for them
- * (`status-request`), and the route rebuilds the array before fanning it out.
+ * announces them (`session-status`), the route rebuilds the array before fanning
+ * it out, and the window reads the Host's copy on its own beat.
  *
  *   node --test test/session-status.test.mjs
  */
@@ -105,14 +105,19 @@ test("a repaint that changed nothing is not announced twice", async () => {
 
 test("an ask is answered even when the answer has not changed", async () => {
   const { api, fetch } = load();
-  api.publishStatusSnapshot(api.statusRowsOf(new Map([["session-approval", waitingForApproval]])));
-  // A window opened half a minute later: the earlier command has aged out of the
-  // bus and the page has had no reason to publish since. The ask is the only
-  // thing that makes the rows arrive there, so it cannot be deduped away.
+  const rows = api.statusRowsOf(new Map([["session-approval", waitingForApproval]]));
+  assert.equal(api.publishStatusSnapshot(rows), true);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(fetch.calls.filter((call) => call.url.endsWith("/bridge/commands")).length, 1);
+
+  // A window that just opened asks for the rows it was never told about. The
+  // announcement that carried them may already have aged out of the 30 s bus,
+  // so the answer has to leave even though nothing changed since the last one.
   assert.equal(api.publishStatusSnapshot(undefined, true), true);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(fetch.calls.filter((call) => call.url.endsWith("/bridge/commands")).length, 2);
 });
+
 
 test("the window applies what the route lets through, end to end", () => {
   const { api } = load();
