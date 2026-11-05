@@ -1,5 +1,5 @@
 /**
- * AI 字段 (m00531, m01823) — the document shape, the spend ledger, the prompt,
+ * AI 字段 — the document shape, the spend ledger, the prompt,
  * and the runner.
  *
  * The product is three fields — a title, a description, a tag list — not a
@@ -326,7 +326,7 @@ test("only an explicit true asks for a field", () => {
 
 // ── who still needs fields ───────────────────────────────────────────────────
 
-test("还缺字段 looks at the description and the tags only (m01898)", () => {
+test("还缺字段 looks at the description and the tags only", () => {
   // Two sources per field: the model's record, or the user's own words. The
   // title is neither — a name says nothing about what was said, so a session
   // with only a title is still waiting.
@@ -502,7 +502,7 @@ test("the prompt says exactly what the fields are worth, and no more", () => {
 });
 
 test("the session's own metadata is not part of the question any more", () => {
-  // m01823: 标题/备注/标签 are what the model *writes*. Feeding the old title and
+  // 标题/备注/标签 are what the model *writes*. Feeding the old title and
   // note back in would let a bad name survive forever.
   const built = buildMessages({ turns: [{ role: "user", text: "就这样" }], fields: ALL_FIELDS });
   const text = built.messages[0].content[0].text;
@@ -853,7 +853,7 @@ test("every refusal the field routes can answer has a status the client can act 
   assert.equal(statusFor("llm/SOMETHING_NEW"), 500);
 });
 
-// ── merging without inventing twins (m02641) ─────────────────────────────────
+// ── merging without inventing twins ─────────────────────────────────
 
 test("a generated tag that already exists keeps the existing spelling", () => {
   // "导出" is in use, so an answer that says "导出 " (or "导出" again) has to

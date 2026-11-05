@@ -170,10 +170,10 @@ function settingsDocument(mode, component) {
         header: { style: "auto" },
       },
       list: { autoCollapse: false, showArchived: true },
-      // 搜索索引 (m00561): the index cache is on and the idle build is off, the
+      // 搜索索引: the index cache is on and the idle build is off, the
       // same defaults a fresh install gets.
       search: { indexIdle: false },
-      // AI 摘要 (m00531): no model chosen yet, and every piece of session
+      // AI 摘要: no model chosen yet, and every piece of session
       // metadata goes into the prompt until the user says otherwise.
       summary: { provider: "", model: "", effort: "", fields: { title: true, description: true, tags: true } },
       dataDir: { current: null },
@@ -268,12 +268,12 @@ async function renderSettings({
   update = null,
   clear = null,
   interpolate = false,
-  // 搜索索引 (m00561): what GET /search/index answers, and what the two buttons
+  // 搜索索引: what GET /search/index answers, and what the two buttons
   // are answered with. An object with ok: false makes the button fail.
   index = null,
   rebuildIndex = null,
   clearIndex = null,
-  // AI 摘要 (m00531): the model catalogue, the queue's state, the stored
+  // AI 摘要: the model catalogue, the queue's state, the stored
   // summaries with their spend ledger, and whether the "uns summarized" button
   // has anything to hand the host.
   catalog = null,
@@ -284,7 +284,7 @@ async function renderSettings({
   pendingReply = null,
   // 更新说明: the parsed document, or { ok: false } when the host has no file.
   notes = null,
-  // 浏览器组件 (m00001): what a scan of DSH's home finds. Mutable below, so an
+  // 浏览器组件: what a scan of DSH's home finds. Mutable below, so an
   // install or a borrow can change what the next status read says.
   scan = null,
   // The status payload, when a case needs more than a phase — a borrowed runtime
@@ -314,7 +314,7 @@ async function renderSettings({
       }
       return { ok: true, result: { settings: doc.settings, revision: 5 } };
     }
-    // AI 字段 (m00531). The catalogue is what the model `<select>` and the
+    // AI 字段. The catalogue is what the model `<select>` and the
     // effort `<select>` are both drawn from.
     if (path === "/summarize/catalog") {
       return { ok: true, result: catalog ?? defaultCatalog() };
@@ -881,7 +881,7 @@ test("a refused reset shows the host's reason and keeps the box open", async () 
 
 
 
-/** The 搜索索引 group (m00561): the only place the index can be kept, built
+/** The 搜索索引 group: the only place the index can be kept, built
  *  early, rebuilt or dropped. Found by its heading, like 关于, so the group order
  *  can change without rewriting the test. */
 const indexGroup = (tree) =>
@@ -892,7 +892,7 @@ test("搜索索引 has one switch left: building while idle", async () => {
   const group = indexGroup(tree);
   assert.ok(group, "the group is on the page");
   const switches = collect(group, byClass("se-set-switch"));
-  // 会话内容索引缓存 is gone (m01916): the file is always kept, so the only thing
+  // 会话内容索引缓存 is gone: the file is always kept, so the only thing
   // left to choose is when the reading happens — and that is off by default,
   // because it is a 6.5 s read of the logs.
   assert.equal(switches.length, 1);
@@ -964,7 +964,7 @@ test("a failed 删除索引缓存 reports the reason, not a freed size", async (
   assert.doesNotMatch(text, /setIndexCleared/);
 });
 
-// ── AI 摘要 (m00531) ───────────────────────────────────────────────────────
+// ── AI 摘要 ───────────────────────────────────────────────────────
 
 /** The AI group, found by its heading so the group order stays free to move. */
 const aiGroup = (tree) =>
@@ -1174,7 +1174,7 @@ test("a host with no model configured says so instead of drawing an empty row", 
   assert.equal(chipLabelled(group, "aiRunNow").props.disabled, true);
 });
 
-// ── 浏览器组件：借用别的插件已经装好的 Electron (m00001) ────────────────────
+// ── 浏览器组件：借用别的插件已经装好的 Electron ────────────────────
 // 150 MB is a lot to ask for twice on one machine. When another plugin already
 // has an Electron, this group can borrow it — read-only, nothing written into
 // that tree — so these cases check both halves of that promise: the page asks

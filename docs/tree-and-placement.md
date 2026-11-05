@@ -97,7 +97,7 @@ const shown = listSettings?.hideBlank === false ? live : live.filter((session) =
 
 ```
 解析顺序（placementOfNode）
-  sessionPlacement[id] 存在且节点还在  → 用它
+  sessionPlacement[id] 存在、节点还在、且同属一个工作区  → 用它
   会话有 workspaceId                    → w-<workspaceId>
   会话没有 workspaceId                  → f-ungrouped
   有 workspaceId 但那个 workspace 没了   → null（只出现在"所有会话"里）
@@ -108,6 +108,24 @@ const shown = listSettings?.hideBlank === false ? live : live.filter((session) =
 
 **跨 workspace 拖会话**因此有两条路：真的搬（`POST /move`，改文件）或只改分组
 （`POST /sessions/placement`，改侧车）。前者是移动，后者是重命名一个视图。
+
+**工作区内再分类**用的就是后者：`acceptsSessions()` 让工作区里的普通文件夹也接受会话，于是
+「工作区 → 子文件夹」只是同一个工作区里的一层摆放，列表面板照常只列**直接**所属的会话
+（`sessionsOfNode` 比的是 `placementOfNode`），工作区徽标仍然把子文件夹里的会话算在自己头上
+（`counts` 走 `sessionsUnderNode(subtreeOf)`）。
+
+例外是**跨工作区**落到工作区内的文件夹上：会话属于别的工作区时，虚拟摆放会让这一行出现在
+工作区自己的计数之外（DSH 从 header `cwd` 推导归属）。所以这种 drop 由客户端带 `move: true`，
+host 先按 `/move` 的事务把 payload 搬进文件夹所属工作区（重写 header `cwd` + 换 registry 登记），
+再写 placement——**跨工作区那一步是真的移动**，同工作区仍然只是一个树写入。搬失败的会话
+不写 placement（响应里的 `failed` 会说明原因），整批都搬不动时沿用 `/move` 的约定直接抛错。
+
+覆盖不是无条件的：`placementOverrideHolds()` 在解析时再核对一次归属——覆盖指向未分组、
+或指向与 `session.workspaceId` 同属一个工作区的容器（工作区节点本身，或者它下面某个文件夹，
+用 `nearestWorkspace()` 判定），才认这条覆盖；否则回落到会话真实的工作区。
+于是把文件夹拖出工作区、或者把会话的放置留在一个已经搬走的文件夹里，会话不会悬在树上
+看不见的地方。`POST /sessions/placement` 在写入时也查同一件事：工作区内的文件夹 + 跨工作区
+且没带 `move: true` 直接 400（这个文件夹只接受它所在工作区里的会话）。
 
 ## 5. 快捷方式
 
@@ -158,7 +176,7 @@ DSH 置顶的是**会话**；这里还有容器置顶（文件夹、workspace）
 |---|---|
 | `accepts.folder` | 目录（文件夹/workspace）能不能落在这里 |
 | `accepts.workspace` | 带着 workspace 的目录能不能落在这里（R1 从目标侧问） |
-| `accepts.session` | 会话能不能放在这里（只有 workspace 和 `f-ungrouped`） |
+| `accepts.session` | 会话能不能放在这里（workspace、`f-ungrouped`，以及**工作区里的普通文件夹**） |
 | `accepts.shortcut` | 引用能不能丢进来（`canHoldShortcuts`） |
 
 `canMove()` 只用两条规则：不能进自己的子树（会整支掉出树）、workspace 不能套 workspace。
@@ -182,7 +200,10 @@ A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支�
 ### 7.2 名字与顺序
 
 同一父节点下不允许重名（`assertUniqueName`，比较前 `trim` + 小写；不同父节点可以同名），
-新建、重命名、移动三条路径都会查。`order` 也不再取 `siblings.length`——删掉中间一个之后，
+改名与移动两条路径都会查。**新建是例外**：撞名不报错，而是自动编号成 `名称（1）`、`名称（2）`……
+（`uniqueFolderName()`，取同级里未被占用的最小序号）。新建是「我现在就要一个文件夹」的手势，
+停下来让用户改名等于把活推回去；改名是「这行必须叫这个」，所以仍然拒绝。名字先按 `FOLDER_NAME_MAX`
+给后缀让位，切在代理对中间时再退一个码元，不写半个 emoji。`order` 也不再取 `siblings.length`——删掉中间一个之后，
 `length` 会把最后一个兄弟的编号再发一次，两行同号，用户排好的次序变成平局。
 现在取"当前最大 `order` + 1"（`nextOrder`），编号单调。
 
@@ -205,8 +226,14 @@ A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支�
   写的时候陌生 id 被跳过而不是拒绝（手势来自一棵活的树），已经在带里却没出现在列表里的书签保留原序号，
   排到新写的下面：一次拖动不会顺手扔掉用户没碰过的书签。
 - **行是按钮，不是分支**：没有箭头、不展开子树，点它就是打开那个容器——和左树上那六个固定入口同一种东西。
-- **标题永远是落点**（空着也画，空着时写「把文件夹或工作区拖到这里」）：第一次放之前，用户得看得见它。
-  带子里的**行**是那个文件夹本身，往行上放东西是放进那个文件夹（`containerDrop`），不是加书签（m03793）。
+- **整条带子是一个落点**（`.qband`）：标题、空着时那行提示、以及两侧延伸进留白里的那条边，都收容器拖动。
+  只把标题当落点的话，用户瞄着「快速访问」四个字旁边一像素拖过去就什么都没发生——带子得先看得见，再收得住
+  （m01634）。空着也画：第一次放之前用户没法找到它。
+- **带子里的行是那个文件夹本身**，往行上放会话是放进那个文件夹（`containerDrop`），不是加书签（m03793）；
+  放进工作区里的文件夹时，同工作区只写放置，跨工作区会先真搬（见 §4）。
+- **会话拖到带子空白处会被拒绝，并且说出来**：快速访问只存容器，会话在带子里没有位置。提示只发一次
+  （dragover 每帧都触发，靠 `quickDenyHinted` 收口），说的是会话该往哪放——「拖到里面某个文件夹那一行上」。
+  沉默地不接，用户只会以为拖放坏了。
 - 删文件夹 / workspace 时 `deleteFolder` / `deleteWorkspace` 顺手删掉 `pins` 与 `quickAccess` 里的条目，
   两张表都不会只增不减。
 

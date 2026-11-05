@@ -167,7 +167,7 @@ test("with 会话名 out of range a folder answers by holding a hit, not by its 
   assert.deepEqual(ids(holding), ["d-proj", "w-wa"]);
 });
 
-test("搜索位置=当前目录 keeps the folder list local too (m01916)", () => {
+test("搜索位置=当前目录 keeps the folder list local too", () => {
   // The whole-tree widening above is exactly what 当前目录 switches off: a search
   // that promises to stay here and then lists a folder from two levels down has
   // broken its promise. 范围=全部 is unaffected — it is the filter own switch.

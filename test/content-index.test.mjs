@@ -289,7 +289,7 @@ test("a changed log invalidates its cached entry instead of trusting it", async 
   }
 });
 
-test("a store that was handed in is always written to (m01916 removed the switch)", async () => {
+test("a store that was handed in is always written to", async () => {
   // 缓存 is not a choice any more: the index file is a derived artefact, and the
   // fast answer after a restart is the whole point of keeping it. The only thing
   // left to decide is *when* the reading happens (允许空闲时自动建立).
@@ -448,7 +448,7 @@ test("删除缓存 stops the build, and resume starts it again", async () => {
 });
 
 test("a log that changed while the panel sat idle is re-indexed on its own", async () => {
-  // m00001 内容变动重建: the queue emptying is not the index finishing. A
+  // The queue emptying is not the index finishing. A
   // conversation keeps growing, and after a 移动 / 还原 its logPath changes too,
   // so a finished pass queues a "look again" instead of stopping; sync() then
   // queues exactly the sessions whose sig (logPath|sizeBytes|activityAt) moved

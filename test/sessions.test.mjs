@@ -116,7 +116,7 @@ function registryOf(extra = {}) {
 }
 
 test("a subagent inherits its parent's workspace instead of 未分组", () => {
-  // The bug (m00002 ①): a delegated child is created by its parent and never
+  // The bug: a delegated child is created by its parent and never
   // appears in workspace.sessionIds, so it used to reach placementOfNode with
   // workspaceId null and was filed under 未分组 while its parent sat in w1.
   const view = viewOf(

@@ -519,7 +519,7 @@ if (!String(childRowInList.props.className).includes("bound-row")) throw new Err
 console.log("ListPane (subagent rows) ok: folded 1 row, open 2 rows");
 
 // ── the box that selects rows by dragging ───────────────────────────────────
-// 框选 (m01168) paints into an element it finds through a ref, so the element
+// 框选 paints into an element it finds through a ref, so the element
 // has to be in the tree: without it the drag had nothing to resize.
 const plainPane = listPaneWith({});
 if (findAll(plainPane, hasClass("selrect")).length !== 1) throw new Error("the list must hold one .selrect");
@@ -625,7 +625,7 @@ if (searchCaptions.some((text) => text.includes("Alpha"))) {
 }
 console.log("所有会话 bands ok:", bandCaptions.join(" | "));
 
-// ── 分组折叠 (m01948) ───────────────────────────────────────────────────────
+// ── 分组折叠 ───────────────────────────────────────────────────────
 // 所有会话 is one band per workspace now, which is only useful if a band can be
 // put away: the caption row doubles as the button. Two things are pinned here —
 // a folded band builds no rows (a "folded" band that still renders every row is
@@ -666,7 +666,7 @@ findAll(clickPane, hasClass("grp")).find((node) => textOf(node).includes("Beta")
 if (asked[0] !== foldKey("f-all", "ws:ws-b")) throw new Error("a caption must fold its own band, got " + JSON.stringify(asked));
 console.log("分组折叠 ok:", "Alpha folded |", "Beta open |", "会话 scoped");
 
-// ── 拖动要先选中 (m01385) ───────────────────────────────────────────────────
+// ── 拖动要先选中 ───────────────────────────────────────────────────
 // Every row in the list used to be draggable, so pressing one and moving started
 // a native drag and 框选 never saw the press. The gate is the pick: the row the
 // user last clicked, or a ticked one, drags; every other row is surface for the
@@ -688,7 +688,7 @@ if (folderRows[0].props.draggable !== false) throw new Error("an unpicked folder
 if (wsRows[0].props.draggable !== false) throw new Error("an unpicked workspace row must not drag");
 console.log("ListPane (drag gate) ok: unpicked rows are surface, picked and ticked rows drag");
 
-// ── a drag carries the whole check-set (m01540) ────────────────────────────
+// ── a drag carries the whole check-set ────────────────────────────
 // The row under the pointer used to be the only thing that moved, so ticking
 // four sessions and dragging one moved one. The pane splits the check-set into
 // the sessions a workspace can take and the containers that move as nodes, and
@@ -877,7 +877,7 @@ console.log("reference row ok: one row per favorited session; the rail entry sta
 // ── 快速访问 is a strip of buttons; 置顶 is a ranking inside 目录 ────────────
 // The two used to be one map: pinning a container hoisted it into the 快速访问
 // band and out of 目录, so the feature read as "the folder moved". They are
-// separate lists now (m03020), and this block pins both halves:
+// separate lists now, and this block pins both halves:
 //   1. a bookmark draws a row above 目录, with a caret slot but no chevron and
 //      no subtree — a button, not a branch;
 //   2. a pin leaves the hierarchy alone and only sorts the row first among the
@@ -938,7 +938,7 @@ console.log("quick access ok: a strip of buttons above 目录; 置顶 only reord
 // wait for its first entry to exist: an empty strip draws the caption and one
 // placeholder line, and both accept that drop.
 //
-// A drop on a *row* is a different thing (m03793). The row is the folder it
+// A drop on a *row* is a different thing. The row is the folder it
 // names, so the payload goes inside that folder exactly as it would one level
 // down in 目录: a bookmark dropped on a sibling moves into it, and a session
 // dropped on a bookmarked workspace re-homes there. A strip that read every drop
@@ -947,21 +947,36 @@ console.log("quick access ok: a strip of buttons above 目录; 置顶 only reord
 const dropCalls = [];
 const moveCalls = [];
 const sessionDrops = [];
+const hints = [];
 const bandProps = (qa) => ({
   tree: { ...tree, quickAccessNodes: qa, quickAccess: Object.fromEntries(qa.map((id, i) => [id, qa.length - i])), pins: {} },
   scope: "f-root", onSelect: noop, expanded: new Set(["f-root"]), onToggle: noop, width: 260,
-  // A drop carries the whole container half of the check-set (m01540), so the
+  // A drop carries the whole container half of the check-set, so the
   // band hands the tree an array even for the one-node gesture.
   onMove: (sources, target) => moveCalls.push([sources, target]),
   onDropSessions: (ids, workspaceId) => sessionDrops.push([ids, workspaceId]),
-  onPlaceSessions: noop, onDropShortcut: noop, onHint: noop,
+  onPlaceSessions: noop, onDropShortcut: noop, onHint: (text) => hints.push(text),
   rename: null, onBeginRename: noop, pins: {}, quickAccess: qa, onNodeContextMenu: noop,
   onDropOnQuick: (sources) => dropCalls.push(sources),
 });
 const emptyBand = findAll(render({ type: TreePane, props: bandProps([]) }), () => true);
 const emptyCap = emptyBand.find((node) => isCap(node, "快速访问")) ?? null;
 if (!emptyCap) throw new Error("an empty 快速访问 must still draw its caption");
-if (typeof emptyCap.props.onDrop !== "function") throw new Error("the 快速访问 caption must be a drop target");
+// 整条是一个投放面: the *band* takes the park gesture, so its label, its
+// placeholder and the blank strips beside them all accept the same drop. A
+// caption-only target made dragging a folder "anywhere on 快速访问" fail unless
+// the pointer happened to land on that one line of text.
+const findBand = (nodes) => nodes.find((node) => hasClass("qband")(clsOf(node))) ?? null;
+const emptyBandBox = findBand(emptyBand);
+if (!emptyBandBox) throw new Error("快速访问 must be drawn as one band");
+if (typeof emptyBandBox.props.onDrop !== "function") throw new Error("the 快速访问 band must be a drop target");
+if (typeof emptyBandBox.props.onDragOver !== "function") throw new Error("the 快速访问 band must answer a dragover");
+if (typeof emptyCap.props.onDrop === "function") {
+  throw new Error("the caption is part of the band: it must not carry its own drop handler");
+}
+if (!findAll(emptyBandBox, hasClass("tcap")).some((node) => textOf(node).includes("快速访问"))) {
+  throw new Error("the caption must sit inside the band");
+}
 const ghost = emptyBand.find((node) => hasClass("tghost")(clsOf(node))) ?? null;
 if (!ghost) throw new Error("an empty 快速访问 must draw the placeholder that says what it is for");
 if (!textOf(ghost).includes("把文件夹或工作区拖到这里")) {
@@ -977,7 +992,7 @@ const srcRow = twoBand.find((node) => isRow(node, "w-ws-1") && typeof node.props
 if (!srcRow) throw new Error("a bookmark row must be draggable");
 srcRow.props.onDragStart(bandDragEvent);
 const bandDropEvent = { preventDefault: noop, stopPropagation: noop, dataTransfer: { dropEffect: "" } };
-emptyCap.props.onDrop(bandDropEvent);
+emptyBandBox.props.onDrop(bandDropEvent);
 if (JSON.stringify(dropCalls) !== JSON.stringify([["w-ws-1"]])) {
   throw new Error("a drop on the 快速访问 label must park the container once, got " + JSON.stringify(dropCalls));
 }
@@ -1032,9 +1047,28 @@ if (JSON.stringify(dropCalls) !== JSON.stringify([["w-ws-1"]])) {
 srcRow.props.onDragEnd();
 let lit = false;
 const strayEvent = { preventDefault: () => { lit = true; }, dataTransfer: { dropEffect: "" } };
-emptyCap.props.onDragOver(strayEvent);
+emptyBandBox.props.onDragOver(strayEvent);
 if (lit) throw new Error("an empty drag must not light the 快速访问 band");
-console.log("quick access drop ok: the label parks, a row takes the drop inside it");
+// A session is not a bookmark: the band refuses it in words and
+// writes nothing, because the strip only holds containers. The rows inside it
+// are the other half of the same gesture — that is where a file can land.
+{
+  const sessionDragEvent = {
+    target: null,
+    preventDefault: () => { throw new Error("the band must not accept a session drag"); },
+    dataTransfer: { types: ["application/x-dsh-session-ids"], dropEffect: "" },
+  };
+  hints.length = 0;
+  emptyBandBox.props.onDragOver(sessionDragEvent);
+  if (hints.length !== 1) throw new Error("a session dragged over 快速访问 must be told where it can go, got " + JSON.stringify(hints));
+  if (!hints[0].includes("文件夹")) throw new Error("the hint must point at the folder rows, got " + JSON.stringify(hints[0]));
+  hints.length = 0;
+  emptyBandBox.props.onDragOver(sessionDragEvent);
+  if (hints.length !== 0) throw new Error("the hint is per gesture: dragover must not repeat it on every frame");
+  emptyBandBox.props.onDragLeave({ currentTarget: null, relatedTarget: null });
+  if (dropCalls.length !== 1) throw new Error("refusing a session must not rewrite the strip, got " + JSON.stringify(dropCalls));
+}
+console.log("quick access drop ok: the band parks, a row takes the drop inside it, a session is refused in words");
 
 // ── a folder / workspace member is drawn as the container itself ───────────
 // 收藏 holds memberships, and a membership of a folder *is* that folder: the
@@ -1080,7 +1114,7 @@ if (findAll(mappedList, hasClass("scrow")).length !== 0) {
   throw new Error("a mapping must not also draw a 快捷方式 row");
 }
 const clickEvent = { stopPropagation() {}, preventDefault() {} };
-// 双击要有时限 (m01775): opening now lives in the second *press*, so the smoke
+// 双击要有时限: opening now lives in the second *press*, so the smoke
 // presses twice the way a pointer would. The native dblclick handler is left
 // with nothing but swallowing the text selection.
 for (const row of [mappedFolder, mappedWorkspace]) {
@@ -1117,7 +1151,7 @@ const detailProps = {
   onArchive: noop, onFork: noop, onRename: noop, onRestore: noop, onDelete: noop,
 };
 console.log("DetailPane (session) ok:", Boolean(render({ type: DetailPane, props: { ...detailProps, session, node: null } })));
-// AI 字段 (m00531, m01823) lives right under 备注 in the pane that has a session.
+// AI 字段 lives right under 备注 in the pane that has a session.
 // With nothing stored it still draws its heading and the one command that can
 // change that — a session without fields must not look like a broken pane.
 const sessionDetail = render({ type: DetailPane, props: { ...detailProps, session, node: null } });
@@ -1182,7 +1216,7 @@ const scopeOpen = render({
   props: { open: true, value: { place: "here", name: true, tags: true, note: true, content: false }, onApply: noop, onClose: noop, onManage: noop },
 });
 console.log("SearchScopeDialog open ok:", Boolean(scopeOpen));
-// 搜索位置 (m01916): two radio options above the field checkboxes, and the footer
+// 搜索位置: two radio options above the field checkboxes, and the footer
 // link to the index settings. A dialog that silently lost either is still a valid
 // tree, so the smoke test has to look for them by role and by text.
 const scopeText = textOf(scopeOpen);

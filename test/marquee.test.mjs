@@ -1,5 +1,5 @@
 /**
- * 框选 (m01168) — dragging a box over the list, and the click on blank that
+ * 框选 — dragging a box over the list, and the click on blank that
  * clears the selection.
  *
  * The geometry is two pure functions, so most of it is answered without a DOM.
@@ -31,7 +31,7 @@ function row(id, top, { height = 32, check = true, left = 0, right = 600 } = {})
  * The list pane, its scrolling body, and the div the box paints into.
  *
  * `rows` and `box` may be functions: a list that scrolls moves its rows and a
- * pane pushed by an ancestor moves both, and the box has to follow them (m01540).
+ * pane pushed by an ancestor moves both, and the box has to follow them.
  */
 function pane(rows, box = { left: 0, top: 0, right: 600, bottom: 400 }) {
   const rowsNow = () => (typeof rows === "function" ? rows() : rows);
@@ -235,7 +235,7 @@ function pressOnRow(id, control = null) {
 }
 
 test("rowDraggable only lets a picked row start a drag", () => {
-  // 拖动要先选中 (m01385): the row's `draggable` and the box's predicate both
+  // 拖动要先选中: the row's `draggable` and the box's predicate both
   // read this, so the rule lives here rather than twice.
   assert.equal(api.rowDraggable({ selected: false, checked: false }), false);
   assert.equal(api.rowDraggable({ selected: true, checked: false }), true);
@@ -283,7 +283,7 @@ test("a picked row keeps the press for its own drag", () => {
   }
 });
 
-test("an unpicked row is surface, so the press draws a box over it (m01385)", () => {
+test("an unpicked row is surface, so the press draws a box over it", () => {
   const list = pane([row("a", 0), row("b", 32)]);
   const context = start();
   try {
@@ -388,10 +388,10 @@ test("the box scrolls the list when the pointer passes its edge", () => {
   }
 });
 
-test("the box keeps the row it started on when the list scrolls (m01775)", () => {
+test("the box keeps the row it started on when the list scrolls", () => {
   // The wheel, the scrollbar and the edge scroll all move the rows without a
-  // single mousemove. Two things follow, and the second one is what m01775 is
-  // about: the box has to repaint on scroll (m01540), and its *start* has to
+  // single mousemove. Two things follow: the box has to repaint on scroll, and
+  // its *start* has to
   // stay on the row it was pressed on. Left at its screen position the start
   // point slid down the list with every wheel notch, so the selection range
   // travelled with the scroll instead of staying anchored.
@@ -442,7 +442,7 @@ test("the box keeps the row it started on when the list scrolls (m01775)", () =>
   }
 });
 
-test("a box re-anchors when its pane is pushed by an ancestor (m01540)", () => {
+test("a box re-anchors when its pane is pushed by an ancestor", () => {
   // The pane's rectangle used to be read once, at the press. Anything that moved
   // it afterwards — a resized panel, a taller header, a scroll of an ancestor —
   // drew and hit-tested the box offset from the pointer by exactly that movement.

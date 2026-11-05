@@ -1,7 +1,7 @@
 /**
  * The sub-session guide rail must meet the collapse button above it.
  *
- * The bug (m00002 ⑤): the rail was positioned with a fixed offset from the
+ * The bug: the rail was positioned with a fixed offset from the
  * row's left edge, while the `.twist` chevron it belongs to moves with the
  * indentation. At depth 1 the line therefore sat ~22px left of the chevron.
  *

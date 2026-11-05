@@ -1,5 +1,5 @@
 /**
- * 多选拖动 (m01540) — one drag carries the whole check-set.
+ * 多选拖动 — one drag carries the whole check-set.
  *
  * A check-set is a flat list of ids, and the ids of a session, a folder and a
  * workspace look alike: no prefix tells them apart. What a drop target can take

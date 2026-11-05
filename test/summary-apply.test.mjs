@@ -2,7 +2,7 @@
 // document, and it has three different meanings (rename, append to the note,
 // merge some tags). These tests drive the real route handler against in-memory
 // sidecars, which is the only way to catch a wiring mistake that `node --check`
-// cannot see (m02641).
+// cannot see.
 
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -216,6 +216,77 @@ test("未分组 accepts sessions and offers a placement target; 根目录 and th
   assert.equal(canAcceptSessions("d-nope", tree), false);
 });
 
+test("a folder inside a workspace accepts sessions; a folder at the root does not", () => {
+  const tree = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: {
+        // d-area sits under the workspace node, d-loose at the root.
+        "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 },
+        "d-loose": { id: "d-loose", name: "散装", parent: FIXED_NODES.root, order: 0 },
+        "d-deep": { id: "d-deep", name: "更深", parent: "d-area", order: 0 },
+      },
+    },
+  });
+  // 工作区内再分类: any folder below the workspace may hold its sessions…
+  assert.equal(canAcceptSessions("d-area", tree), true);
+  assert.equal(canAcceptSessions("d-deep", tree), true);
+  // …but a folder that belongs to no workspace would take a session out of the
+  // only workspace it has, so it still refuses.
+  assert.equal(canAcceptSessions("d-loose", tree), false);
+  assert.equal(tree.nodes["d-area"].accepts.session, true);
+  assert.equal(tree.nodes["d-loose"].accepts.session, false);
+  // A folder still holds directories, which is the other half of the answer.
+  assert.equal(tree.nodes["d-area"].accepts.folder, true);
+});
+
+test("a session filed in a workspace folder stays counted under that workspace", () => {
+  const tree = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 } },
+      sessionPlacement: { s1: "d-area" },
+    },
+  });
+  const view = { sessions };
+  // The folder draws the row, the workspace still counts it: a sub-group is not
+  // a move out of the workspace.
+  assert.deepEqual(sessionsOfNode("d-area", view, tree).map((session) => session.id), ["s1"]);
+  assert.deepEqual(sessionsOfNode(workspaceNodeId("wa"), view, tree).map((session) => session.id), ["s2"]);
+  assert.equal(tree.counts[workspaceNodeId("wa")], 2);
+  assert.equal(tree.counts["d-area"], 1);
+});
+
+test("a placement stops holding once its folder leaves the workspace", () => {
+  const inWorkspace = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 } },
+      sessionPlacement: { s1: "d-area" },
+    },
+  });
+  assert.deepEqual(sessionsOfNode("d-area", { sessions }, inWorkspace).map((session) => session.id), ["s1"]);
+  // Drag the same folder back to the root: the override now names a container
+  // the session cannot be in, so the row degrades to its real workspace instead
+  // of showing under a folder that is not part of any workspace.
+  const lifted = buildAutoTree({
+    registry,
+    sessions,
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: FIXED_NODES.root, order: 0 } },
+      sessionPlacement: { s1: "d-area", s4: "d-area" },
+    },
+  });
+  // s1 is back in wa; s4 has no workspace to contradict, so a root folder may
+  // still file it — the permissive reading only applies to ungrouped sessions.
+  assert.deepEqual(sessionsOfNode("d-area", { sessions }, lifted).map((session) => session.id), ["s4"]);
+  assert.deepEqual(sessionsOfNode(workspaceNodeId("wa"), { sessions }, lifted).map((session) => session.id).sort(), ["s1", "s2"]);
+  assert.equal(lifted.counts[FIXED_NODES.ungrouped], 0);
+});
+
 test("an empty registry still yields a navigable tree", () => {
   const tree = buildAutoTree({ registry: null, sessions: [] });
   assert.deepEqual(tree.roots, [FIXED_NODES.root, FIXED_NODES.trash]);

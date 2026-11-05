@@ -116,7 +116,7 @@ test("client shortcutTarget resolves the same target the host ships as ref", () 
  * the page is the browsing answer — "what is at this level". They used to be the
  * same number because a folder flattened its whole subtree into one list, which
  * put a nested workspace's sessions on the same level as the workspace row
- * itself (m03586/m03587).
+ * itself.
  */
 test("a directory's badge counts its subtree, its page lists only what it holds", () => {
   const live = sessions;

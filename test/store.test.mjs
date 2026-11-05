@@ -313,11 +313,22 @@ test("moveNode refuses a cycle even when the caller's tree is stale", () => {
   assert.equal(draft.folders["d-a"].parent, FIXED_NODES.root);
 });
 
-test("a folder name is unique among its siblings and order keeps counting up", () => {
+test("a duplicate folder name is numbered among its siblings and order keeps counting up", () => {
   const draft = { folders: {}, placement: {}, workspaceOrder: {} };
   const tree = treeWith();
-  createFolder(draft, { name: "工作" }, tree, () => "1");
-  assert.throws(() => createFolder(draft, { name: " 工作 " }, tree, () => "2"), /already exists/);
+  const first = createFolder(draft, { name: "工作" }, tree, () => "1");
+  assert.equal(draft.folders[first].name, "工作");
+  // 新建文件夹 twice in the same place must produce two folders, not an error:
+  // the second one numbers itself, and the stored name is the one to report.
+  const second = createFolder(draft, { name: " 工作 " }, tree, () => "2");
+  assert.equal(draft.folders[second].name, "工作（1）");
+  const third = createFolder(draft, { name: "工作" }, tree, () => "2b");
+  assert.equal(draft.folders[third].name, "工作（2）");
+  // The comparison is case-insensitive, so the numbering follows it.
+  const latin = createFolder(draft, { name: "Work" }, tree, () => "2c");
+  assert.equal(draft.folders[latin].name, "Work");
+  const latin2 = createFolder(draft, { name: "work" }, tree, () => "2d");
+  assert.equal(draft.folders[latin2].name, "work（1）");
   // A different parent may reuse the name: the rule is about one container.
   createFolder(draft, { name: "工作", parent: "w-wa" }, tree, () => "3");
   // Deleting a middle sibling must not hand its number to the next folder, or

@@ -266,11 +266,11 @@ test("a percentage preset follows the viewport", () => {
 });
 
 test("the 会话内容 index keeps its file and builds itself while idle by default", () => {
-  // Only the timing is a setting (m01916). Keeping the index file is not: it is
+  // Only the timing is a setting. Keeping the index file is not: it is
   // derived, it lives in the plugin's own data directory, and the whole reason
-  // it exists is the fast answer after a restart. m00001 索引默认开 turned the
-  // one remaining switch on: the build is sliced and bounded, so "off" only
-  // moved the cost onto the first search.
+  // it exists is the fast answer after a restart. The one remaining switch is
+  // about timing: the build is sliced and bounded, so turning it off only moves
+  // the cost onto the first search.
   assert.deepEqual(defaultSettings().search, { indexIdle: true });
 });
 

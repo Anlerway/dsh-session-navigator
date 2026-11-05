@@ -1,5 +1,5 @@
 /**
- * 双击要有时限 (m01775).
+ * 双击要有时限.
  *
  * A double click used to be whatever the browser said it was, and the browser
  * asks the OS: with a slow double-click speed set, two leisurely presses on a

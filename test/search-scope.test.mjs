@@ -86,7 +86,7 @@ const session = (extra = {}) => ({
 const scopes = (extra = {}) => ({ ...api.DEFAULT_SEARCH_SCOPES, ...extra });
 
 test("the default range is the three fields the box always read", () => {
-  // 位置 defaults to 所有位置 (m01916): the fields are what the box reads, and the
+  // 位置 defaults to 所有位置: the fields are what the box reads, and the
   // default must not quietly turn "where I stand" into part of the question.
   assert.deepEqual(api.DEFAULT_SEARCH_SCOPES, {
     place: "all",
@@ -211,7 +211,7 @@ const ownRows = [{ id: "s1" }];
 const library = [{ id: "s1" }, { id: "s2" }];
 const base = (needle, scope) => searchBaseSessions({ needle, scope, trashScope: "trash", own: ownRows, library });
 
-test("a search answers with the whole library, wherever you stand (m00470)", () => {
+test("a search answers with the whole library, wherever you stand", () => {
   // 站在文件夹里、搜到三条分支以外的会话：结果视图缩小到子树等于回答"这里没有"。
   assert.equal(base("登录", "d-proj"), library);
   // 收藏 是浏览的地方，不是搜索的边界。
@@ -227,7 +227,7 @@ test("回收站 keeps its own rows: 清空 has to stay aimable", () => {
   assert.equal(base("登录", "trash"), ownRows);
 });
 
-test("搜索位置 当前目录 keeps the search where the user stands (m01916)", () => {
+test("搜索位置 当前目录 keeps the search where the user stands", () => {
   // The same needle, the same library — only the question changes. 当前目录 is
   // the narrowing the user asked for, so it outranks the 整库 default.
   const here = (needle, scope) =>

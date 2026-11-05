@@ -124,7 +124,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
 | 读 / 打开 / 导出 / 显示位置 | 允许 | 只读 |
-| 删除、还原、清空 | 拒绝；由父会话级联 | 父会话删除时子会话一起走（`withDescendants`），单独删会留下孤儿委派 |
+| 删除、还原、清空 | **允许**，唯一例外 | 回收站只搬这个子会话自己的 payload，还原能原样放回，父会话的委派记录仍然指得到一个真实目录；父会话删除时整条链照样一起走（`withDescendants`） |
 | 剪切 / 复制 / 移动 | 拒绝 | 搬走子会话等于把它提升成独立会话，父会话的委派历史就断了 |
 | 收藏 / 待办 / 重命名 | 拒绝 | 这些字段描述"用户的会话"，而子会话属于父会话的那次运行 |
 | 归档 | 拒绝；由父会话派生 | `sessions.js` 的 `archivedUp` 让子会话跟着祖先的归档态，写一条 per-child 记录会让"这次运行归档了"变成 N 条事实 |
@@ -133,7 +133,14 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 `isSubagent` 由 header 决定（`origin === "subagent"`，或 `origin === null && delegationDepth > 0`），
 **不是** `parentSession` 非空：fork 也带 `parentSession`，但它是用户要的独立会话，所有操作都正常。
 客户端在 `session-state` 的响应里拿到同一个 `subagent` 位，据此隐藏按钮、只读行菜单，并给行
-加 `bound-row`/`chk-bound` 标记——隐藏是礼貌，上面这张表才是规则。
+加 `bound-row`/`chk-bound` 标记——隐藏是礼貌，上面这张表才是规则。只有删除不走这张表：
+行菜单、头部按钮条、DSH 侧栏菜单都保留「删除」/「还原」/「永久删除」，一个不想要的子智能体
+不必再为了删掉它而先删父会话。
+
+实机核对（DSH 0.2.1）：子会话在面板行菜单里确实出现「删除（进回收站）」并走通；但
+`uiWorkspace.openSession` 不肯为子会话开对话页，桥命令退化成"打开面板"，所以头部按钮条
+这段过滤是防御性的——DSH 压根不会给子会话挂 `conversation.session.header.actions`。能用的一直是
+行菜单（面板内）这条路径。
 
 ## 4. 路由
 
@@ -231,14 +238,29 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 | `POST /nodes/:id/quick-access` | `{ quickAccess?: boolean }` | `{ nodeId, quickAccess, revision }` |
 | `POST /quick-access` | `{ ids }`（整条顺序，首行在前） | `{ order, quickAccess, revision }` |
 | `POST /nodes/:id/move` | `{ parent }` | `{ nodeId, parent, revision }` |
-| `POST /sessions/placement` | `{ ids, parent? }` | `{ ids, parent, revision, sessionPlacement }` |
+| `POST /sessions/placement` | `{ ids, parent?, move? }` | `{ ids, parent, revision, sessionPlacement, moved, failed }` |
 
 - `DELETE /folders/:id` 默认把内容**上提到父节点**（`lift` 默认 1）；`?lift=0` 时若文件夹非空
   则拒绝。同时会连带删掉指向该文件夹的快捷方式——指向已删节点的行比没有这行更糟。
 - `POST /shortcuts` 的 `kind ∈ {folder, workspace, session}`，永远是**引用**，绝不移动目标。
+- `POST /folders` 撞名不报错：同一父节点下已有同名（`trim` + 小写比较）时自动编号成 `名称（1）`、
+  `名称（2）`……，响应里的 `folder.name` 才是最终名字，客户端提示要用它。改名（`PATCH`）与移动仍然拒绝重名。
 - `POST /nodes/:id/move` 先过 `canMove()`（`lib/domain/tree.js`），不合法直接带规则码抛错。
-- `POST /sessions/placement` 只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的 `cwd`
-  推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
+- `POST /sessions/placement` 默认只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的
+  `cwd` 推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
+  能接受会话的容器是「未分组」、任何工作区，以及**工作区里的普通文件夹**（`acceptsSessions()`，
+  `lib/domain/tree-rules.js`）——最后一种就是工作区内的再分类。工作区外的文件夹仍然拒绝。
+- 落到**工作区内的文件夹**上，语义分两种：
+  - 会话已经属于那个工作区：纯虚拟摆放（同上），一个树写入就够。
+  - 会话属于别的工作区：请求必须带 `move: true`。此时 host 先按 `/move` 的事务把 payload 搬进
+    文件夹所属工作区（重写 header `cwd`、换 registry 登记），再写 placement 把它摆进文件夹；
+    否则回 `400 bad-request`（这个文件夹只接受它所在工作区里的会话）——虚拟摆放会让这一行
+    出现在工作区自己的计数之外。
+  `move: true` 的响应多两个字段：`moved` 是真正搬过去的 id，`failed` 是 `{ sessionId, code,
+  message }` 行（例如 `session-active`）。搬失败的会话**不写 placement**，保持原来的归属；
+  整批都搬不动时沿用 `/move` 的约定直接抛错，而不是回一个 200 空结果。
+  客户端把「剪切→粘贴到工作区内的文件夹」和拖放都走这条路，撤销时先清 placement、再按原
+  workspaceId 把 payload 搬回去（见 `placeSessions`）。
 - `POST /nodes/:id/quick-access` 只写侧车的 `quickAccess[id]`（`quickAccess: false` 删掉它），只有真实容器能当书签
   （`isBookmarkable`：文件夹还在的 `d-…`，或 `w-…`）。视图、收藏 / 待办、快捷方式都不是「地方」——它们在左栏
   已经是一行。它和 `POST /nodes/:id/pin` 是两件事：pin 是**在本来的带子里排前面**，quick-access 是**同一容器多一个
@@ -274,10 +296,12 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 - 归档不搬文件，只在列表里降级；有会话在跑时需 `stopActivity: true`。
 - `fork` 省略 `atSeq` 时与官方默认一致：从最后一个完成的回合继续。
 - 派生失败的子代理会话返回 `subagent-unsupported`。
-- 所有"单独改存储"的路由（`/trash`、`/restore`、`/purge`、`/move`、`/copy`、`/annotate`、
-  `/archive`、`/title`、`/fork`）先过 `assertStandalone`：ids 里只要有一个子智能体就整单拒绝
-  `subagent-unsupported`，不做"跳过后继续"。规则在 `lib/domain/subagents.js`，理由在
-  §3.2；`/trash`、`/restore`、`/purge` 接受父会话后由 `withDescendants` 把整条委派链一起带走。
+- 所有"单独改存储"的路由（`/move`、`/copy`、`/annotate`、`/archive`、`/title`、`/fork`、
+  `/sessions/placement`）先过 `assertStandalone`：ids 里只要有一个子智能体就整单拒绝
+  `subagent-unsupported`，不做"跳过后继续"。规则在 `lib/domain/subagents.js`，理由在 §3.2。
+- `/trash`、`/restore`、`/purge` **不过** `assertStandalone`：删除是子智能体唯一能单独做的写操作
+  （见 §3.2）。它们仍然用 `withDescendants` 把父会话的整条委派链一起带走，所以删父会话会连带
+  删掉子会话，删子会话只影响它自己和它自己的下级。
 `POST /move`（`lib/host/move.js`）是唯一会**改会话文件**的操作：重写 header 的 `cwd` + 搬目录
 + 换 registry 登记，三件事一个事务；只有其中一件成功会导致下次启动找不到会话。
 `copy: true` 写第二份独立会话（新 id）而不是移动。有会话在跑时拒绝（`session-active`）——
