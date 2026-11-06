@@ -30,6 +30,7 @@ An index lives under `~/.dsh-session-navigator/`: folders, names, tags, notes.
 - Favorites, todos, pins and archive; a recycle bin comes with them, so a delete can be taken back
 - Cut and paste across workspaces; export a session as Markdown or JSONL
 - AI in one click: let a model rename a session, tag it and write its note
+- The interface speaks ten languages — 中文, English, 日本語, 한국어, Deutsch, Français, Español, Русский, Português, 繁體中文 — following DSH by default, or pinned to one from the settings page (all eight DSH ships are covered; Korean and Traditional Chinese come from the plugin's own picker)
 
 ## What it looks like
 

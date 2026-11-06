@@ -1,7 +1,7 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js:691` 的 `ROUTES` 表定义，
-`lib/index.js:2447` 的 `handle()` 分发。共 **80 条**。
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js` 的 `ROUTES` 表定义、
+`handle()` 分发。共 **83 条**。
 
 ## 1. 信封
 
@@ -14,12 +14,11 @@
 
 - 只有 `code` 是契约，`error` 的文案随时可以改。
 - 响应头固定 `Cache-Control: no-store`。
-- 请求体上限 8 MiB，非 JSON 或超限都是 `bad-request`（`lib/http.js:57-79`）。
+- 请求体上限 8 MiB，非 JSON 或超限都是 `bad-request`（`lib/http.js`）。
 - 空 body 解析成 `{}`。
 
 **九条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件），
-以及七个静态资源（`GET /ui` 与六个 `/ui/*`，见 §4.10）。`handle()` 在 `headersSent` 后不再追加信封
-（`lib/index.js:2447` 一带）。
+以及七个静态资源（`GET /ui` 与六个 `/ui/*`，见 §4.10）。`handle()` 在 `headersSent` 后不再追加信封。
 
 ## 2. 通用约定
 
@@ -34,15 +33,15 @@
 
 弱标签 `W/"12"` 按 `12` 读——它声明的就是那个版本，只是允许内容被等价改写；`*` 与空标签
 一样表示不表态，回落到 body。给了**不是版本号**的值（`If-Match: abc`、`1, 2`）是 `400
-bad-request`，而不是悄悄当没给——否则一个写错的头会变成"最后写入者赢"。
+bad-request`：一个写错的头不该变成"最后写入者赢"。
 
 两者都不给 = 最后写入者赢（单窗口用户的预期）。给了但落后 = `409 revision-conflict`，
-客户端应重新拉取后重试。实现见 `lib/index.js:2173`（读期望值）与 `lib/store/sidecar.js`（比对）。
+客户端应重新拉取后重试。实现见 `lib/index.js` 的 `expectedRevision()`（读期望值）与 `lib/store/sidecar.js`（比对）。
 
 ### 迁移守卫
 
 数据目录迁移期间（`api.migration !== null`），**除 `/datadir*` 之外的所有非 GET/HEAD 请求**
-一律 `409 migration-in-progress`（`lib/index.js:2470`）。否则写入会落进正在被复制的旧目录。
+一律 `409 migration-in-progress`（`handle()` 在进 handler 之前的迁移守卫）。否则写入会落进正在被复制的旧目录。
 
 ### id 约定
 
@@ -59,7 +58,7 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 
 ## 3. 错误码 → HTTP 状态
 
-`lib/index.js:2573`（`statusFor`）。DSH 原生的命名空间码原样透出，不翻译。
+`lib/index.js` 的 `statusFor()`。DSH 原生的命名空间码原样透出，不翻译。
 
 | code | 状态 | 含义 |
 |---|---|---|
@@ -75,7 +74,7 @@ bad-request`，而不是悄悄当没给——否则一个写错的头会变成"�
 | `tag-library-full` | 409 | 标签库满了（120），先删掉不用的再加（§4.2） |
 | `datadir-same` / `datadir-not-empty` / `migration-in-progress` | 409 | 数据目录迁移的三种拒绝 |
 | `component-busy` / `component-in-use` | 409 | 组件正在被别的操作占用 / 窗口开着不能删 |
-| `nothing-pending` | 409 | 一键补齐时所有会话都已经有描述和标签了（这不是错误，是"没活干"） |
+| `nothing-pending` | 409 | 一键补齐时所有会话都已经有描述和标签了（没有可干的活） |
 | `ai/no-fields` | 409 | 模型没被要求写任何字段——三个开关全关了，调用没有意义 |
 | `nothing-to-apply` | 409 | 点了「应用」但记录里那个字段是空的 |
 | `too-many` | 413 | 一次要求生成的会话超过 `MAX_BATCH = 500` |
@@ -121,8 +120,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 ### 3.2 子智能体的绑定
 
 子智能体是父会话一次委派的产物，DSH 仍然把它写成完整的会话目录，但它不是用户可以
-单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口
-`assertStandalone(api, ids)`（`lib/index.js:2068`）：
+单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口，即 `lib/index.js` 的 `assertStandalone(api, ids)`：
 
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
@@ -157,7 +155,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | `GET /theme` | — | `null` 或 `{ mode, tokens, at }` |
 | `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme`（调色板真的变了才广播 `theme-changed`） |
 
-`GET /bootstrap`（`lib/index.js:631`）是面板唯一的一次往返，字段：
+`GET /bootstrap` 是面板唯一的一次往返（`lib/index.js` 的 `ROUTES` 里同名 handler），字段：
 
 ```jsonc
 {
@@ -179,14 +177,14 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 ```
 
 `sessions[]` 的 `home` 是它显示在哪个容器节点里，`homeOverride` 表示这是侧车的虚拟放置而非
-DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户端不重放规则。
+DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 
 `tree.nodes` 上每个节点除 `accepts` / `scope` / `ref` / `hasWorkspace` 外还带 `homeWorkspaceId`：
 **它属于哪个工作区**（沿父链找最近的工作区，工作区节点就是它自己，没有归属是 `null`）。
 这与 `workspaceId` 不是一回事——后者只出现在工作区节点上，意思是「这个节点就是那个工作区」。
 文件夹节点从不存 `workspaceId`，客户端要判断「在这个位置新建的会话该归谁」时读 `homeWorkspaceId`。
 
-一个字段不是 DSH 给的，是插件自己从日志里读出来的（`lib/sources/logfacts.js`）：
+这个字段由插件从日志里读出（`lib/sources/logfacts.js`），DSH 不提供：
 
 | 字段 | 含义 | 从哪来 |
 |---|---|---|
@@ -195,14 +193,14 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 读不到就报未知而不是报空。结果按 `path|size|mtime` 缓存，所以只有正在写的那个会话会被重读。
 
 日志只回答这一个问题。会话是否正在跑、某一轮是否被切断，插件都不推断——DSH 自己在内存里
-只有一个 `running`（`packages/api/session-controller/src/list.ts:120`），面板报同一个答案
+只有一个 `running`（`packages/api/session-controller/src/list.ts`），面板报同一个答案
 （列表的状态阶梯见 §5.1），没有 `interrupted` 这种自造字段。
 
 更新检查、缓存清理和三个项目链接在设置页的「关于」组里，单独记在 §4.11。
 
 `GET /settings` 单独存在，是因为设置页挂在面板之外，不该为渲染一个表单付一次全量扫描。
 `PUT /settings` 收**局部**文档（`{ shell: { modal: { dim: 0.2 } } }` 合法），未知键被
-`mergeSettings` 丢掉而不是落盘。
+`mergeSettings` 丢掉，不落盘。
 
 ### 4.2 标签
 
@@ -235,12 +233,12 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
 
 `:id` 必须是合法会话 id（`isAnnotationId`：非空、≤ 上限、不在 `__proto__` / `constructor` /
 `prototype` 里、只含 `[A-Za-z0-9._:-]`），否则 `400 session id is not a valid id`。注解文档用会话 id
-当键，`__proto__` 会写原型而不是条目——补丁静默消失、接口却回报成功，所以这一层在路由和
+当键，`__proto__` 会写原型，条目不会出现——补丁静默消失、接口却回报成功，所以这一层在路由和
 `patchAnnotation` 里各挡一次。
 
 `GET /session-state/:id` 是给 DSH 自己的会话标题栏和行菜单用的：它们没有 bootstrap 快照，
 只想知道三个布尔，其中 `favorite` / `todo` 同样按树上的快捷方式判（`lib/domain/session-state.js`）。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
-任一为真即"不在"（`lib/domain/session-state.js:32`）。
+任一为真即"不在"（`lib/domain/session-state.js`）。
 
 ### 4.4 树：文件夹、快捷方式、置顶、快速访问、放置
 
@@ -281,7 +279,7 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
     出现在工作区自己的计数之外。
   `move: true` 的响应多两个字段：`moved` 是真正搬过去的 id，`failed` 是 `{ sessionId, code,
   message }` 行（例如 `session-active`）。搬失败的会话**不写 placement**，保持原来的归属；
-  整批都搬不动时沿用 `/move` 的约定直接抛错，而不是回一个 200 空结果。
+  整批都搬不动时沿用 `/move` 的约定直接抛错，不回一个 200 空结果。
   客户端把「剪切→粘贴到工作区内的文件夹」和拖放都走这条路，撤销时先清 placement、再按原
   workspaceId 把 payload 搬回去（见 `placeSessions`）。
 - `POST /sessions/placement/pending` 是**意图**，不是写入：它只说「下一步会在 `parent` 这个
@@ -302,7 +300,7 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
   删一个（把最后一行拖走）都是同一句话
   「现在就是这个顺序」，所以没有「移到第 N 位」这种单行接口。`ids` 里没出现的书签会被删除；不合法或已消失的
   id 被**跳过**而不是 400（手势来自一棵活的树，一条过期行不该作废整个动作），`skipped` 报出被跳过的 id，
-  `order` 只含真正写进去的行。`ids` 不是数组时 `400 ids must be an array of node ids`，而不是把整条带子清空；
+  `order` 只含真正写进去的行。`ids` 不是数组时 `400 ids must be an array of node ids`，不会把整条带子清空；
   只想删一行时用 `POST /nodes/:id/quick-access { quickAccess: false }`。
 
 ### 4.5 会话操作
@@ -339,7 +337,7 @@ DSH 自己的归属（`lib/index.js:1808`）。两者都由 host 算好，客户
   删掉子会话，删子会话只影响它自己和它自己的下级。
 `POST /move`（`lib/host/move.js`）是唯一会**改会话文件**的操作：重写 header 的 `cwd` + 搬目录
 + 换 registry 登记，三件事一个事务；只有其中一件成功会导致下次启动找不到会话。
-`copy: true` 写第二份独立会话（新 id）而不是移动。有会话在跑时拒绝（`session-active`）——
+`copy: true` 写第二份独立会话（新 id），不移动原会话。有会话在跑时拒绝（`session-active`）——
 DSH 还握着旧路径的写句柄，从底下挪走会损坏尾部。
 
 `POST /sessions/:id/log-path` 是"复制文件路径"：只解析不打开，把会话日志的绝对路径交给面板写剪贴板。
@@ -475,7 +473,7 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 | `POST /component/remove` | — | 同 status |
 | `POST /component/retry` | — | 同 status（续传已有 `.part`） |
 
-status 的形状（`lib/component/manager.js:404-429`，整个 state 加上算出来的几个字段）：
+status 的形状（`lib/component/manager.js` 的 `status()`，整个 state 加上算出来的几个字段）：
 
 ```jsonc
 {
@@ -501,7 +499,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 `sizeBytes` 对借来的运行时恒为 0——体积是别人的，也不值得为它遍历几百 MB。细节见
 [component.md §8](component.md)。
 
-轮询而不是 SSE：唯一会变的数字是下载百分比，而看它的那个页面只开几秒。
+用轮询代替 SSE：唯一会变的数字是下载百分比，而看它的那个页面只开几秒。
 `remove` 会先关掉独立窗口（`component-in-use` 的替代路径），并在删不掉时把路径记进
 `pending-cleanup.v1.json`，下次启动 sweep。
 
@@ -517,8 +515,10 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 | `POST /detached/close` | — | `{ closed, wasOpen }` |
 
 `kind ∈ {open-session, new-session, reveal, refresh, open-settings, lang-changed, session-status, status-request}`
-（`lib/host/bridge.js:160`），payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自
-截断到 200 字符（`lang-changed` 例外：它只带 `lang`，取值 `zh` 或 `en`，别的一律丢掉）。其它 kind
+（`lib/host/bridge.js` 的 `WINDOW_COMMANDS`），payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自
+截断到 200 字符（`lang-changed` 例外：它只带 `lang`，值先经 `normalizeLang` 归一，十种语言码
+`zh` / `en` / `ja` / `ko` / `de` / `fr` / `es` / `ru` / `pt` / `zh-hant` 通过，`ja-JP` 归成 `ja`，`zh-TW` 归成
+`zh-hant`，`it-IT` 丢掉）。其它 kind
 一律 `bad-request`——桥是一根窄管子，不是插件的遥控器。
 
 两个 `status` 相关的 kind 是会话状态的跨进程通道（窗口跑在 shim 上，`uiSession` 是空实现，
@@ -531,7 +531,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 { "kind": "status-request", "payload": {} }
 ```
 
-`rows` 由 `normalizeStatusRows()` 重建（`lib/host/bridge.js:188`）：只认四个键，`id` 截 200、`pending`
+`rows` 由 `normalizeStatusRows()` 重建（`lib/host/bridge.js`）：只认四个键，`id` 截 200、`pending`
 只认 `approval` / `plan-review` / `question`、两个布尔只认 `true`，最多 500 行；缺 id 或三样信号
 都没有的行被丢掉。原因是它决定另一侧画哪个徽章，把未知的等待类型猜成已知的，等于凭坏数据挂上
 「等待审批」。`status-request` 带什么都会丢。窗口在挂载与回到前台时发它；页面若收到这条，
@@ -563,9 +563,9 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 
 `GET /bridge/events` 先发 `event: ready`（带当前 `cursor` 和允许的 kinds），再补发
 `since` 之后的命令，之后是实时的 `event: command`；每 15 秒一条 `: keep-alive` 注释帧。
-命令帧带 `id: <seq>`，重连时服务端优先读 `Last-Event-ID` 头而不是 URL 里的 `since`；订阅者
+命令帧带 `id: <seq>`，重连时服务端先读 `Last-Event-ID` 头，URL 里的 `since` 排在它后面；订阅者
 上限 32，满了回 `503`；`res.write()` 返回 `false` 时直接结束流，让客户端带 `Last-Event-ID`
-重连，而不是让缓冲涨下去。细节见 [bridge-and-theme.md](bridge-and-theme.md)。
+重连，避免缓冲涨下去。细节见 [bridge-and-theme.md](bridge-and-theme.md)。
 
 `GET /bridge/poll` 是同一根总线的第二个入口：流会静默死掉（文档被节流、连接一端以为还在、
 宿主重启过），客户端每 4 秒按游标补问一次，`since` 缺省或非数字按 0 处理。两条路径并存，
@@ -586,7 +586,7 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
 | `GET /ui/icon.png` | `assets/icon.png` | `image/png` |
 
-路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js:97`）。
+路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js` 的 `UI_ASSETS`）。
 全部 `no-store`：面板和窗口必须跑同一份代码，缓存一份旧的正是这套安排要消除的漂移。
 文件缺失时 `ui-asset-missing`（500）。
 
@@ -650,7 +650,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 解析只认一个很小的子集：标题、无序/有序列表、分隔线、`**粗体**`、`\`代码\``；认不出的行
 原样当段落显示，不会从弹窗里消失。文件超过 200 KB 直接 `too-large`——那不是一份更新说明；
-两个文件都没有是 `not-found`，弹窗照样打开并把原因写在正文位置，而不是显示一张空卡片。
+两个文件都没有是 `not-found`，弹窗照样打开并把原因写在正文位置，不留一张空卡片。
 
 按 `大小 + mtime` 记住上一次的解析结果：文件几 KB，重新解析一次也不贵，但"改了文案弹窗还是旧的"
 正是这套安排要避免的事，所以键里必须带 mtime。
@@ -661,7 +661,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 - **启动时自己弹一次**：挂在侧栏入口上（`NotesGate`，与面板一起卸载不了），DSH 起来约 3 秒后问一次
   `/release-notes`，把响应里的 `version` 与同一个响应里的 `seen` 比对（`notesDecision`）：版本不同、或这台机器从没记过版本，
   就打开；相同就什么也不做。**第一次装也弹**——第一次启动正是这个版本唯一一次"新"的时候，
-  更新说明说的就是它；弹在启动而不是等面板打开，则是"用户可能根本不打开面板，但插件已经更新了"。
+  更新说明说的就是它；选在启动时弹，是因为"用户可能根本不打开面板，但插件已经更新了"。
   `version` 随这份响应一起回来，所以判断要不要弹不需要第二次请求，也不需要 `/bootstrap` 去扫会话。
   "已读"记在**宿主**的 `<dataDir>/notes-seen.v1.json`（`lib/host/notes-seen.js`），不是 localStorage：
   DSH web GUI 每次启动换一个端口，而浏览器存储按 origin（含端口）隔离，换端口就是空存储——
@@ -680,8 +680,8 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 插件里唯一一个**不可逆**的操作（`lib/host/reset.js`），因此有两道门，且都在 host 侧：
 
 1. `confirm` 去掉首尾空白后必须**恰好**是 `DELETE`（`RESET_CONFIRMATION`），否则
-   `400 confirm-required`——在读到任何文件之前就返回，一个字节都不动。门装在这里而不是
-   只装在页面上，是因为这条路由没有 token：只靠一颗红按钮拦的话，一次 `fetch` 就绕过去了。
+   `400 confirm-required`——在读到任何文件之前就返回，一个字节都不动。门装在 host 这一侧，
+   只装在页面上不够，因为这条路由没有 token：只靠一颗红按钮拦的话，一次 `fetch` 就绕过去了。
 2. `api.dataDir` 必须过 `isUsableDataDir()`（不是文件系统根，不是 `~/.dsh` 也不是它的祖先），
    否则 `409 reset-refused`。越是要清空一个目录，越要先确认那是它自己的目录。
 
@@ -720,13 +720,13 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 | `GET /search/content` | `?q=<needle>&limit=<n>` | `{ query, ready, indexed, total, hits, matched, truncated, needleTruncated }` |
 
 面板里 会话名 / 标签 / 备注 三个字段本来就在列表行上，读一遍内存就有答案；**会话内容**只在会话日志里
-——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以这里不是每次按键读文件，而是一个
-索引（`lib/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
+——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以按键时查的是内存索引，不读文件
+（`lib/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
 逐份构建、每份之间让出事件循环（一次最多 `budgetMs = 700`），并且同一时刻只允许一个构建在跑。
 
 索引里装的是**说的话**：用户消息与助手回复的文字（`collectTurns` 的 `role` 为 `user` 与
 `assistant` 两种回合）。工具调用的参数与输出、思考过程、DSH 每轮注入的上下文、压缩摘要都不进
-索引——它们不是"谁说的"，而是"系统做了什么"，混进来会让搜一个函数名命中一百个无关会话。
+索引——它们属于"系统做了什么"，混进来会让搜一个函数名命中一百个无关会话。
 `ready: true` 之后搜不到，就是这份日志里没人说过。
 
 - `ready: false` = 索引还没建完，`indexed / total` 是进度；`hits` 是**已经建到的那部分**的答案。
@@ -822,7 +822,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
   中间插一行省略说明。会话标题、备注、标签**不再**喂回模型（那是它要写的东西，喂回去只会让旧名字活下去）。
 - 请求本身**不带任何工具**（`tools: []`）、不设 `maxTokens`、只带本插件自己的 `system`：DSH 的 agent
   提示词不会混进来（pi-ai 适配器的 `splitSystemPrompt()` 只拼 `options.system` 和请求里的 system 消息），
-  而推理模型的第一块是 `reasoning` 而不是文字——那是正常输出，照样继续等 `text-delta`。不设输出上限
+  而推理模型的第一块是 `reasoning` 块——那是正常输出，照样继续等 `text-delta`。不设输出上限
   是因为思考也算进同一个预算，小上限买到的是空正文（`dsh-pet` 的 `whisper.ts` 记了同一个坑）。
   调用带 `sessionId: "session-navigator"` 这个固定身份（有的 provider 按身份路由，缺了会 400），
   它不是真实会话 id，检查点中间件查不到这个会话就直接放行，不会往任何历史里写东西。
@@ -857,7 +857,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 | 顺序 | 文案 | 点 | 什么条件 |
 |---|---|---|---|
-| 1 | 已删除 | 无 | 在插件的回收站里。这不是存活判断，是"这个载荷为什么打不开" |
+| 1 | 已删除 | 无 | 在插件的回收站里。它回答"这个载荷为什么打不开"，与存活无关 |
 | 2 | 等待审批 / 计划待审 / 等待回答 | 黄 | DSH 的 `pendingInteraction.kind`，只认这三个值，最高优先级 |
 | 3 | 进行中 | 蓝 | DSH 的 `running`；服务不在时回落到插件从宿主读到的同一个 `running` |
 | 4 | {n} 个子智能体运行中 | 蓝 | 本行下面还有正在跑的子会话（子行是 `isSubagent` 且 `parentSession` 指向本行） |

@@ -1,8 +1,9 @@
 name: test
 
-# The plugin has no dependencies and no build step, so there is nothing to
-# install and nothing to compile: the whole job is "run the tests on the Node
-# versions package.json promises".
+# The plugin has no dependencies, so there is nothing to install. The client
+# bundle is assembled from lib/client-src/ by a plain node script rather than a
+# bundler — one build step, then the gates and the tests on the Node versions
+# package.json promises.
 on:
   push:
   pull_request:
@@ -28,6 +29,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+      # Two zero-dependency gates. lint.mjs parses every file under lib/,
+      # test/ and scripts/ and applies a few rules; check-docs.mjs fails when a
+      # document cites "lib/x.js:1234", a number that rots on the next insert.
+      # Both are plain node scripts, so they run before the tests and a failure
+      # names the file and line that needs attention.
+      - run: node scripts/lint.mjs
+      - run: node scripts/check-docs.mjs
+      - run: node scripts/check-prose.mjs
+      # The eight dictionaries have to agree with each other key by key, and each
+      # one has to name its own language and the language the summariser should
+      # answer in. A half-translated table looks fine on screen until the first
+      # label falls back to Chinese in a Japanese window.
+      - run: node scripts/check-i18n.mjs
+      # lib/client.js is generated from lib/client-src/ and deliberately not
+      # tracked, so every job builds it before anything reads it. The build is a
+      # concatenation with no dependencies and no cache to warm; the tests below
+      # therefore always run against the sources in this commit.
+      - run: node scripts/build-client.mjs
+      # A gate on the shape of the tree rather than its behaviour: it keeps every
+      # hand-written file readable in one sitting.
+      - run: node scripts/check-file-size.mjs
       # Quoted so Node expands the pattern itself: cmd.exe and pwsh do not, and
       # the same command has to work on the developer's shell too.
       - run: node --test "test/*.test.mjs"

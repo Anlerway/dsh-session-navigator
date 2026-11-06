@@ -526,10 +526,10 @@ test("a failure before the panel loads is reported in the window's language", ()
 test("the Host answers the panel's language with a window in it", () => {
   assert.match(
     HOST,
-    /"POST \/detached\/open": async \(api, req\) => \{[\s\S]*req\.body\?\.lang === "en" \? "en" : "zh"/,
-    "the route reads lang off the request",
+    /"POST \/detached\/open": async \(api, req\) => \{[\s\S]*api\.detached\.open\(\{ lang: normalizeLang\(req\.body\?\.lang\) \|\| "zh" \}\)/,
+    "the route normalizes the language off the request, and opens in 中文 when it names none",
   );
-  assert.match(HOST, /api\.detached\.open\(\{ lang: /, "and hands it to the controller");
+  assert.match(HOST, /import \{ normalizeLang \} from "\.\/lang\.js"/, "against the one list of languages");
 });
 
 test("the controller passes the language to the helper, and to a window already open", () => {
@@ -543,7 +543,7 @@ test("the controller passes the language to the helper, and to a window already 
 
 test("the helper puts the language in the page's URL, and reloads on a switch", () => {
   const main = read("lib/detached/main.cjs");
-  assert.match(main, /DSH_SE_LANG === "en" \? "en" : "zh"/, "the helper starts in the language it was spawned with");
+  assert.match(main, /normalizeLang\(process\.env\.DSH_SE_LANG\) \|\| "zh"/, "the helper starts in the language it was spawned with");
   assert.match(main, new RegExp("\\?lang=\\$\\{pageLang\\}"), "and tells the page");
   assert.match(main, /message\.type === "lang"/, "a later switch arrives as a control message");
   assert.match(main, /win\.loadURL\(url\)/, "which reloads the page");
@@ -552,7 +552,7 @@ test("the helper puts the language in the page's URL, and reloads on a switch", 
 test("the panel tells the Host which language it is drawing in", () => {
   const client = read("lib/client.js");
   assert.match(client, /function uiLang\(\)/, "one place answers the question");
-  assert.match(client, /bound\("langCode"\) === "en"/, "by asking the bound translator, not a second API");
+  assert.match(client, /normalizeLang\(bound\("langCode"\)\)/, "by asking the bound translator, not a second API");
   // Every entry point that can open the window has to say it: a reveal from the
   // sidebar opens the window on a page that never rendered the panel.
   const opens = [...client.matchAll(/apiSend\("POST", "\/detached\/open", (\{[^}]*\})/g)].map((match) => match[1]);
@@ -583,11 +583,15 @@ test("a borrowed runtime is started with this plugin's app path, an owned one wi
   assert.match(launcher, new RegExp(": \\[" + bt + "--user-data-dir=\\$\\{userData\\}" + bt + "\\];"), "an owned runtime gets no path argument");
 });
 
-test("the Host hands the launcher the borrowed app directory and the borrow record", () => {
+test("the Host hands the launcher the borrowed app directory and the borrow record", async () => {
   const host = read("lib/index.js");
   assert.match(host, /appDir: status\.borrowed \? component\.paths\.helperApp : null/, "the runtime thunk names the app directory");
   assert.match(host, /"GET \/component\/scan": async \(api\) => api\.component\.scan\(\{ home: dshHome\(\) \}\)/, "the scan route reads DSH's home on the Host, never in the page");
-  assert.match(host, /case "component-borrow-invalid":\s*\n?\s*return 400;/, "a refused borrow is a bad request, not a server error");
+  // The status used to be a `case` in the Host's switch; the mapping is a table
+  // in lib/errors.js now, so the fact is asked of the function that reads it
+  // instead of grepping the shape the table no longer has.
+  const { statusFor } = await import("../lib/index.js");
+  assert.equal(statusFor("component-borrow-invalid"), 400, "a refused borrow is a bad request, not a server error");
 });
 
 test("the scan route resolves DSH's home itself, instead of asking the page for it", async () => {

@@ -11,10 +11,10 @@
 | 半体 | 入口 | 由谁加载 | 运行环境 |
 |---|---|---|---|
 | Host | `lib/index.js` | Cordis，应用启动时加载一次 | DSH 主进程（Node ESM） |
-| Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`，无构建步骤 | 渲染进程（浏览器环境） |
+| Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`；源在 `lib/client-src/`，构建期拼接 | 渲染进程（浏览器环境） |
 
 Host 半体在 DSH 的 web 服务器上注册**一个**前缀路由 `/session-navigator/api`，所有端点都在
-它下面（`lib/index.js:333-337`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
+它下面（`lib/index.js` 的 `apply(ctx)` 里那次 `webServer.register()`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
 portal 到 `<body>` 上的固定层。
 
 ### 加载链路
@@ -24,7 +24,7 @@ package.json
 ├─ dsh.bundle.patch = "./cordis.patch.yml"
 │    └─ - insert: [{ id: session-navigator, name: 'dsh-session-navigator', config: {} }]
 │         → Cordis 按包名 import，取 name / inject / apply
-│           (lib/index.js:109 name, lib/index.js:114 inject, lib/index.js:123 apply)
+│           (lib/index.js 的 name / inject / apply)
 └─ dsh.client.inject = "@deepseek-ai/dsh-client-ui-slots"
    dsh.client.platform = "web"
      → 渲染进程把 lib/client.js 当作 out-of-tree client 模块执行
@@ -35,57 +35,56 @@ package.json
 
 ## 2. Host 半体：`apply(ctx)` 做了七件事
 
-`lib/index.js:123-353`，顺序有意义：
+`lib/index.js` 的 `apply(ctx)`，七步的顺序有意义：
 
-1. **拿 webServer**（`:122-123`）。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
+1. **拿 webServer**。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
    profile 就没有浏览器半体，此时直接 return，让 loader 跳过这一行。
-2. **开数据目录**（`:127-138`）：`resolveDataDir()` → `dataPaths()` → `openDocuments()`。
+2. **开数据目录**：`resolveDataDir()` → `dataPaths()` → `openDocuments()`。
    `openAt(dir)` 让迁移完成后能在**不重启**的情况下切到新目录。
-3. **四个可选件**（`:140-184`）：
+3. **四个可选件**：
    - `component`：浏览器组件状态机（Electron 运行时）；
    - `detached`：独立窗口 helper 进程控制器（懒创建）；
    - `bridge`：浮窗 ↔ 独立窗口的命令总线（内存）；
    - `theme`：浮窗上报、窗口读取的调色板。
-4. **组装 `api` 对象**（`:187-273`）。这是路由处理器唯一的依赖入口：
+4. **组装 `api` 对象**。这是路由处理器唯一的依赖入口：
    `ctx / dataDir / paths / documents / migration / reopen / component / detached / bridge /
    theme / capabilities / reader / content / indexBuilder / summarizer`。`dataDir` 与 `paths` 是
    getter，迁移后自动指向新值——内容索引的缓存文件也跟着走（`content` 用 getter 拿路径，见 api.md §4.14）。
-   `summarizer` 在字面量之后单独赋值（`:250` 附近）：它要引用正在定义的 `api`，而且它的
+   `summarizer` 在字面量之后单独赋值：它要引用正在定义的 `api`，而且它的
    `summaries` / `settings` 必须**每次现读** `documents`——迁移会重新赋值那个变量，
    闭包里抓一份旧引用就会写进旧目录。
-5. **启动自愈**（`:275-296`）：`reconcileTrash(api)` 收尾"索引已写、payload 未搬"的中断；
+5. **启动自愈**：`reconcileTrash(api)` 收尾"索引已写、payload 未搬"的中断；
    `reconcileMoves(api)` 做同一件事的移动版（payload 已搬到目标、注册表还没跟上）；
    `component.sweep()` 删除上一次卸载时被占用、删不掉的目录。三者都 best-effort、不 await。
-6. **注册前缀路由**（`:298-306`），并把返回的 dispose 挂到 `ctx.effect`。
-7. **退出时收尾**（`:308-317`）：插件被禁用/重载时 `api.detached.stop()`，否则 helper 进程会
+6. **注册前缀路由**，并把返回的 dispose 挂到 `ctx.effect`。
+7. **退出时收尾**：插件被禁用/重载时 `api.detached.stop()`，否则 helper 进程会
    活过拥有它的代码。
 
 ## 3. 一次请求的生命周期
 
-`handle(api, req, res)`（`lib/index.js:2184-2231`）：
+`handle(api, req, res)`（`lib/index.js`）：
 
 ```
-routeOf(req.url)                 // lib/http.js:88  剥掉 /session-navigator/api
+routeOf(req.url)                 // lib/http.js 剥掉 /session-navigator/api
   ↓ null → 404 bad-request
-compileRoute 匹配表               // lib/index.js:2140  段数相等 + :param 解码
+compileRoute 匹配表               // lib/index.js 段数相等 + :param 解码
   ↓ 无 → 404 no route for <METHOD> <path>
 迁移守卫                          // 非 GET/HEAD 且非 /datadir* → migration-in-progress
 assertSameOrigin(req)            // 非 GET/HEAD：跨站 / 非 JSON → 403 / 415
-readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（lib/http.js:57）
+readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（lib/http.js）
 handler(api, req, res, query, params)
   ↓ 正常 → ok(res, result)        // { ok: true, result }
-  ↓ 抛错 → statusFor(code)        // lib/index.js:2310  错误码 → HTTP 状态
+  ↓ 抛错 → statusFor(code)        // lib/index.js 错误码 → HTTP 状态
            fail(res, status, code, message)
 ```
 
 三条不变量：
 
-- **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`lib/http.js:22-48`）。
+- **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`lib/http.js` 的 `ok()` / `fail()`）。
   客户端只对 `code` 分支，`error` 只给人看。
 - **错误码直通**：DSH 原生错误带的命名空间码（`workspace/name-conflict`、
-  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js:2274`）。
-- **SSE 例外**：`GET /bridge/events` 自己接管响应，`handle` 在 `headersSent` 时不再写信封
-  （`lib/index.js:2218`）。
+  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js`）。
+- **SSE 例外**：`GET /bridge/events` 自己接管响应，`handle` 在 `headersSent` 时不再写信封。
 - **写请求必须同源**：没有 token，所以靠 `Sec-Fetch-Site` 与 `Content-Type: application/json`
   这两个浏览器强制的信号拒绝跨站写（`lib/index.js` 的 `assertSameOrigin()`，见
   [api.md](api.md#31-写请求的同源约束)）。
@@ -94,7 +93,7 @@ handler(api, req, res, query, params)
 
 ```
 lib/
-├─ index.js          2417  插件装配 + 路由表（76 条）+ 错误映射（唯一编排层）
+├─ index.js          2417  插件装配 + 路由表（83 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
 ├─ capabilities.js     73  Cordis 服务的防御式探测
@@ -133,7 +132,7 @@ lib/
 │  ├─ actions.js      701  改名/派生/归档/置顶 → 调 DSH 自己的服务
 │  ├─ trash.js        496  删除/恢复/清空的字节搬运
 │  ├─ move.js         777  跨 workspace 移动/复制（重写 header cwd + 换登记）
-│  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时，启动收尾而不是留下孤儿
+│  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时由启动收尾，不留孤儿
 │  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
 │  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
@@ -191,13 +190,13 @@ AI 字段（标题 / 描述 / 标签）是插件里**唯一**会把会话内容�
   而不是短回答（自带的 `dsh-pet` 插件在 `whisper.ts` 里记下了同一个坑）；提示词只要三个短字段，
   时长由超时兜住。
 - 请求**声明零个工具**（`tools: []`）：这是一次文本改写，给了工具模型就会去调它。有些模型
-  即使没有工具也会回一个 tool-call 块——那种块被当作"没有正文"处理而不是错误，旁边的文字照收；
+  即使没有工具也会回一个 tool-call 块——那种块按"没有正文"处理，不算错误，旁边的文字照收；
   两次都没有正文才报 `llm/tool-only` / `llm/empty`。系统提示词只有本插件这一份，DSH 的 agent
   提示词不参与（pi-ai 适配器的 `splitSystemPrompt()` 只拼 `options.system` 与请求里的 system 消息）。
 - 标签**先问已有的**：`existingTags` 读 `tagVocabulary()`，最多 40 个进系统提示词，回答里的标签再由
   `alignTags()` 按现有写法归一。理由是同义词比没有标签更糟——"导出"/"会话导出"/"导出功能"会让选择器
   长出十几行意思一样的词，而这个库正是下一轮生成要参考的"已有标签"。
-- 答案是**读出来的**，不是**猜出来的**：提示词的契约就是一个 JSON 对象，`extractJsonObject()` 剥掉
+- 答案靠解析取出，不靠猜：提示词的契约就是一个 JSON 对象，`extractJsonObject()` 剥掉
   围栏取第一个 `{` 到最后一个 `}`，`normalizeFields()` 逐字段校验；缺字段就重来一次，而且第二次
   请求会附上一句"上次的回答不是那个 JSON 对象，不要调用工具"（原话重复只会得到原样的错）；
   两次都缺则 `ai/bad-answer`，一个半成品都不写——半成品会让这个会话永远不再重试。DSH 的
@@ -216,7 +215,7 @@ AI 字段（标题 / 描述 / 标签）是插件里**唯一**会把会话内容�
   （`repo` / `star` / `issues` / `releases`），不收 URL。这条 API 挂在 DSH 的端口上、没有 token，
   接受任意 URL 就等于送给每个网页一个"用系统浏览器打开这个地址"的按钮。
   打开本身按平台走一条降级链（Windows：`rundll32 url.dll,FileProtocolHandler` → `Start-Process`，
-  macOS `open`，Linux `xdg-open` → `gio open`），认的是子进程**退出码**而不是"spawn 成功"——
+  macOS `open`，Linux `xdg-open` → `gio open`），认的是子进程**退出码**，"spawn 成功"不算数——
   后者会让一个起得来、却打不开任何东西的壳子也报成功，用户看到的就是"点了没反应"；全链失败才
   报错，且错误消息里带着那个 URL，面板原样显示，至少还能复制。
 
@@ -249,7 +248,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 ## 5. Client 半体：`apply(ctx)` 注册了什么
 
-`lib/client.js:14190-14363`。`inject = ["slots", "locale", "uiWorkspace"]`（`:13067`）。
+`lib/client.js` 的 `apply(ctx)`。`inject = ["slots", "locale", "uiWorkspace"]`。
 
 **插槽**（order 决定与 DSH 自带条目的相对位置）：
 
@@ -264,53 +263,63 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 **effect**（随插件卸载自动清理）：
 
 - 主题上报：`reportTheme()` + `MutationObserver` 监听 `documentElement` 的
-  `class` / `data-theme` / `style`（`:12913-12926`）；
+  `class` / `data-theme` / `style`；
 - 桥订阅：`subscribeBridge(...)`，处理 `open-session` / `new-session` / `open-settings` /
-  `reveal` / `window-open` / `window-closed` / `changed` / `theme-changed` / `lang-changed`
-  （`:12928-12985`）；
-- 词典注册：`ctx.locale.register(NS, { zh, en })`（`:12986`）。
+  `reveal` / `window-open` / `window-closed` / `changed` / `theme-changed` / `lang-changed`；
+- 词典注册：`ctx.locale.register(NS, LOCALE_TABLES)`，`LOCALE_TABLES` 按语言码装十种语言的 `settings`（见 [i18n.md](i18n.md)）。
 
-**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`（`:13066-13070`）。
+**导出**：`apply` / `inject` / `panelStore` / `SettingsSection`。
 
-浮窗本体是 `Panel`（`lib/client.js:6356`，单函数约 5500 行，内部按功能分段），
+浮窗本体是 `Panel`（`lib/client.js`，单函数约 5500 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
-（`lib/client.js:879` 的注释）。
+（`lib/client.js` 的注释）。
 
-### 5.1 面板与独立窗口的双语：两套机制，一条链路
+### 5.1 面板与独立窗口的多语言：两套机制，一条链路
 
 按「这一屏的标签是不是固定的」分工：
 
 - **设置页**用 DSH 的命名键字典（`t("setStarHint")`）：一屏固定表单，键名可读比字面量值钱。
-- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js:2196` 起的注释块下方）：键就是中文原文。
-  三百多条散在渲染树里的短标签，命名键只会多一层间接；而且改字时字典未命中的后果是
-  「显示中文」而不是「在页面上印出 key」。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
+- **面板与独立窗口**用 `T(中文原文, params)`（`lib/client.js` 的 `T()`）：键就是中文原文。
+  四百多条散在渲染树里的短标签，命名键只会多一层间接；而且改字时字典未命中的后果是
+  「显示中文」，页面上不会印出 key。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
+
+两节都来自同一份数据文件：`assets/i18n/<code>.json`，十种语言（`zh` / `en` / `ja` / `ko` / `de` /
+`fr` / `es` / `ru` / `pt` / `zh-hant`），构建时内联进 `lib/client.js` 的 `DICTS`。`settings` 的 226 个具名键注册给
+DSH 的 locale 服务，`panel` 的 465 条以中文原文为键，`zh.json` 的值与键逐条相同。词典怎么放、
+清单有几份副本、加一门语言要动哪些文件，见 [i18n.md](i18n.md)。
 
 `T` 读模块级的 `panelLang`，而 `Panel` 每次渲染都从 props 的翻译器刷新它：
-`panelLang = typeof t === "function" && t("langCode") === "en" ? "en" : "zh";`（`lib/client.js:6359`）。
+`panelLang = uiLangOverride || normalizeLang(t("langCode")) || panelLang`（`lib/client.js`）。
+`uiLangOverride` 是设置文档里的 `ui.lang`（插件自己的界面语言，见 [i18n.md](i18n.md) 第 6 节）。
 语言开关一动，DSH 用新的 `t` 重渲染插槽，下一帧就是新语言。代价是模块级表（`FIXED_META`、
 `COLUMNS`）的 `label` 必须写成 `get label() { return T("…"); }`——直接赋值会在模块加载时求值、
-永久冻在中文。英文表在 `panelDict()`（`lib/client.js:13228`）。
+永久冻在中文。当前语言的表在 `panelTable(panelLang)`，缺键时回落到英文表 `panelDict()`，
+再回落到中文原文。
 
 宿主发来的名字也属于同一类，只是来源不同：固定目录（所有会话 / 未分组 / 待办 / 收藏 / 回收站 / 根目录）
 的 `name` 在 host 那边是标识符、写法就是中文，所以 `nodeLabel()` 不印它，而是取
 `FIXED_META[node.id].label`。默认工作区连固定 id 都没有——注册表里它的标题是 `default-workspace`，
 host 画成「默认工作区」——节点因此带一个 `default: true` 标志，`nodeLabel()` 看到标志就取
-`T("默认工作区")`；用户自己改过名的工作区保留原名，这也是判据用标志而不是字符串的原因。
+`T("默认工作区")`；用户自己改过名的工作区保留原名，这也是判据看标志位、不比对字符串的原因。
 
 独立窗口是另一侧：`assets/detached` 是静态页 + 冒充 DSH 的 shim，它读不到 DSH 的语言开关，
 也不会跟着 DSH 重渲染。所以语言由面板在 `POST /detached/open` 里报给 host（`uiLang()`，
-`lib/client.js:2216`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
-helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`，
-之后每句都过 `L(zh, en)`。中途切换语言时控制器用控制通道广播 `{ type: "lang" }`，helper 直接
-`win.loadURL()` reload——字典是页面加载时定死的，reload 是唯一能让新字典生效的方式。
-`index.html` 仍然随中文首发（HTML 在任何脚本之前就被解析完），英文窗口的标题与启动语由 shim 事后改写。
+`lib/client.js`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
+helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`。
+面板注册词典时把八份 `settings` 表一起送进窗口，shim 的 `translate()` 按 `LANG` 取表，缺键时
+依次试英文表与中文表；窗口里面板自己画的句子由 `T()` 在渲染时查 `panel` 表翻好。shim 自带的那
+十几行启动文案仍走 `L(zh, en)`，那时面板还没渲染。中途切换语言时控制器用控制通道广播
+`{ type: "lang" }`，helper 直接 `win.loadURL()` reload——字典是页面加载时定死的，
+reload 是唯一能让新字典生效的方式。`index.html` 仍然随中文首发（HTML 在任何脚本之前就被解析完），
+其它语言的窗口标题与启动语由 shim 事后改写。
 
 `test/panel-copy.test.mjs` 守着这条链的可见后果：`T()` 的每个键都在表里、表里没有空值或中文、
-占位符两边一致，以及渲染树里不许有裸中文字面量（注释与样式表除外）。
+占位符两边一致，以及渲染树里不许有裸中文字面量（注释与样式表除外）。十种语言的键集合与占位符
+由 `node scripts/check-i18n.mjs` 全量校验。
 
 ### 5.2 列表的「带」：先切数据，再画标题
 
-列表不是一棵树长出来的，是一串**带**（band）。`ListPane` 先把行分组，再统一画成
+列表由一串**带**（band）拼成。`ListPane` 先把行分组，再统一画成
 `button.grp`（标题行：折叠箭头、图标、名字、计数）+ 该带的行，行本身由 `rowsOf()` 生成：
 
 ```js
@@ -319,47 +328,46 @@ groups.push({ key, title, icon, count, rows });
 
 带是渲染前的数据结构，不是 CSS 分组，「这一带有什么」和「这一带画不画」因此在同一个对象里
 回答。带按固定优先级排：置顶、搜索/筛选结果、特殊文件夹、容器（文件夹 / 工作区 / 快捷方式）、
-`所有会话` 的行、已归档（`lib/client.js:4599-4700` 的九处 `groups.push`）。
+`所有会话` 的行、已归档（`lib/client.js` 的九处 `groups.push`）。
 
-`所有会话` 在没有搜索词、没有筛选时不是一条平带，而是**一条带一个工作区**：
-`workspaceBands(sessions, tree)`（`lib/client.js:3962`）按 `session.workspaceId` 分桶，
+没有搜索词、没有筛选时，`所有会话` 按**一条带一个工作区**铺开：
+`workspaceBands(sessions, tree)`（`lib/client.js`）按 `session.workspaceId` 分桶，
 标题取会话视图里的 `workspaceTitle`——跟树画的是同一个名字，视图过期时回落到 id；
 顺序用 DFS 从整棵树取（进到 workspace 节点就记位置、不再下钻，所以拖进用户文件夹的工作区
 仍留在文件夹的位置上），树不认识的工作区排在已知之后，没有工作区的沉到最末。
-搜索与筛选一旦生效就退回单带（`lib/client.js:4672` 的 `byWorkspace`）：那些列表回答
+搜索与筛选一旦生效就退回单带（`lib/client.js` 的 `byWorkspace`）：那些列表回答
 「哪几行匹配」，每行一条工作区标题只是复读。
 
-折叠只改画不改数据。`foldedBands` 是 `Panel` 的 `Set` 状态（`lib/client.js:6483`，初值来自
-布局记忆），键是 `scope + "\u0000" + bandKey`（`lib/client.js:4337`）——同一个「会话」带在
+折叠只改画不改数据。`foldedBands` 是 `Panel` 的 `Set` 状态（`lib/client.js`，初值来自
+布局记忆），键是 `scope + "\u0000" + bandKey`（`lib/client.js`）——同一个「会话」带在
 根目录和某个工作区里是两个开关，否则折一次全站没有行。折起来的带在**建行之前**短路：
-`rows: bandFolded("normal") ? null : rowsOf(normal)`（`lib/client.js:4690`）。所以不是渲染完
+`rows: bandFolded("normal") ? null : rowsOf(normal)`（`lib/client.js`）。所以不是渲染完
 再藏起来——被折的行既不在 DOM 里，也不进框选，删不掉看不见的东西。状态随布局记忆落盘
-（`foldedBands: [...foldedBands]`，`lib/client.js:6672`）。
+（`foldedBands: [...foldedBands]`，`lib/client.js`）。
 
 ### 5.3 图标：工具栏与右键菜单是两色，别处是单色
 
-`ICONS`（`lib/client.js:2742`）是一张 16×16、`stroke-width` 1.3、圆头圆角的静态表，
-`Icon`（`lib/client.js:2810`）把它交给 `svg` 的 `dangerouslySetInnerHTML`。
+`ICONS`（`lib/client.js`）是一张 16×16、`stroke-width` 1.3、圆头圆角的静态表，
+`Icon`（`lib/client.js`）把它交给 `svg` 的 `dangerouslySetInnerHTML`。
 
-两色**只给按钮和菜单**，也就是工具栏那一条（`lib/client.js:12244` 起）和行的右键菜单
-（`lib/client.js:11425` 起）：中性一半跟 `currentColor` 走，画命令**作用于什么**（一张纸、
+两色**只给按钮和菜单**，也就是工具栏那一条和行的右键菜单（两处都在 `lib/client.js`）：中性一半跟 `currentColor` 走，画命令**作用于什么**（一张纸、
 一个桶、一个文件夹）；带 `class="accent"` 的一半跟 `--sm-accent` 走，画**做什么**
 （压在前面的那张纸、门）。这两处一共 25 个字形——`plus`（新建）保持原来的纯十字，
 `trash`（删除）整枚单色：红色已经说完了这个命令要做什么，再给桶盖上一块蓝只是把同一句话写成两半。
 
-其余调用点保持单色——面包屑、搜索框、树行、列表行、状态栏。那些地方图标是**标签**而不是
+其余调用点保持单色——面包屑、搜索框、树行、列表行、状态栏。那些地方的图标只是**标签**，不是
 按钮，两色只会让一行树看起来像两个控件。为此 `search` / `home` / `monitor` / `chat` /
 `list` / `filter` 是单色原样，和本来就单色的 `back` / `fwd` / `up` / `chevdown` /
 `chevright` / `check` / `x` / `minus` / `more` 一起。
 
 一张字形表一个名字，而 `folder` 同时是「在文件管理器中显示」和树里的文件夹行，`pin` 同时是
 工具栏置顶与树上的置顶小图钉，`star` / `todo` 同时是工具栏按钮和侧栏的收藏/待办页标题。
-因为是**选择器**而不是拆名字来分：`.se-shell .accent` 默认为 `currentColor`，只有
+分色靠**选择器**，不靠拆名字：`.se-shell .accent` 默认为 `currentColor`，只有
 `.se-shell .cmd .accent` 与 `.se-shell .mi .accent` 覆盖成 `--sm-accent`，所以同一个名字
 在树行里仍然是单色。
 
 选择器写在 `.se-shell .accent`，不是 `.se-shell .ic svg .accent`：`Icon` 把 `className`
-直接给 `svg`，有的调用点（`lib/client.js:4610`）的 `svg` 自己就带 `.ic`，窄选择器在
+直接给 `svg`，有的调用点（`lib/client.js`）的 `svg` 自己就带 `.ic`，窄选择器在
 那条路径上匹配不到。`.cmd.danger` 仍把强调半边退回 `currentColor`，危险按钮的两色字形
 不会闪出蓝色。
 
@@ -434,10 +442,15 @@ effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅
 
 1. **零运行时依赖**。`dependencies` 为空，`peerDependencies` 只有 Cordis（optional）。
    React 由宿主提供，`assets/vendor/` 里的两个文件只给独立窗口用。
-2. **无构建步骤**。`lib/client.js` 直接是浏览器可执行的文件；`node --check` 只证明能解析，
-   行为靠 `test/render-smoke.mjs` 与几个真实渲染测试兜底。
-3. **`lib/client.js` 是单文件，且是刻意的**。模块加载器只给一个 factory，拆文件就要自己实现
-   模块系统。不要在"整理代码"时拆它。
+2. **运行时无构建，但产物由脚本生成**。`lib/client.js` 直接是浏览器可执行的文件，宿主不做任何
+   编译。它由 `lib/client-src/` 的分片（`manifest.json` 定序）用 `node scripts/build-client.mjs`
+   拼出来，**不进仓库**：CI 在跑测试前先构建，`npm test` 通过 `pretest` 构建，`prepack` 构建进
+   tarball。`--check` 保留给本地——它回答"磁盘上这份产物还是不是当前分片的"，直接跑
+   `node --test` 时会由 `test/client-bundle-drift.test.mjs` 替你问一次。
+3. **拆的是源，不是模块系统**。模块加载器只给一个 factory，所以分片在构建期被拼进同一个
+   factory 体，运行时仍是单文件、没有模块加载器。新增客户端代码写进对应分片并在
+   `lib/client-src/manifest.json` 里定序；`lib/client.js` 由脚本重写，手改会在下一次构建时
+   被覆盖（它不在仓库里，所以也没法提交一份改过的产物）。
 4. **绝不背着 kernel 写 DSH 的存储**。标题、归档、置顶、派生都调 DSH 自己的服务
    （`lib/host/actions.js`）。两个受控例外：`host/move.js` 移动会话文件并重写 header 的 `cwd`
    （必须同时走 registry 的写路径，否则下次启动会话就丢了），`host/trash.js` 把会话目录整体
@@ -463,7 +476,7 @@ effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅
 | [component.md](component.md) | 浏览器组件：下载或借用运行时、校验、安装、独立窗口进程 |
 | [testing.md](testing.md) | 测试矩阵与怎么跑 |
 
-历史文档（已移出仓库，归档在 `C:\Users\mi\Desktop\project_old\docs-archive\`：`交接文档.md`、
+历史文档（已移出仓库、未随仓库保留：`交接文档.md`、
 `实现粗规划.md`、`规划.md`、`独立窗口复刻规格.md`、`重构方案-核心UI复用.md`、
 `session-manager-prototype.html` 等）。它们描述的是开发过程中的计划，与当前代码有多处不一致，
 **不要照着它们改代码**——这正是这套文档改为"照代码写"的原因。

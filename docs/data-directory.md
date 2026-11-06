@@ -1,6 +1,6 @@
 # 数据目录
 
-插件自己的全部状态都落在一个目录里。这个目录**不是** `~/.dsh` 的子目录，而是它的兄弟：
+插件自己的全部状态都落在一个目录里。这个目录和 `~/.dsh` 平级，不在它里面：
 
 ```
 C:\Users\<user>\.dsh                     ← DSH 自己的
@@ -12,7 +12,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 文件夹、标签、回收站 payload 一起带走；改名失败（比如另一个 DSH 进程还开着它）就继续用旧目录，
 下次启动再试。两个目录同时存在时用新目录，旧目录原样保留。
 
-两个理由（`lib/paths.js:1-26`）：
+两个理由（`lib/paths.js`）：
 
 1. 回收站里装的是**整个会话目录**，几百 MB。塞进 `~/.dsh` 会让备份、迁移、清理的归属变得模糊。
 2. 一个环境变量覆盖让自测指向一次性目录，测试永远碰不到真实数据。
@@ -46,11 +46,11 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 里只记一条绝对路径。所以迁移数据目录搬不走它、也不需要搬——重新扫一次就能指回去。
 
 `detached/chromium/<hash>` 的 `<hash>` 是 `sha256(dataDir)` 的前 16 位十六进制
-（`lib/detached/launcher.js:40`）：必须给 helper 一个专属的 `--user-data-dir`，
+（`lib/detached/launcher.js`）：必须给 helper 一个专属的 `--user-data-dir`，
 和主应用共用 profile 会让两边的 Chromium 状态互相踩。
 
 **侧车只存 DSH 不知道的东西。** 标题、cwd、时间戳、回合数、归档集、置顶集每次请求都从 DSH 读，
-侧车删掉也不会丢会话——这是 `lib/store/documents.js:1-17` 写明的设计约束（源文档 S8）。
+侧车删掉也不会丢会话——这是 `lib/store/documents.js` 写明的设计约束（源文档 S8）。
 `summaries.v1.json` 是这条规则唯一要解释的地方：摘要既不是 DSH 的数据，也不是派生缓存——
 它是花过钱换来的文字，删掉就要再花一次钱，所以它按文档对待（坏文件进 `quarantine/`，不当缓存重建）。
 
@@ -89,7 +89,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 三个字段全空的记录读盘时就丢弃（`normalizeSummaryEntry()` 返回 `null`）；旧版本写过 `text` 字段的记录也
 按同一条丢掉——它不属于这三个字段，留着会让这个会话看起来"已经有东西了"，于是永远不会重新生成。
 
-超长的字段是**裁剪**而不是整条拒绝：标题截断到 30、描述到 120、标签先截到 8 个字**再**去重（两个不同的长
+超长的字段只**裁剪**，不整条拒绝：标题截断到 30、描述到 120、标签先截到 8 个字**再**去重（两个不同的长
 标签截到相同的八个字，就是同一个标签，两个都留会在筛选行里出现两条一模一样的）。裁剪后为空、或整条没有
 任何字段时才算失败。
 
@@ -104,7 +104,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 ## 2. 定位顺序（三级回退）
 
-`resolveDataDir()`（`lib/paths.js:293`）按顺序：
+`resolveDataDir()`（`lib/paths.js`）按顺序：
 
 | 优先级 | 来源 | 场景 |
 |---|---|---|
@@ -125,13 +125,13 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 ## 3. 四份侧车文档
 
-`lib/store/documents.js:29` 的 `openDocuments()` 一次打开五份。每份的初始形状：
+`lib/store/documents.js` 的 `openDocuments()` 一次打开五份。每份的初始形状：
 
 | 文件 | 初始形状 | 说明 |
 |---|---|---|
 | `tree.v1.json` | `{ folders, placement, workspaceOrder, shortcuts, pins, quickAccess, sessionPlacement }` | `placement` 是 workspace 的显式顺序；`sessionPlacement` 是会话的**显示**归属覆盖；`pins` 是排名、`quickAccess` 是书签带，两张表故意分开（见 tree-and-placement.md §8） |
 | `annotations.v1.json` | `{ sessions: {}, tags: [] }` | `tags` 是共享标签库；`sessions[id]` 是单条注解 |
-| `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js:123` |
+| `settings.v1.json` | `defaultSettings()` | 形状的唯一出处是 `lib/domain/settings.js` |
 | `summaries.v1.json` | `{ sessions: {}, spend: emptySpend() }` | 见 §1.1 |
 | `trash/index.v1.json` | `{ entries: {} }` | 见第 5 节 |
 
@@ -167,7 +167,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 ```
 
 三条硬约束写在这个文件里：`dim` 默认 0 且上限 `MAX_DIM = 0.8`（面板在壁纸上要看得清）；
-归档是视觉降权而不是隐藏，所以 `showArchived` 默认 `true`；
+归档只是视觉降权，不隐藏，所以 `showArchived` 默认 `true`；
 默认打开方式是浮窗，因为它不会失败——独立窗口依赖可能没装的组件。
 
 `collapseSubagents` 以前是 `subagents: "collapsed" | "expanded"` 两选一，现在是一个开关：
@@ -183,7 +183,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 用户得先撞一次空结果才知道有这个东西。空闲索引本来就有上限——一次只做一个会话、给真请求让路、
 15 秒复查一次——所以默认开不会把机器拖住；不想用它的人关掉即可，关机前那点残留写入由 `nudge()` 立刻收尾。
 
-`mergeSettings()` 只认已知键，未知键在归一化时被丢掉，而不是落盘等下个版本困惑。
+`mergeSettings()` 只认已知键，未知键在归一化时被丢掉，不会落到盘上等以后某个版本去处理。
 `search` 现在只剩 `indexIdle` 一个键：1.0.6 的 `indexCache` 控制的那份派生缓存已经恒开（见 §3.1）。
 
 ### 3.1 派生的那份不是侧车：`content-index.v1.json`
@@ -214,11 +214,11 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 - **不撕裂**：写临时文件（同卷的 `.tmp/`）→ flush → `rename` 覆盖目标。崩溃只会留下旧文件，
   不会留下半个 JSON。
 - **不互相覆盖**：每次成功写入 `revision += 1`。客户端带着它看到的 revision 来，
-  不匹配就 `revision-conflict`，而不是静默覆盖别人刚做的改动。
+  不匹配就 `revision-conflict`，不会静默覆盖别人刚做的改动。
 
 读损坏（不是 JSON 对象）时文件被改名成 `<name>.corrupt-<ts>.json` 移进 `quarantine/`，
 然后以空文档重建——**不会**因为一个坏文件让插件起不来。
-放在 `quarantine/` 而不是 `.tmp/`：`.tmp/` 每次启动都会清空，那份"留着给人手工恢复"的原件
+选 `quarantine/` 的理由是 `.tmp/` 每次启动都会清空，那份"留着给人手工恢复"的原件
 会被自己删掉。启动时只清 `.tmp/` 下的 `*.tmp`（原子写的残留），`*.corrupt-*` 会被搬进
 `quarantine/`。
 
@@ -234,7 +234,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 
 跨卷时 rename 退化成 copy-then-delete，其余流程不变。
 
-**索引条目**（`lib/domain/trash.js:95`）：
+**索引条目**（`lib/domain/trash.js`）：
 
 ```jsonc
 {
@@ -248,7 +248,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 }
 ```
 
-`title/cwd/workspaceId/…` 是**快照**而不是镜像：payload 已经不可读了，这几项描述的是它进回收站
+`title/cwd/workspaceId/…` 是**快照**，不是跟着 payload 走的镜像：payload 已经不可读了，这几项描述的是它进回收站
 那一刻的样子。
 
 **崩溃安全**：索引条目在 payload 移动**之前**写入并标记 `pending`。两者之间崩溃只会留下
@@ -257,9 +257,9 @@ payload 已经到位 → 升级为 ready；payload 从未离开 → 删掉这条
 
 **认领**：写 `pending` 这一步同时充当互斥锁。两个窗口同时删同一会话时，后到者在文档锁里看见
 条目已存在就放弃（记 `skipped`），不会各生成一个 trashId——否则后到者的补偿会删掉先到者的
-条目，留下一个没有索引指向的 payload，既恢复不了也清不掉（`lib/host/trash.js:218-234`）。
+条目，留下一个没有索引指向的 payload，既恢复不了也清不掉（`lib/host/trash.js`）。
 
-**恢复落点**（`projectDirFor()`，`lib/host/trash.js:255`）是三级阶梯：
+**恢复落点**（`projectDirFor()`，`lib/host/trash.js`）是三级阶梯：
 
 1. 记录里的原项目目录，不存在就重建；
 2. 同一 workspace 下还有会话的目录（让恢复的会话落在邻居旁边）；
@@ -280,7 +280,7 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 
 ### 6.1 数据目录迁移
 
-`POST /datadir/migrate`（`lib/host/datadir.js:189`）按顺序做七件事，每一步都推进 `steps` 数组：
+`POST /datadir/migrate`（`lib/host/datadir.js`）按顺序做七件事，每一步都推进 `steps` 数组：
 
 | # | 步骤 | 说明 |
 |---|---|---|
@@ -292,15 +292,15 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 | 6 | `recorded` | 把 `dataDir.current` 写进**新目录**的 `settings.v1.json` |
 | 7 | `pointer` / `pruned` / `removed` | `copy` 模式在旧目录留 `.location` 指针并清空其余内容（`pruned`）；`move` 模式直接删旧目录（`removed`） |
 
-任何一步失败都走同一个回滚（`lib/host/datadir.js:204` 的 `rollbackCopy`）：重开旧目录、失效缓存，
+任何一步失败都走同一个回滚（`lib/host/datadir.js` 的 `rollbackCopy`）：重开旧目录、失效缓存，
 再**只删这次复制写进去的东西**——目标目录原本不存在就整个删掉，原本存在（空目录）就只删 `carry`
 写过的那些顶层条目。回滚不会删用户自己放进去的文件。
 **旧目录在成功之前从不被碰**，所以一次失败的迁移只损失那次复制。
 
-`mode` 不是用户选的，是**同卷性**决定的：同卷 `move`，跨卷 `copy`。
+`mode` 由**同卷性**决定，用户选不了：同卷 `move`，跨卷 `copy`。
 `move` 是唯一会删旧目录的模式。
 
-`datadir-not-empty` 有两个来源（`lib/host/datadir.js:146-155`）：
+`datadir-not-empty` 有两个来源（`lib/host/datadir.js`）：
 
 - `OCCUPANCY_MARKERS = ["tree.v1.json", "trash/index.v1.json"]` 在目标里出现，说明那里是另一套安装；
 - 目标目录存在且**非空**。迁移是往目标里复制、失败时按 `carry` 写过的条目回滚，所以目标必须从空开始；
@@ -323,7 +323,7 @@ memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再�
 - payload 离开原目录**之前**写进一条，注册表跟上之后删掉；写文件是 `temp + rename`，崩溃只会留下旧日志或新日志。
 - 启动时 `reconcileMoves()`（`lib/host/move.js`，`lib/index.js` 里紧挨 `reconcileTrash` 调用）读剩下的条目：
   目标目录在 → 补上索引与归属（把 `moveOne` 的后半段幂等重放一遍）；目标目录不在 → payload 没走，直接丢弃条目。
-- 修复抛错时条目**留在**日志里而不是被删：下次启动重试，而这条记录是"会话正处于两个家之间"的唯一证据。
+- 修复抛错时条目**留在**日志里，不会删掉：下次启动重试，而这条记录是"会话正处于两个家之间"的唯一证据。
 
 ## 8. 相关文件
 

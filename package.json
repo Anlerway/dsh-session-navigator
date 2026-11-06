@@ -9,24 +9,35 @@
   "main": "./lib/index.js",
   "icon": "./assets/icon.png",
   "scripts": {
+    "pretest": "node scripts/build-client.mjs",
     "test": "node --test test/*.test.mjs",
     "test:render": "node test/render-smoke.mjs",
-    "prepack": "node scripts/sync-notes.mjs"
+    "lint": "node scripts/lint.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:prose": "node scripts/check-prose.mjs",
+    "check:size": "node scripts/check-file-size.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "check:client": "node scripts/build-client.mjs --check",
+    "prepack": "node scripts/build-client.mjs && node scripts/sync-notes.mjs"
   },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib/",
+    "!lib/client-src/",
     "assets/",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "README.md",
     "README.en.md",
-    "LICENSE"
+    "LICENSE",
+    "locale/"
   ],
   "keywords": [
     "dsh",

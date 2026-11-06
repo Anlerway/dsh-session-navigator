@@ -81,16 +81,13 @@ function literals(code) {
  * @returns {{ start: number, end: number }[]}
  */
 function dictionaryRanges(code) {
-  const ranges = [];
-  for (const opener of ["const ZH = {", "const EN = {", "panelEnCache = {"]) {
-    const at = code.indexOf(opener);
-    assert.notEqual(at, -1, "the dictionary " + opener + " is still there");
-    // A dictionary ends at a closing brace on its own indentation.
-    const end = code.indexOf("\n    };", at);
-    assert.notEqual(end, -1, "the dictionary " + opener + " is closed");
-    ranges.push({ start: at, end });
-  }
-  return ranges;
+  const opener = "const DICTS = {";
+  const at = code.indexOf(opener);
+  assert.notEqual(at, -1, "the dictionaries " + opener + " are still inlined");
+  // The inlined object closes on the indentation its marker opened on.
+  const end = code.indexOf("\n    };", at);
+  assert.notEqual(end, -1, "the dictionaries " + opener + " are closed");
+  return [{ start: at, end }];
 }
 
 const inRanges = (offset, ranges) => ranges.some((range) => offset >= range.start && offset <= range.end);

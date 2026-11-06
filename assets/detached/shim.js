@@ -31,6 +31,29 @@
   const NS = "session-navigator";
 
   /**
+   * The languages this plugin draws in.
+   *
+   * A copy of lib/lang.js LANGS: this file is a plain script in a document, so
+   * there is no module to import. test/lang-chain.test.mjs keeps the copies
+   * honest.
+   */
+  const LANGS = ["zh", "en", "ja", "ko", "de", "fr", "es", "ru", "pt", "zh-hant"];
+
+  /**
+   * @param {unknown} value
+   * @returns {string} one of LANGS, or "" when the value names none of them
+   */
+  function normalizeLang(value) {
+    const raw = typeof value === "string" ? value.trim().toLowerCase().replace(/_/g, "-") : "";
+    // 繁體中文 — DSH has no 繁體 switch of its own, so the codes that reach the
+    // panel are zh-TW / zh-HK / zh-MO / zh-Hant, from the plugin's own override or
+    // from a detached window's URL. They all mean the one traditional table.
+    if (/^zh-(hant|tw|hk|mo)(-|$)/.test(raw) && LANGS.includes("zh-hant")) return "zh-hant";
+    const base = raw.split("-")[0];
+    return LANGS.includes(base) ? base : "";
+  }
+
+  /**
    * The language this page draws in.
    *
    * The window is a separate process with its own document, so it cannot see
@@ -39,12 +62,12 @@
    * changes (see `applyLang` in lib/detached/main.cjs) — a dictionary only ever
    * changes by reloading, because the panel reads the language once per render.
    *
-   * @type {"zh" | "en"}
+   * @type {string} one of LANGS
    */
   const LANG = (() => {
     try {
       const href = (window.location && window.location.href) || "";
-      return new URL(href, "http://127.0.0.1/").searchParams.get("lang") === "en" ? "en" : "zh";
+      return normalizeLang(new URL(href, "http://127.0.0.1/").searchParams.get("lang")) || "zh";
     } catch {
       return "zh";
     }
@@ -60,7 +83,7 @@
    * @returns {string}
    */
   function L(zh, en) {
-    return LANG === "en" ? en : zh;
+    return LANG === "zh" ? zh : en;
   }
 
   const React = window.React;
@@ -74,8 +97,8 @@
   // The page's static chrome is authored in Chinese (assets/detached/index.html)
   // and rewritten here, because a document is parsed long before any script can
   // run: a Chinese window would flash before an English one appeared otherwise.
-  if (LANG === "en") {
-    document.documentElement.lang = "en";
+  if (LANG !== "zh") {
+    document.documentElement.lang = LANG;
     document.title = "Session Navigator";
     const title = document.querySelector(".boot-title");
     if (title) title.textContent = "Session Navigator";
@@ -172,23 +195,29 @@
    */
   function translate(key, vars) {
     const preferred = dictionaries[LANG] || {};
-    const fallback = dictionaries.zh || {};
+    const english = dictionaries.en || {};
+    const chinese = dictionaries.zh || {};
     const text =
       typeof preferred[key] === "string"
         ? preferred[key]
-        : typeof fallback[key] === "string"
-          ? fallback[key]
-          : key;
+        : typeof english[key] === "string"
+          ? english[key]
+          : typeof chinese[key] === "string"
+            ? chinese[key]
+            : key;
     return interpolate(text, vars);
   }
 
   const locale = {
     register(namespace, dictionary) {
       if (!dictionary || typeof dictionary !== "object") return () => {};
-      dictionaries = {
-        zh: dictionary.zh || dictionaries.zh,
-        en: dictionary.en || dictionaries.en,
-      };
+      // Every language the panel offers, not just the two this shim was born
+      // with: the window's document speaks one of them and translate() picks it
+      // by LANG. A table the caller does not send keeps the one already here.
+      for (const code of Object.keys(dictionary)) {
+        const table = dictionary[code];
+        if (table && typeof table === "object") dictionaries[code] = table;
+      }
       return () => {};
     },
     bind() {
@@ -641,8 +670,8 @@
      * @param {unknown} lang
      */
     setLang: (lang) => {
-      const next = lang === "en" ? "en" : "zh";
-      if (next === LANG) return;
+      const next = normalizeLang(lang);
+      if (!next || next === LANG) return;
       try {
         const url = new URL(window.location.href);
         url.searchParams.set("lang", next);

@@ -1,0 +1,46 @@
+// Editor-only settings. The package has no build step and no TypeScript:
+// nothing here is read by node, by the tests or by the published tarball, and
+// no dependency was added for it. Open the repository in VS Code (or any
+// language server that reads jsconfig.json) and the JSDoc in lib/ becomes
+// navigable and checkable.
+//
+// checkJs covers the Node half of the plugin only: those modules are plain ESM
+// with JSDoc types and reach the host through small dependency objects, so a
+// single project can describe them without a build step.
+//
+// What is left out, and why:
+//   - lib/client.js is the browser bundle. It is concatenated from the
+//     lib/client-src fragments, uses window/document/React and is loaded both
+//     by the DSH panel and by the detached window shim; no Node project can
+//     describe that environment, and checking it would bury the real errors.
+//   - lib/detached/ holds CommonJS Electron entry points. With "module":
+//     "nodenext" the package "type": "module" would classify them as ESM and
+//     every one of them would fail for the wrong reason.
+//   - test/ runs under node:test, and node_modules/ is not ours.
+//
+// Globals such as process, Buffer and setTimeout come from the editor's Node
+// typings. @types/node is deliberately not a dependency of this package; with
+// none installed, expect unresolved-global warnings and nothing else.
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "include": [
+    "lib/host/**/*.js",
+    "lib/domain/**/*.js",
+    "lib/store/**/*.js",
+    "lib/sources/**/*.js",
+    "lib/paths.js",
+    "lib/http.js",
+    "lib/constants.js"
+  ],
+  "exclude": ["lib/client.js", "lib/detached", "test", "node_modules"]
+}

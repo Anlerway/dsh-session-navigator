@@ -2,6 +2,13 @@
 # Windows shell reveal); it is installed next to the plugin, never committed.
 node_modules/
 
+# The client bundle is generated from lib/client-src/ by scripts/build-client.mjs.
+# It is not tracked: CI builds it before the tests, `npm test` builds it through
+# pretest, and prepack builds it into the tarball. A fresh checkout therefore has
+# no lib/client.js until one of those runs — the panel in a linked checkout stays
+# at the last build until you run `pnpm build:client` again.
+lib/client.js
+
 # Scratch space. Anything that is not the plugin itself belongs outside the
 # repository (see ../project_old for the archived material).
 temp/

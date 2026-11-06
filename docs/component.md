@@ -11,7 +11,7 @@
 DSH 没有提供"借用运行时"的接口（`ctx.sidebarRight.openTab("browser")` 只是 tab 宿主，不给插件
 注入 Electron 或 Node），所以扫描是本插件自己用 `readdir` 做的有界遍历，见 §8。
 
-五条设计规则（`lib/component/layout.js:20-34`），其余模块都靠它们成立：
+五条设计规则（`lib/component/layout.js`），其余模块都靠它们成立：
 
 1. **从不隐式下载。** 缺席是正常状态，主插件在没有组件时完全可用。
 2. **`ready` 意味着"能启动的东西确实在"。** 自己装的看标记文件 + 可执行文件，借来的看那棵树上的
@@ -42,7 +42,7 @@ DSH 没有提供"借用运行时"的接口（`ctx.sidebarRight.openTab("browser"
 所以迁移数据目录搬不走它，也不需要搬——搬家只丢那条指针，重新扫一次就找回来。
 
 **为什么运行时目录带版本戳。** 安装发布到一个全新的 `runtime-<stamp>` 并把 state 指过去，
-而不是 rename 覆盖 `runtime/`。Windows 在目录里**任何**文件被打开时都会拒绝 rename（EPERM）
+不去 rename 覆盖 `runtime/`。Windows 在目录里**任何**文件被打开时都会拒绝 rename（EPERM）
 或删除（EBUSY）——Defender 的扫描器、搜索索引、还没退出的 helper 都算。覆盖固定路径因此会
 随机失败且无法恢复，而换一个新名字总是成功，旧目录留给后面扫。**从不把东西 rename 走。**
 
@@ -61,11 +61,11 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 哈希不匹配会在**解压之前**中止安装，所以被截断或被篡改的下载永远不会被执行。
 没有固定哈希的平台直接 `component-download-failed`（`no pinned checksum for <asset>`），
-而不是"跳过校验"。
+不会"跳过校验"。
 
 ## 3. 镜像
 
-`MIRRORS`（`lib/component/layout.js:76`），按顺序尝试：
+`MIRRORS`（`lib/component/layout.js`），按顺序尝试：
 
 | id | 前缀 |
 |---|---|
@@ -76,35 +76,35 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 三个独立的国内镜像排在 GitHub 前面，因为 GitHub 的 release 下载在国内经常 302 到一个会卡住的 CDN。
 它们提供的都是**同一份**官方 zip，固定 SHA-256 仍然会校验，所以镜像换不掉字节。
-`install` 传 `source: "github"` 时顺序反转（`lib/component/manager.js:490`、`:532`）。
+`install` 传 `source: "github"` 时顺序反转（`lib/component/manager.js` 的 `install()` 里，`github` 把 `MIRRORS` 反过来遍历）。
 
-**续传只能续同一个镜像**（`lib/component/downloader.js:270-273`）：`.part.json` 里的 `url` 与当前
+**续传只能续同一个镜像**（`lib/component/downloader.js`）：`.part.json` 里的 `url` 与当前
 镜像不符时先删掉旧片段。另一个镜像的字节是另一条流，追加进去正是"续传出坏包"的成因。
 镜像不支持 Range（对分段请求直接返回整个文件）时，清空重下一次。
 
 下载用系统的 `curl` 子进程，`--progress` 由轮询 `.part` 的大小得到（`PROGRESS_INTERVAL_MS`），
-而不是解析 curl 的输出。
+不解析 curl 的输出。
 
-**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`lib/component/downloader.js:49`）：`content-length`
+**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`lib/component/downloader.js`）：`content-length`
 超限在写第一个字节前就拒（`component-download-too-large`），实际落盘超限同样拒；curl 侧还有
 `--max-filesize` 兜底。正常的 Electron 包约 110 MB，一个数量级的余量足够，同时把"被劫持的镜像
 先写满磁盘再被摘要拒掉"变成"直接拒掉"。
 
 ## 4. 状态机
 
-`PHASES`（`lib/component/state.js:27`）：`absent` / `downloading` / `verifying` / `extracting` /
-`ready` / `error`。未知 phase 降级成 `absent`，而不是渲染一个 UI 不认识的状态。
+`PHASES`（`lib/component/state.js`）：`absent` / `downloading` / `verifying` / `extracting` /
+`ready` / `error`。未知 phase 降级成 `absent`，UI 不会去渲染一个不认识的状态。
 
-一次 `install` 的顺序（`lib/component/manager.js:457-650`）：
+一次 `install` 的顺序（`lib/component/manager.js`）：
 
 | # | 步骤 | 细节 |
 |---|---|---|
-| 0 | 单飞锁 | `run()` 里若已有操作在跑，直接 `component-busy`；不排队——点第二次的人想让第二下被忽略，而不是稍后执行 |
+| 0 | 单飞锁 | `run()` 里若已有操作在跑，直接 `component-busy`；不排队——点第二次的人想让第二下被忽略，不想让它稍后执行 |
 | 1 | 复用检查 | 磁盘上已有带 marker + binary 的完整运行时就直接 `ready`，`source: "reuse"`。卸载被拒后字节还在，让用户为还在硬盘上的 150 MB 再下一次是说不过去的 |
 | 2 | 磁盘检查 | 需要 `downloadBytes × 2.2 + 500 MB` 空闲，不够就 `component-disk-full`（507） |
 | 3 | `downloading` | 依次试镜像，`AbortController` + 1 小时超时（`INSTALL_TIMEOUT_MS`） |
 | 4 | `verifying` | `verifyZip()` 比对固定 SHA-256 |
-| 5 | `extracting` | 先清空 staging（上次中断的残留），再解压——`tar` 用 `--exclude`、`unzip` 用 `-x` 跳过 `resources/default_app.asar`，`Expand-Archive` 没有排除开关，由 `dropExcluded` 用子进程事后删；最后写 helper 自己的 `resources/app`。之后必须能找到可执行文件，否则 `component-extract-failed`。解压子进程接同一个 `AbortSignal`，超时/取消会 `SIGKILL` 它，而不是让 `tar` 在后台继续写 |
+| 5 | `extracting` | 先清空 staging（上次中断的残留），再解压——`tar` 用 `--exclude`、`unzip` 用 `-x` 跳过 `resources/default_app.asar`，`Expand-Archive` 没有排除开关，由 `dropExcluded` 用子进程事后删；最后写 helper 自己的 `resources/app`。之后必须能找到可执行文件，否则 `component-extract-failed`。解压子进程接同一个 `AbortSignal`，超时/取消会 `SIGKILL` 它，`tar` 不会在后台继续写 |
 | 6 | 发布 | `publishRuntime()` 到 `runtime-<stamp>`，写 `manifest.v1.json`，删 `.part` 与 `.part.json` |
 | 7 | 扫旧 | `sweepRuntimes()` 删旧运行时；删不掉的进 `pending-cleanup.v1.json` |
 | 8 | `ready` | `receivedBytes: 0`，`source` 记录来源 |
@@ -115,9 +115,9 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 （§8）。借用**不进上面任何一步**——不下载、不校验、不解压、不扫旧，只写一条记录。
 
 **卸载前先关窗口，而且"关掉了"必须是真的**：`remove()` 调 `closeHelper()`（即
-`api.detached.close()`），只有它返回 `true` 才继续（`lib/component/manager.js:662-665`）。
+`api.detached.close()`），只有它返回 `true` 才继续（`lib/component/manager.js`）。
 `close()` 的返回值因此是"现在确实没有在跑的 helper"：先发 `close` 消息，1.5 秒后还在就 `SIGTERM`，
-再 0.5 秒后还在就 `SIGKILL`，最后用 `exitCode !== null` 判断（`lib/detached/launcher.js:318-345`）。
+再 0.5 秒后还在就 `SIGKILL`，最后用 `exitCode !== null` 判断（`lib/detached/launcher.js`）。
 以前它无条件返回 `true`，于是一个不理会退出信号的窗口会让 `remove` 删掉它正在用的可执行文件。
 
 ## 5. 那个删不掉的 111 KB：已经不存在了
@@ -181,14 +181,13 @@ electron.exe <dataDir>\detached\helper-app --user-data-dir=<dataDir>\detached\ch
 ```
 
 Electron 的第一个参数是目录时按应用加载，所以借来的树一个字节都不用变——它自己的
-`resources/default_app.asar` 或 `resources/app` 都不被使用，也不被打开
-（`lib/detached/launcher.js:226-232`、`:247-255`）。
+`resources/default_app.asar` 或 `resources/app` 都不被使用，也不被打开（拼参数的那段在 `lib/detached/launcher.js`）。
 
 还有一处必须显式清掉的环境变量：DSH 桌面版自己是带着 `ELECTRON_RUN_AS_NODE=1` 跑的，子进程会
 继承它，于是"窗口"变成一个跑完就退的纯 Node 进程。`launch()` 里 `delete env.ELECTRON_RUN_AS_NODE`。
 
 窗口通过 `onEvent` 把 `hello` / `closed` 报告给 host，host 再转成总线上的 `window-open` /
-`window-closed`（`lib/index.js:179-180`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
+`window-closed`（`lib/index.js`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
 面板不需要第二条通道。
 
 ## 7. 相关文件

@@ -133,7 +133,19 @@ test("the language travels as a code, never as a sentence", () => {
     kind: "lang-changed",
     payload: { lang: "en" },
   });
-  assert.deepEqual(normalizeCommand({ kind: "lang-changed", payload: { lang: "fr" } }), { kind: "lang-changed", payload: {} });
+  // A language the plugin does not draw in is not forwarded: the window would
+  // reload into a dictionary that does not exist. `fr` used to be that case and
+  // is now supported, so the negative case has to name a language we ship no
+  // table for.
+  assert.deepEqual(normalizeCommand({ kind: "lang-changed", payload: { lang: "fr" } }), {
+    kind: "lang-changed",
+    payload: { lang: "fr" },
+  });
+  assert.deepEqual(normalizeCommand({ kind: "lang-changed", payload: { lang: "pt-BR" } }), {
+    kind: "lang-changed",
+    payload: { lang: "pt" },
+  });
+  assert.deepEqual(normalizeCommand({ kind: "lang-changed", payload: { lang: "it-IT" } }), { kind: "lang-changed", payload: {} });
   assert.deepEqual(normalizeCommand({ kind: "lang-changed", payload: { lang: "zh", html: "<b>" } }), {
     kind: "lang-changed",
     payload: { lang: "zh" },

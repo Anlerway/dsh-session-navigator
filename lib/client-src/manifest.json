@@ -1,0 +1,134 @@
+[
+  {
+    "file": "00-head.js",
+    "note": "The block comment, the `window.__ModuleLoader__.load` wrapper, the factory opening, and the React / `h` bootstrap. Everything after this file is factory-body code."
+  },
+  {
+    "file": "01-boot-helpers.js",
+    "note": "`copyText` and the other bootstrap helpers that run before the first partition banner."
+  },
+  {
+    "file": "02-launch-and-ai-fields.js",
+    "note": "`Launch surface` + `AI 字段`: the open-mode preference and the field registry the summarizer fills."
+  },
+  {
+    "file": "03-store-and-bridge.js",
+    "note": "`Panel store`, `Bridge`, `Live session updates`: the tiny external store, the command bus to the detached window, and the host push subscription."
+  },
+  {
+    "file": "04-overlay-host.js",
+    "note": "`Overlay host`: the layer dialogs and menus are drawn into."
+  },
+  {
+    "file": "05-styles.js",
+    "note": "`Styles`: the panel's whole stylesheet, one template string."
+  },
+  {
+    "file": "06-style-install-and-documents.js",
+    "note": "`Style installation` + `Other documents`: injecting the stylesheet, and the document shell the detached window borrows."
+  },
+  {
+    "file": "07-http-format-icons-copy.js",
+    "note": "`HTTP`, `Formatting`, `Icons`, `Panel copy`: the fetch wrapper, date / size formatting, the icon table, and `T()`."
+  },
+  {
+    "file": "08-presentation-and-status.js",
+    "note": "`Fixed-node presentation` + `Session status`: the five fixed entries, and the running / waiting / unread projection."
+  },
+  {
+    "file": "09-building-blocks-and-tree-pane.js",
+    "note": "`Small building blocks` + `Tree pane`: buttons, menus and chips, then the tree itself."
+  },
+  {
+    "file": "10-breadcrumbs-and-rows.js",
+    "note": "`Breadcrumbs` + `Row renderers`: the crumb bar and every list-row variant."
+  },
+  {
+    "file": "11-list-pane.js",
+    "note": "`List pane`: bands, container rows, marquee selection, scrolling."
+  },
+  {
+    "file": "12-detail-pane.js",
+    "note": "`Detail pane`: the session reader with notes, tags and the AI fields."
+  },
+  {
+    "file": "13-dialogs.js",
+    "note": "`Dialogs`: the shared modal shell plus the filter and confirm dialogs."
+  },
+  {
+    "file": "13b-hook-live-refresh.js",
+    "note": "`useLiveRefresh`: Panel's load callback, the DSH push subscription, the peer refresh and the 60 s clock tick."
+  },
+  {
+    "file": "13c-hook-tree-view.js",
+    "note": "`useTreeView`: the rows of the current scope (`liveSessions`, `sessionsInScope`, `scopeBase`, `filteredInScope`) plus the session lookups the detail pane reads."
+  },
+  {
+    "file": "13d-hook-session-selection.js",
+    "note": "`useSessionSelection`: the four row gestures — click, right-click highlight, the header checkbox and 框选."
+  },
+  {
+    "file": "13e-hook-rename-editor.js",
+    "note": "`useRenameEditor`: the inline rename draft plus `beginRename` / `commitRename` / `renameProps` and the id translation each store expects."
+  },
+  {
+    "file": "13f-hook-clipboard.js",
+    "note": "`useClipboard`: 剪切 / 复制 / 粘贴, the two paste targets, the drag-move transaction and Ctrl+X/C/V."
+  },
+  {
+    "file": "13g-hook-drag-and-drop.js",
+    "note": "`useDragAndDrop`: `moveNodeTo` / `moveNodesTo` / `canDropHere` / `moveNodeHere` — the write side of a container drop."
+  },
+  {
+    "file": "13h-hook-context-menu.js",
+    "note": "`useContextMenu`: the row context menu's target resolution, the item list, and the one-render delay that lets a right-click select its row first."
+  },
+  {
+    "file": "14-panel-open-tabs-filter.js",
+    "note": "`Panel` itself: signature, store wiring, layout memory and derived rows, through `tabs` and `filter`. First fragment inside function Panel()'s body."
+  },
+  {
+    "file": "15-panel-mutations-and-bin.js",
+    "note": "`mutations` + `the bin`: `mutate()` and every write, then the trash view."
+  },
+  {
+    "file": "16-panel-native-ops-and-clipboard.js",
+    "note": "`native operations`, `inline rename`, the placeholder commands, and `clipboard` (cut / copy / paste)."
+  },
+  {
+    "file": "17-panel-shortcuts-pins-export.js",
+    "note": "`shortcuts, pins, export, reveal` + `right-click, one render later`."
+  },
+  {
+    "file": "18-panel-mount-and-sidebar.js",
+    "note": "`how the panel is mounted` (the React root and its window chrome) + `Sidebar footer entry`."
+  },
+  {
+    "file": "19-settings-page.js",
+    "note": "`Settings page`: the section component and its nav registration."
+  },
+  {
+    "file": "20-settings-groups.js",
+    "note": "`浏览器组件`, `更新说明`, `关于`, `清除数据`: the borrowed-component group, release notes, about, and the danger zone."
+  },
+  {
+    "file": "21-search-index.js",
+    "note": "`搜索索引`: the content-search settings group (progress, rebuild, delete)."
+  },
+  {
+    "file": "22-locale.js",
+    "note": "`Locale`: the window's own two-language table and how `?lang=` picks it."
+  },
+  {
+    "file": "23-panel-dictionary-and-surfaces.js",
+    "note": "`Panel dictionary` (the zh-to-en table behind `T()`) + `DSH's own session surfaces` (header actions, sidebar menu rows)."
+  },
+  {
+    "file": "24-entry-point.js",
+    "note": "`Entry point`: `function apply(ctx)`, every slot registration and service lookup the plugin makes."
+  },
+  {
+    "file": "25-module-exports.js",
+    "note": "The export block (`apply`, `inject`, `panelStore`, `SettingsSection`) and the closing `}, });` of the loader call."
+  }
+]

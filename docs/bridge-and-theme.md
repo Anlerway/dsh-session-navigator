@@ -2,11 +2,11 @@
 
 面板跑在 DSH 的 document 里，独立窗口是**另一个进程里的另一个 document**。两者渲染的是同一份
 `lib/client.js`，但它们彼此看不见：没有共享的 DOM、没有共享的 CSS、没有共享的事件总线。
-这两件事——导航命令和配色——就靠下面这套很窄的通道传过去。
+导航命令和配色这两件事，就靠下面这套很窄的通道传过去。
 
 ## 1. 命令总线
 
-`lib/host/bridge.js:58` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
+`lib/host/bridge.js` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
 
 | 参数 | 值 | 理由 |
 |---|---|---|
@@ -17,12 +17,12 @@
 `since(cursor)` 返回 `seq > cursor` **且** 未过期的命令：游标太旧时返回的只是还留着的那些，
 补发一部分总比什么都不补发好。
 
-总线**故意是哑的**（`lib/host/bridge.js:67-72`）：它不校验 payload 的语义，只搬运。
+总线**故意是哑的**（`lib/host/bridge.js`）：它不校验 payload 的语义，只搬运。
 认识某个 kind 的监听者自己处理，不认识的忽略。这样新面板可以对着旧窗口说话，不需要升 schema。
 
 ## 2. 允许的 kind，以及谁执行
 
-`WINDOW_COMMANDS`（`lib/host/bridge.js:153`）是窗口唯一被允许发的八种命令，其余一律 `bad-request`。
+`WINDOW_COMMANDS`（`lib/host/bridge.js`）是窗口唯一被允许发的八种命令，其余一律 `bad-request`。
 另外两种由 **host 自己**发，用来通知页面窗口的生命周期。
 
 | kind | 谁发 | 谁执行 | 作用 |
@@ -63,7 +63,7 @@ payload 只接受三个字符串字段，各自截到 200 字符（`session-stat
 会被丢掉。坏行**修不了就丢**——它决定另一侧画哪个徽章，把未知的等待类型猜成已知的，等于给一个
 什么都没干的会话挂上「等待审批」。`status-request` 不携带任何东西，带了也丢。
 
-**为什么方向是分开的**（`lib/client.js:14226-14281`）：
+**为什么方向是分开的**（`lib/client.js` 里由 `windowHost()` 分出的两条路径）：
 
 - `open-session` / `new-session` 只由 DSH 页面执行。窗口是发起方；窗口若也听自己的命令，
   就会把命令原样再发一次（shim 里的 `ECHO_MS` 回声守卫只是时间启发式，不是契约）。
@@ -92,7 +92,7 @@ payload 只接受三个字符串字段，各自截到 200 字符（`session-stat
 
 ## 3. SSE 协议
 
-`GET /bridge/events?since=<cursor>`（`lib/index.js:1693`）。帧序列固定：
+`GET /bridge/events?since=<cursor>`（`lib/index.js`）。帧序列固定：
 
 ```
 event: ready
@@ -113,12 +113,12 @@ data: {"seq":43,"kind":"open-session","payload":{…},"createdAt":1730000000000}
 - `req.on("close" | "aborted")` 时清定时器、退订、`end()`。
 
 **重连不重放**：`EventSource` 断线后会自己重连同一个 URL，并带上 `Last-Event-ID`。服务端优先
-读这个头，读不到才回落到查询参数 `since`（`lib/index.js:1716-1717`）。没有这一步，重连会从
+读这个头，读不到才回落到查询参数 `since`（`lib/index.js`）。没有这一步，重连会从
 首次连接的游标开始补发，`new-session` 就开两个窗口。
 
 **背压与上限**：`res.write()` 返回 `false` 表示套接字缓冲已满，此时直接结束这条流——面板会带
-`Last-Event-ID` 重连，从它真正收到的最后一帧继续，而不是让缓冲无限增长。同时订阅者上限 32
-（`MAX_LISTENERS`，`lib/host/bridge.js:35`），满了回 `503`：重连风暴不能把卡住的响应再叠一层。
+`Last-Event-ID` 重连，从它真正收到的最后一帧继续，缓冲不会无限增长。同时订阅者上限 32
+（`MAX_LISTENERS`，`lib/host/bridge.js`），满了回 `503`：重连风暴不能把卡住的响应再叠一层。
 
 主路径是 SSE，因为它推而不问；但条流**可以静默死掉**：文档被隐藏久了会被节流、一端以为连接还在、
 或者宿主在整个插件底下重启了一次。那时两边都停在旧列表上，只有重启 DSH 才能救——这正是「删了会话另一边
@@ -135,7 +135,7 @@ GET /bridge/poll?since=<cursor>
 - 两条路径同时在跑，`seq` 去重：同一条命令只执行一次，游标始终是「已经执行过的最大 seq」；
 - `ready` 帧带回的 `cursor` **小于**本地的 → 宿主重启过，编号从头来，这中间的增删从来没被播报过。
   此时直接当作一次 `sessions-changed`（`reason: "host-restart"`、`refresh: true`、`structural: true`，
-  不带 `running`，避免把运行态清空），让它重读一遍，而不是继续等下一帧；
+  不带 `running`，避免把运行态清空），让它重读一遍，不继续等下一帧；
 - 首次连接把 `cursor` 抬到 `ready.cursor`：30 秒环形缓冲里可能还压着用户点过的 `open-session`，
   刚挂载的面板不该替那条历史命令开门。
 
@@ -155,7 +155,7 @@ GET /bridge/poll?since=<cursor>
 
 面板把**它看到的**报给 host，窗口来问 host 要。`lib/host/theme.js` 是个极小的共享 store。
 
-只接受样式表真正用到的 14 个 token（`THEME_TOKENS`，`lib/host/theme.js:31`）：
+只接受样式表真正用到的 14 个 token（`THEME_TOKENS`，`lib/host/theme.js`）：
 
 ```
 --dsw-alias-bg-layer-1 / -2 / -3
@@ -166,7 +166,7 @@ GET /bridge/poll?since=<cursor>
 --dsw-alias-interactive-bg-hover
 ```
 
-**校验**（`isSafeTokenValue`，`lib/host/theme.js:57`）：值最终会进 CSS 自定义属性，所以无界的
+**校验**（`isSafeTokenValue`，`lib/host/theme.js`）：值最终会进 CSS 自定义属性，所以无界的
 map 就是一条样式注入通道。规则是：
 
 - 必须是字符串，trim 后非空，长度 ≤ 160（`VALUE_MAX`，够放颜色和小的 color-mix 表达式）；
@@ -178,24 +178,24 @@ map 就是一条样式注入通道。规则是：
 
 ### 上报时机
 
-`reportTheme()`（`lib/client.js:11130`）：读 `.se-shell`（没挂载就读 `body`，最后才退到
+`reportTheme()`（`lib/client.js`）：读 `.se-shell`（没挂载就读 `body`，最后才退到
 `documentElement`）的 computed style，取这 14 个 token 的值，`POST /theme` 带 `{ mode, tokens }`。
 `mode` 来自 `documentElement` 的 `data-theme` 是否为 `light`。
 
-读 `body` 而不是 `documentElement` 是有原因的：DSH 把调色板声明在 `body` 上
+读 `body` 的理由：DSH 把调色板声明在 `body` 上
 （`--dsw-alias-*` 定义在 `body` / `body[data-ds-dark-theme]`），自定义属性只向下继承，
 所以从 `<html>` 读拿到的是**空**调色板。上一版正是在 `apply()` 里从 `documentElement`
 读一次——那时面板还没挂载、`<html>` 又没有 token，于是 host 存下一份空的调色板，
 窗口只好用样式表里硬编码的兜底色（工作区名字/图标因此是深蓝 `#4176e6`，而 DSH 里是主题色）。
 
-**值必须解析成具体颜色**（`resolveThemeValue()`，`lib/client.js:11092`）：DSH 的 alias token
+**值必须解析成具体颜色**（`resolveThemeValue()`，`lib/client.js`）：DSH 的 alias token
 几乎都是指向自己调色板的引用，例如 `--dsw-alias-label-primary: var(--dsw-static-neutral-bluish-50)`。
-窗口没有 `--dsw-static-*` 这一层，原样搬过去会得到一个"引用了不存在变量"的值——这在 CSS 里是
-*无效*而不是*未设置*，消费方 `var(--token, fallback)` 的 fallback 根本轮不到，文字会掉成
+窗口没有 `--dsw-static-*` 这一层，原样搬过去会得到一个"引用了不存在变量"的值——这在 CSS 里算
+*无效*，不算*未设置*；消费方 `var(--token, fallback)` 的 fallback 根本轮不到，文字会掉成
 `unset`。所以在这里就地展开引用（深度上限 8 层，支持 `var(--x, #fallback)`），解不出来的
 token 直接丢给 host 丢弃，让窗口保留自己的兜底。
 
-触发点有三个：`apply()` 时一次；`Panel` 挂载后一次（`lib/client.js:6386`，此时 `.se-shell`
+触发点有三个：`apply()` 时一次；`Panel` 挂载后一次（`lib/client.js`，此时 `.se-shell`
 才存在，读到的就是面板真正看到的调色板）；以及一个 `MutationObserver`——监视
 `documentElement` 的 `class` / `data-theme` / `style` 三个属性。这是 DSH 里所有主题插件切换
 明暗的方式，所以监听它就等于监听"主题变了"。观察器挂在 `ctx.effect` 里，卸载时断开。
@@ -210,16 +210,16 @@ token 直接丢给 host 丢弃，让窗口保留自己的兜底。
 `window.__seShimHooks.applyTheme()` 重读一次。同一份调色板重复上报是常态——面板每次挂载、以及
 `documentElement` 每次 class 变化都会上报——所以「变了才发」是必需的，不是优化。
 
-shim **会拦掉**窗口发出的 `POST /theme`（`assets/detached/shim.js:93`）。因为窗口里的
+shim **会拦掉**窗口发出的 `POST /theme`（`assets/detached/shim.js`）。因为窗口里的
 `client.js` 也在跑，它也会上报——但窗口的配色本来就是**从 host 拿来的**，回声会把一份空调色板
 盖在真的上面（首帧还没拿到回复时尤其明显）。所以这条通道只允许单向：面板 → host → 窗口。
 
 ## 5. 独立窗口
 
-`POST /detached/open` / `POST /detached/close`（`lib/index.js:2010-2026`）。窗口本体是 DSH 的
+`POST /detached/open` / `POST /detached/close`（`lib/index.js`）。窗口本体是 DSH 的
 Electron 窗口，加载 `/session-navigator/api/ui`，需要浏览器组件就绪，否则 404 `component-not-installed`。
 
-窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js:191-192`），
+窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js`），
 页面据此更新"默认打开方式"的状态和按钮文案。面板自己记 `detachedOpen` 这个状态：
 `window-open` 置真、`window-closed` 置假。它**不能**借 `componentReady`（「浏览器组件装好了」）
 来表达这件事——两者曾经是同一个 state，于是关掉窗口之后按钮会改口说组件没装。
@@ -229,7 +229,7 @@ Electron 窗口，加载 `/session-navigator/api/ui`，需要浏览器组件就�
 
 ## 6. shim 到底做了什么
 
-`assets/detached/shim.js:1-25` 写得很清楚：窗口和面板是同一个 UI，窗口**原样加载**
+`assets/detached/shim.js` 写得很清楚：窗口和面板是同一个 UI，窗口**原样加载**
 `lib/client.js`，shim 只是在那份模块 mount 之前假装自己是 DSH。client.js 向平台要四样东西，
 shim 四样全给：
 
@@ -254,17 +254,17 @@ shim **故意不做**两件事：不上报主题（见上），不订阅命令�
 ## 7. 面板与独立窗口之间的对等总线
 
 命令总线（§1）是纵向的：窗口 → host → 页面。两边的**数据一致性**先走横向通道——
-浏览器自己的 `BroadcastChannel("dsh-session-navigator")`（`lib/client.js:2374`）。同源的两个
+浏览器自己的 `BroadcastChannel("dsh-session-navigator")`（`lib/client.js`）。同源的两个
 document 直接对话，host 不参与，也不需要知道有几个人在看着同一份树；但这条通道**不出进程**
 （见下文 `refresh` 与 `status` 两段），跨进程的部分才回到纵向总线。
 
 | 消息 | 谁发 | 谁收 | 作用 |
 |---|---|---|---|
 | `{ kind: "refresh", path, needsDsh }` | 任何刚写完数据的 document | 另一个 | 重读 `/bootstrap`；`needsDsh` 为真时，手上有 DSH 会话服务的一侧顺手再拉一次 DSH 自己的列表 |
-| `{ kind: "status", rows }` | 拿得到 DSH 会话服务的一侧 | 同进程的另一个 document | 抄来 `running` / `pendingInteraction` / `completionUnread`（`lib/client.js:2471`）；跨进程那一路走 `session-status`，见下文 |
+| `{ kind: "status", rows }` | 拿得到 DSH 会话服务的一侧 | 同进程的另一个 document | 抄来 `running` / `pendingInteraction` / `completionUnread`（`lib/client.js`）；跨进程那一路走 `session-status`，见下文 |
 
-`refresh` 在 `apiSend` 的非 GET/HEAD 成功分支里发出（`lib/client.js:2349`）。这是插件自己的写
-路径——删进回收站、跨工作区搬会话、改树、改设置——唯一能让**另一个 document** 知道的信号：
+`refresh` 在 `apiSend` 的非 GET/HEAD 成功分支里发出（`lib/client.js`）。这是插件自己的写
+路径（删进回收站、跨工作区搬会话、改树、改设置）唯一能让**另一个 document** 知道的信号：
 这些写入不经过 DSH，宿主的 `sessions-changed` 与 workspace.json 监听都看不见它们。
 
 独立窗口连「顺手把 DSH 列表也拉一次」都做不了：它跑在 shim 上，没有 hostCtx，`serviceOf("sessions")`
@@ -274,7 +274,7 @@ document 直接对话，host 不参与，也不需要知道有几个人在看着
 **但这根横向通道不出进程**。`BroadcastChannel` 只在同源、同一进程组里送达；独立窗口是另一个
 Electron 进程，它发的 `refresh` 到不了 DSH 页面——于是「窗口里删一条会话，DSH 侧栏还挂着它，
 怎么刷新都不动，只能重启」。补的是纵向那条路：窗口 `apiSend` 写成功后在 `windowHost()` 为真时
-`POST /bridge/commands {kind:"refresh"}`（`requestDshRefresh()`，`lib/client.js:1170`），host 收到这个
+`POST /bridge/commands {kind:"refresh"}`（`requestDshRefresh()`，`lib/client.js`），host 收到这个
 kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里），再播给订阅者；页面那一端在
 `apply()` 的桥回调里把它翻译成一次 `refreshDshViews()` + 一次面板重载。
 
@@ -327,11 +327,11 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 
 - **回声必须防住。** 只有拿得到 `uiSession` 的一侧发布（`if (!local) return;`），跨进程那条还要
   `if (!windowHost()) return;`（窗口自己不发）；收 `session-status` 的一侧 `if (!windowHost()) return;`
-  不听自己。`useMemo` 的依赖写 `[local, version]` 而不是
-  `[local, version, peerStatus]`，否则两个窗口会互相触发、来回广播。
+  不听自己。`useMemo` 的依赖是 `[local, version]`，
+  `peerStatus` 不进依赖；加进去两个窗口就会互相触发、来回广播。
 - **空快照也是一条消息。** 接收侧清空重建，某个会话不在下一份里就等于它不再等待——不需要墓碑，
   也不会留下一个永远转圈的「等待回答」。
-- **本地优先。** 同一个 id 两边都有时用本地那份（`lib/client.js:3149-3157`）：本地读的是活的
+- **本地优先。** 同一个 id 两边都有时用本地那份（`lib/client.js`）：本地读的是活的
   服务，peer 的行只是它最后一次广播的快照。
 - **写入方不刷新自己。** BroadcastChannel 不把消息回送给发送它的 document，所以写窗口照旧走
   自己的 `load()`，不需要额外的「这是我发的」标记。
@@ -344,18 +344,18 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 
 | 文件 | 职责 |
 |---|---|
-| `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand`、`normalizeStatusRows`（:188） |
+| `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand`、`normalizeStatusRows` |
 | `lib/host/status-board.js` | 会话状态的最后一格缓存：`set` / `snapshot` / `clear`，带快照自己的时间戳 |
 | `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
-| `lib/index.js:1914` | `POST /bridge/commands` |
-| `lib/index.js:1927` | `GET /bridge/events`（SSE 主路径，见 §3） |
-| `lib/index.js:1963` | `GET /bridge/poll`（轮询兜底，同一根总线） |
-| `lib/client.js:11988` | `reportTheme()` + `resolveThemeValue()` + MutationObserver |
-| `lib/client.js:886` | `subscribeBridge()`：SSE + `/bridge/poll`、`seq` 去重、宿主重启检测 |
-| `lib/client.js:1170` | `requestDshRefresh()`：能拉就拉，拉不动就走桥 |
-| `lib/client.js:2374` | 对等总线的 `BroadcastChannel`、`publishPeer()` / `subscribePeer()` / `subscribePeerStatus()` |
-| `lib/client.js:2782` | `publishStatusSnapshot()`：两根管子一起发、去重、跨进程那条只在非窗口时发 |
-| `lib/client.js:16080` | `apply()` 里对 `uiSession.sessionStatus` 的那次订阅（独立弹窗模式下唯一的发布点） |
-| `lib/client.js:2823` | `useDshSessionStatus()`：本地表与 peer 表的合并（见 §7） |
-| `lib/client.js:15814` | `apply()` 里装配桥与主题监听 |
+| `lib/index.js` | `POST /bridge/commands` |
+| `lib/index.js` | `GET /bridge/events`（SSE 主路径，见 §3） |
+| `lib/index.js` | `GET /bridge/poll`（轮询兜底，同一根总线） |
+| `lib/client.js` | `reportTheme()` + `resolveThemeValue()` + MutationObserver |
+| `lib/client.js` | `subscribeBridge()`：SSE + `/bridge/poll`、`seq` 去重、宿主重启检测 |
+| `lib/client.js` | `requestDshRefresh()`：能拉就拉，拉不动就走桥 |
+| `lib/client.js` | 对等总线的 `BroadcastChannel`、`publishPeer()` / `subscribePeer()` / `subscribePeerStatus()` |
+| `lib/client.js` | `publishStatusSnapshot()`：两根管子一起发、去重、跨进程那条只在非窗口时发 |
+| `lib/client.js` | `apply()` 里对 `uiSession.sessionStatus` 的那次订阅（独立弹窗模式下唯一的发布点） |
+| `lib/client.js` | `useDshSessionStatus()`：本地表与 peer 表的合并（见 §7） |
+| `lib/client.js` | `apply()` 里装配桥与主题监听 |
 | `assets/detached/shim.js` | 窗口的假 DSH 外壳、主题拉取、回声守卫 |

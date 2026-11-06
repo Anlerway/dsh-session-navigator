@@ -1,0 +1,988 @@
+
+/* ── token bridge ────────────────────────────────────────────────────────
+   The prototype was written against its own --sm-* palette. Every one of
+   those names is aliased onto a DSH alias token here, so the ported rules
+   below never hardcode a colour and follow the live theme (including a
+   third-party theme plugin that republishes the alias layer). */
+/* A panel loaded before an update keeps running the old module until the page
+   reloads, and every symptom of that looks like a bug in the new code. This bar
+   is the difference between "stale" and "broken". */
+.se-stale{
+  display:flex; align-items:center; gap:8px; justify-content:center;
+  padding:4px 10px; font-size:11px; line-height:1.4;
+  color: var(--dsw-alias-label-primary, #f5f6f7);
+  background: var(--dsw-alias-bg-layer-2, #2b2b2d);
+  border-bottom:1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12));
+}
+.se-stale button{
+  font:inherit; cursor:pointer; padding:1px 8px; border-radius:4px;
+  color:inherit; background:transparent;
+  border:1px solid var(--dsw-alias-border-l2, rgba(255,255,255,.2));
+}
+.se-stale button:hover{ background: var(--dsw-alias-bg-layer-3, rgba(255,255,255,.06)); }
+.se-shell{
+  --sm-tint: var(--dsw-alias-bg-layer-1, #232324);
+  /* A raised surface, for the places the theme paints itself rather than the
+     page: the option list of a <select> is drawn by the platform, so it needs a
+     colour, not "transparent". Falling back to the tint keeps it in step with
+     --sm-text, which is the half that decides legibility. */
+  --sm-surface: var(--dsw-alias-bg-layer-2, var(--sm-tint));
+  --sm-text: var(--dsw-alias-label-primary, #f5f6f7);
+  --sm-text-2: var(--dsw-alias-label-secondary, #cfd3d6);
+  --sm-text-3: var(--dsw-alias-label-tertiary, #979da6);
+  --sm-border: var(--dsw-alias-border-l2, rgba(255,255,255,.12));
+  --sm-border-soft: var(--dsw-alias-border-l1, rgba(255,255,255,.06));
+  /* brand-primary is a neutral bluish text colour, not a hue: the visible
+     accent must come from the business/primary state colour (deepseek-500). */
+  --sm-accent: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary, #4176e6));
+  --sm-danger: var(--dsw-alias-state-error-primary, #f25a5a);
+  --sm-shadow: 0 24px 64px color-mix(in oklab, #000 34%, transparent),
+               0 2px 8px color-mix(in oklab, #000 20%, transparent);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sm-text);
+  -webkit-font-smoothing: antialiased;
+  pointer-events: auto;
+}
+/* ── the shell ────────────────────────────────────────────────────────────
+   One rule, not three. The shell is a floating surface centred in the viewport:
+   fixed + inset 0 + margin auto, because the overlay host is itself a fixed
+   pointer-events:none layer and flex centring inside it is unreliable.
+
+   data-size comes from settings.shell.modal.size and is set by Panel, so the
+   CSS never has to guess which preset is active.
+
+   Hard constraint 10 (实现粗规划.md): no backdrop-filter and no darkening.
+   The panel must stay legible over a wallpaper, so it is painted with an
+   opaque-ish tint of the theme surface instead of blurring what is behind it. */
+.se-shell{
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 92vw);
+  height: min(720px, 88vh);
+  border-radius: 8px;
+  border: 1px solid var(--sm-border);
+  box-shadow: var(--sm-shadow);
+  overflow: hidden;
+  --panel-alpha: 100%;
+  background: color-mix(in oklab, var(--sm-tint) var(--panel-alpha), transparent);
+  transition: background .18s var(--ease, ease);
+}
+.se-shell *{box-sizing: border-box;}
+
+/* Preset sizes. "full" is a percentage so a narrow window cannot overflow. */
+/* Fixed sizes are pixel presets clamped to the viewport, so a 1600px choice on
+   a 900px browser shrinks instead of overflowing. Percentages follow the
+   window, which is the other thing a user can mean by "size". Both are written
+   by Panel from settings.shell.modal.{sizing,size,percent}. */
+.se-shell[data-size="sm"]{width:min(860px,94vw);height:min(560px,90vh)}
+.se-shell[data-size="md"]{width:min(1100px,94vw);height:min(720px,90vh)}
+.se-shell[data-size="lg"]{width:min(1320px,94vw);height:min(820px,90vh)}
+.se-shell[data-size="xl"]{width:min(1600px,94vw);height:min(960px,90vh)}
+.se-shell[data-sizing="percent"]{width:var(--se-w);height:var(--se-h)}
+.se-shell[data-sizing="percent"][data-size="p50"]{--se-w:50vw;--se-h:50vh}
+.se-shell[data-sizing="percent"][data-size="p70"]{--se-w:70vw;--se-h:70vh}
+.se-shell[data-sizing="percent"][data-size="p85"]{--se-w:85vw;--se-h:85vh}
+.se-shell[data-sizing="percent"][data-size="p100"]{--se-w:100vw;--se-h:100vh}
+
+/* 最大化. The panel is already a fixed layer, so maximising is "fill the
+   viewport with a small breathing margin", not a separate window (that is P6's
+   独立窗口). The rule comes after the presets so it wins over the size
+   vocabulary, and it is a plain attribute rather than an inline style so the
+   preset still comes back when the user restores. */
+
+/* One surface. 独立窗口 (a real browser window outside DSH) is P6 and renders in
+   its own document, so nothing here has to switch on it. */
+/* Material presets stay available, but every one of them is opaque enough to
+   read text over: transparency without a blur is just a wallpaper showing
+   through, so the weakest is 88%. */
+.se-shell[data-material="strong"]{--panel-alpha:88%}
+.se-shell[data-material="weak"]{--panel-alpha:96%}
+.se-shell[data-material="solid"]{--panel-alpha:100%}
+
+
+/* The scrim is a sibling of the shell, not a child, so it paints behind it.
+   --se-dim comes from settings.shell.modal.dim and defaults to 0: with the
+   default settings the scrim is invisible and the wallpaper is untouched. */
+.se-scrim{
+  position: fixed;
+  inset: 0;
+  z-index: 1049;
+  background: color-mix(in oklab, #000 calc(var(--se-dim, 0) * 100%), transparent);
+  pointer-events: none;
+}
+.se-scrim[data-clickable="1"]{pointer-events: auto}
+.se-shell .tabs{display:flex;align-items:flex-end;gap:2px;padding:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.se-shell .tabs::-webkit-scrollbar{display:none}
+.se-shell .tab{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px 0 10px;max-width:220px;min-width:110px; border-radius:6px 6px 0 0;font-size:12.5px;color:var(--sm-text-2);cursor:default;flex:0 0 auto; background:transparent;border:1px solid transparent;border-bottom:none;cursor:pointer;}
+.se-shell .tab .tname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-shell .tab.active{background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text);border-color:var(--sm-border-soft)}
+.se-shell .tab .x{opacity:.45;display:grid;place-items:center;width:16px;height:16px;border-radius:3px;flex:0 0 16px}
+.se-shell .tab .x:hover{background:color-mix(in oklab, var(--sm-text) 12%, transparent);opacity:1}
+.se-shell .tab .t-ic{display:grid;place-items:center}
+.se-shell .tab-add{width:28px;height:28px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2);margin-bottom:1px;flex:0 0 28px;background:transparent;border:0;padding:0;cursor:pointer}
+.se-shell .tab-add:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
+.se-shell .tab.dragging{opacity:.4}
+/* A tab remembers its own scope, so the title has to shrink before the close
+   button does: the button is the smaller, more precise target. */
+.se-shell .tab .t-x{opacity:.45;display:grid;place-items:center;width:16px;height:16px;border-radius:3px;flex:0 0 16px}
+.se-shell .tab .t-x:hover{background:color-mix(in oklab, var(--sm-text) 12%, transparent);opacity:1}
+.se-shell .tab:not(.active) .t-x{opacity:0}
+.se-shell .tab:not(.active):hover .t-x{opacity:.6}
+.se-shell .tab.dropbefore{box-shadow:inset 2px 0 0 var(--sm-accent)}
+.se-shell .tab.dropafter{box-shadow:inset -2px 0 0 var(--sm-accent)}
+.se-shell .titlebar{flex:0 0 40px;height:40px;display:flex;align-items:flex-end;gap:8px;padding:0 6px 0 8px; user-select:none;border-bottom:1px solid var(--sm-border-soft);}
+.se-shell .titlebar .tabs{flex:1;min-width:0;height:38px;align-items:flex-end}
+.se-shell .titlebar .wbtns{flex:0 0 auto;margin-bottom:2px}
+.se-shell .t-ic{display:grid;place-items:center;color:var(--sm-accent)}
+.se-shell .title{font-size:12.5px;font-weight:600;letter-spacing:.2px;white-space:nowrap}
+.se-shell .spacer{flex:1}
+.se-shell .wbtns{display:flex;align-items:center;gap:2px}
+.se-shell .wbtn{width:34px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2); background:transparent;border:0;cursor:pointer;}
+.se-shell .wbtn:hover{background:color-mix(in oklab, var(--sm-text) 9%, transparent);color:var(--sm-text)}
+.se-shell .wbtn.close:hover{background:#c42b1c;color:#fff}
+.se-shell .wbtn.min,.se-shell .wbtn.max{display:none}
+.se-shell .cmdbar{flex:0 0 48px;height:48px;display:flex;align-items:center;gap:4px;padding:0 10px; border-top:1px solid var(--sm-border-soft); border-bottom:1px solid var(--sm-border-soft); background:color-mix(in oklab, var(--sm-text) 3%, transparent); overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+.se-shell .cmdbar::-webkit-scrollbar{display:none}
+.se-shell .cmdbar .spacer{flex:1;min-width:8px}
+.se-shell .cmsep{width:1px;height:18px;flex:0 0 1px;margin:0 5px; background:var(--sm-border);}
+.se-shell .cmd{display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border-radius:4px; border:0;background:transparent;color:var(--sm-text);font:inherit;font-size:12.5px;cursor:pointer; white-space:nowrap;}
+.se-shell .cmd:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
+.se-shell .cmd:active{background:color-mix(in oklab, var(--sm-text) 12%, transparent)}
+.se-shell .cmd:disabled{opacity:.38;pointer-events:none}
+.se-shell .cmd.icon-only{padding:0;width:32px;justify-content:center}
+.se-shell .cmd .ic{color:var(--sm-text)}
+/* Two-tone glyphs: the accent half names the operation, the rest is the shape it
+   acts on. Only a toolbar button or a menu item turns that half on — everywhere
+   else (breadcrumb, tree row, list row, status bar) the same glyph draws in one
+   colour, because there the icon is a label rather than a button. Written for
+   ".se-shell .accent" rather than ".ic svg .accent" because Icon hands the class
+   to the svg itself and some call sites already put .ic there. */
+.se-shell .accent{stroke:currentColor}
+.se-shell .cmd .accent,.se-shell .mi .accent{stroke:var(--sm-accent)}
+/* A destructive command keeps one colour: the accent would read as "this is the
+   primary action" on the one button that is not. */
+.se-shell .cmd.danger .accent{stroke:currentColor}
+.se-shell .cmd.danger .ic{color:var(--sm-danger)}
+.se-shell .sep{width:1px;height:18px;background:var(--sm-border);margin:0 6px;flex:0 0 1px}
+.se-shell .cmd-right{margin-left:auto;display:flex;align-items:center;gap:2px}
+.se-shell .navbar{flex:0 0 40px;height:40px;display:flex;align-items:center;gap:2px;padding:0 10px; border-bottom:1px solid var(--sm-border-soft);}
+.se-shell .nbtn{width:30px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2);background:transparent;border:0;cursor:pointer}
+.se-shell .nbtn:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text)}
+.se-shell .nbtn:disabled{opacity:.3;pointer-events:none}
+.se-shell .crumbs{flex:1;min-width:0;height:30px;display:flex;align-items:center;gap:1px;padding:0 8px;margin:0 6px; border-radius:4px;overflow:hidden; /* 地址栏气泡常驻：不再只在 hover 时出现 */ border:1px solid var(--sm-border-soft); background:color-mix(in oklab, var(--sm-text) 4.5%, transparent);}
+.se-shell .crumbs:hover{border-color:var(--sm-border);background:color-mix(in oklab, var(--sm-text) 7%, transparent)}
+.se-shell .crumb{padding:2px 6px;border-radius:3px;font-size:12.5px;color:var(--sm-text-2);white-space:nowrap;cursor:pointer; overflow:hidden;text-overflow:ellipsis;max-width:220px;}
+.se-shell .crumb:hover{background:color-mix(in oklab, var(--sm-text) 10%, transparent);color:var(--sm-text)}
+.se-shell .crumb.cur{color:var(--sm-text);font-weight:600}
+.se-shell .crumb-sep{color:var(--sm-text-3);font-size:11px;padding:0 1px;display:grid;place-items:center}
+.se-shell .search{width:220px;height:30px;display:flex;align-items:center;gap:6px;padding:0 8px; border-radius:4px;border:1px solid var(--sm-border); background:color-mix(in oklab, var(--sm-text) 4%, transparent);}
+.se-shell .search:focus-within{border-color:var(--sm-accent)}
+.se-shell .search input{flex:1;min-width:0;border:0;background:transparent;color:var(--sm-text);font:inherit;font-size:12.5px;outline:none;}
+.se-shell .search input::placeholder{color:var(--sm-text-3)}
+.se-shell .body{flex:1;min-height:0;display:flex;position:relative}
+.se-shell .pane-tree{flex:0 0 260px;width:260px;min-width:200px;max-width:360px; display:flex;flex-direction:column;overflow:auto;padding:8px 10px 12px; border-right:1px solid var(--sm-border-soft);}
+.se-shell .pane-list{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.se-shell .pane-detail{flex:0 0 320px;width:320px;display:flex;flex-direction:column;overflow:auto; border-left:1px solid var(--sm-border-soft); background:color-mix(in oklab, var(--sm-text) 2.5%, transparent);}
+.se-shell .rsz{flex:0 0 4px;width:4px;cursor:col-resize;background:transparent;position:relative;z-index:3}
+.se-shell .rsz:hover{background:color-mix(in oklab, var(--sm-accent) 45%, transparent)}
+.se-shell .tsec{padding:9px 10px 3px;font-size:10.5px;color:var(--sm-text-3);letter-spacing:.3px;font-weight:600}
+.se-shell .tsep{height:1px;margin:5px 10px;background:var(--sm-border-soft)}
+.se-shell .tcap{font-size:10.5px;color:var(--sm-text-3);padding:4px 12px 2px;letter-spacing:.02em;user-select:none}
+/* flex:0 0 auto on every fixed-height row (tree rows, group headers, list
+   rows): a dense list must overflow and scroll, never shrink its rows. */
+.se-shell .trow{flex:0 0 auto;display:flex;align-items:center;gap:8px;height:26px;padding:0 8px 0 6px;border-radius:4px; cursor:default;user-select:none;position:relative;color:var(--sm-text);margin:0 0 1px;}
+.se-shell .trow:hover{background:color-mix(in oklab, var(--sm-text) 7%, transparent)}
+.se-shell .trow.sel{background:color-mix(in oklab, var(--sm-accent) 16%, transparent)}
+.se-shell .trow.sel::before{content:"";position:absolute;left:0;top:5px;bottom:5px;width:3px;border-radius:2px;background:var(--sm-accent)}
+.se-shell .trow.drop{background:color-mix(in oklab, var(--sm-accent) 24%, transparent);outline:1px dashed var(--sm-accent);outline-offset:-2px}
+.se-shell .trow.bad{opacity:.4}
+/* Refused drop target in the list: a container row that cannot take this
+   payload greys out and shows a 🚫 cursor instead of accepting and failing. */
+.se-shell .row[data-drop="bad"]{opacity:.45;outline:1px dashed var(--sm-danger);outline-offset:-2px}
+.se-shell .row[data-drop="1"]{background:color-mix(in oklab, var(--sm-accent) 18%, transparent);outline:1px dashed var(--sm-accent);outline-offset:-2px}
+.se-shell .trow.drag{opacity:.5}
+.se-shell .trow.flash-hl{animation:hl 1.4s ease-out}
+@keyframes hl{0%,40%{background:color-mix(in oklab, var(--sm-accent) 40%, transparent)} 100%{background:transparent}}
+.se-shell .trow .ic{flex:0 0 16px;color:var(--sm-text-2)}
+.se-shell .trow.ws .ic{color:var(--sm-accent)}
+/* Workspace entries in the tree follow the same rule as workspace rows in the
+   list: accent colour on the icon and the label only, no tinted surface. */
+.se-shell .trow.ws .lbl{color:var(--sm-accent);font-weight:600}
+.se-shell .trow.ws.sel .lbl{color:var(--sm-accent)}
+.se-shell .trow .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.se-shell .trow .cnt{font-size:10.5px;color:var(--sm-text-3);font-variant-numeric:tabular-nums;opacity:0;transition:opacity .1s}
+.se-shell .trow:hover .cnt,.se-shell .trow.sel .cnt{opacity:1}
+.se-shell .trow .pin{width:18px;height:18px;display:grid;place-items:center;border-radius:3px;color:var(--sm-text-3);opacity:0;transition:opacity .1s}
+.se-shell .trow .pin.on{opacity:1;color:var(--sm-accent)}
+.se-shell .trow:hover .pin{opacity:1}
+.se-shell .trow .pin:hover{background:color-mix(in oklab, var(--sm-text) 14%, transparent)}
+.se-shell .trow .caret{width:14px;height:14px;display:grid;place-items:center;color:var(--sm-text-3);flex:0 0 14px}
+.se-shell .trow .caret.hidden{visibility:hidden}
+.se-shell .tsub{display:none}
+/* The detached page has a native frame, so it draws no window controls of its
+   own — the OS already owns minimise / maximise / close. */
+
+.se-shell .listhead{display:flex;align-items:center;height:28px;padding:0 22px 0 10px;border-bottom:1px solid var(--sm-border-soft); font-size:10.5px;color:var(--sm-text-3);user-select:none;flex:0 0 28px;}
+/* The sort affordance is a small caret, not a word: a full-width label with a
+   "▼" glued to it read as two columns and made the header feel heavy. */
+.se-shell .lh{padding:0 6px;display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap;overflow:hidden;letter-spacing:.02em}
+.se-shell .lh:hover{color:var(--sm-text-2)}
+.se-shell .lh .sortdot{opacity:0;font-size:7px;line-height:1;transition:opacity .12s ease}
+.se-shell .lh.sorted{color:var(--sm-text);font-weight:600}
+.se-shell .lh.sorted .sortdot{opacity:.75}
+.se-shell .lh .lhlabel{overflow:hidden;text-overflow:ellipsis}
+.se-shell .pane-list{position:relative;--w-check:32px; --w-name:260px; --w-tags:116px; --w-note:150px; --w-date:104px; --w-size:74px; --w-status:78px;}
+.se-shell .col-check{flex:0 0 var(--w-check);width:var(--w-check);padding-left:12px}
+.se-shell .col-name{flex:0 0 var(--w-name);width:var(--w-name);min-width:110px}
+.se-shell .col-fill{flex:1 1 auto;min-width:0}
+.se-shell .col-tags{flex:0 0 var(--w-tags);width:var(--w-tags)}
+.se-shell .col-note{flex:0 0 var(--w-note);width:var(--w-note)}
+.se-shell .col-date{flex:0 0 var(--w-date);width:var(--w-date)}
+.se-shell .col-size{flex:0 0 var(--w-size);width:var(--w-size);justify-content:flex-end}
+.se-shell .col-status{flex:0 0 var(--w-status);width:var(--w-status)}
+/* The header cell sorts; the strip on its right edge resizes. The strip is a
+   full-height 13px band straddling the boundary, because a 7px sliver at the
+   top of a 28px header is a hit test the user has to aim at rather than a
+   handle they can grab. The visible rule stays 1px so the header still reads
+   as text, not as a row of dividers. */
+.se-shell .lh{position:relative}
+.se-shell .lh[data-col]{cursor:pointer}
+.se-shell .colrsz{position:absolute;top:0;bottom:0;right:-6px;width:13px;cursor:col-resize;z-index:5;background:transparent;}
+.se-shell .colrsz::after{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:1px;background:var(--sm-border-soft)}
+.se-shell .colrsz:hover::after,.se-shell .colrsz.on::after{top:0;bottom:0;width:2px;left:5.5px;background:var(--sm-accent)}
+.se-shell .lh:hover .lhlabel{color:var(--sm-text-2)}
+/* While a column is being dragged the whole list shows the resize cursor, so
+   the pointer does not flicker back to an arrow when it leaves the strip. */
+.se-shell .pane-list[data-resizing="1"],.se-shell .pane-list[data-resizing="1"] *{cursor:col-resize !important;user-select:none}
+.se-shell .pane-list[data-cw="slim"] .col-tags,.se-shell .pane-list[data-cw="slim"] .col-status,.se-shell .pane-list[data-cw="slim"] .col-size,.se-shell .pane-list[data-cw="mid"] .col-status{display:none}
+/* The only scrolling surface of the list. overscroll-behavior keeps a flick at
+   the end of a long list from dragging the page behind it, and the height is
+   never derived from the row count: rows keep their height and the body scrolls
+   instead of squeezing. */
+.se-shell .listbody{flex:1;overflow:auto;min-height:0;padding:0 10px 8px;overscroll-behavior:contain}
+/* 框选: the box floats above the rows and never takes the pointer, so
+   the press that started it keeps receiving the moves. The pane is the frame of
+   reference because the list scrolls under it. */
+.se-shell .selrect{position:absolute;display:none;z-index:6;pointer-events:none;border:1px solid var(--sm-accent);border-radius:2px;background:color-mix(in oklab, var(--sm-accent) 14%, transparent)}
+/* While a box is being dragged nothing under it may be text-selected, and the
+   pointer should stay an arrow even as it crosses rows. */
+.se-shell .pane-list[data-marquee="1"],.se-shell .pane-list[data-marquee="1"] *{user-select:none;cursor:default}
+.se-shell .grp{flex:0 0 auto;display:flex;align-items:center;gap:6px;height:30px;padding:0 12px;margin-top:6px; font-size:11.5px;color:var(--sm-text-2);font-weight:600;position:sticky;top:0; background:color-mix(in oklab, var(--sm-tint) 55%, transparent); backdrop-filter:blur(8px);z-index:2; width:100%;border:0;font-family:inherit;text-align:left;cursor:pointer;appearance:none;}
+/* 分组折叠: the caption is the button, so the whole 30px strip is a
+   target and the caret sits where the eye already lands. A folded band keeps its
+   count — that number is the reason to unfold it. */
+.se-shell .grp:hover{color:var(--sm-text)}
+.se-shell .grp .gcaret{display:grid;place-items:center;width:12px;height:12px;flex:0 0 12px;margin-left:-3px;color:var(--sm-text-3)}
+.se-shell .grp:hover .gcaret{color:var(--sm-text-2)}
+.se-shell .grp .gtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-shell .grp.folded{color:var(--sm-text-3)}
+.se-shell .grp .gcount{font-weight:400;color:var(--sm-text-3)}
+.se-shell .row{flex:0 0 auto;display:flex;align-items:center;height:32px;padding-right:12px;border-radius:4px;cursor:default; position:relative;user-select:none;}
+.se-shell .row:hover{background:color-mix(in oklab, var(--sm-text) 6%, transparent)}
+.se-shell .row.sel{background:color-mix(in oklab, var(--sm-accent) 15%, transparent)}
+.se-shell .row.sel::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:2px;background:var(--sm-accent)}
+.se-shell .row.drag{opacity:.45}
+.se-shell .row .cell{padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--sm-text)}
+.se-shell .row .cell.dim{color:var(--sm-text-2)}
+.se-shell .row .cell.num{font-variant-numeric:tabular-nums;text-align:right;justify-content:flex-end}
+.se-shell .row .namecell{display:flex;align-items:center;gap:8px;min-width:0}
+.se-shell .row .namecell .ic{flex:0 0 16px;color:var(--sm-text-2)}
+.se-shell .row .namecell .ic.wsic{color:var(--sm-accent)}
+.se-shell .row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Inline rename: the selected row swaps its label for an input. */
+.se-shell .nm-edit{flex:1 1 auto;min-width:0;width:auto;height:20px;padding:0 5px;border:1px solid var(--sm-accent);border-radius:3px; background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text);font:inherit;font-size:12.5px;line-height:18px;outline:none;}
+.se-shell .trow .lbl-edit{flex:1 1 auto;min-width:0;height:20px;padding:0 5px;border:1px solid var(--sm-accent);border-radius:3px; background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text);font:inherit;font-size:12px;line-height:18px;outline:none;}
+.se-shell[data-view="icons"] .row .namecell .nm-edit{width:100%;flex:0 0 auto}
+/* The pencil is a hover affordance, never a permanent column: it appears on
+   the row the pointer is over and on the selected row. */
+.se-shell .nm-editbtn{flex:0 0 16px;width:16px;height:16px;display:none;place-items:center;border-radius:3px;color:var(--sm-text-3);cursor:pointer}
+.se-shell .row:hover .nm-editbtn,.se-shell .row.sel .nm-editbtn,.se-shell .trow:hover .nm-editbtn,.se-shell .trow.sel .nm-editbtn{display:grid}
+.se-shell .nm-editbtn:hover{background:color-mix(in oklab, var(--sm-text) 14%, transparent);color:var(--sm-text)}
+.se-shell .row .tag{display:inline-block;padding:1px 6px;margin-right:4px;border-radius:10px;font-size:10.5px; background:color-mix(in oklab, var(--sm-accent) 18%, transparent); color:color-mix(in oklab, var(--sm-accent) 70%, var(--sm-text)); max-width:74px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}
+.se-shell .chk{width:15px;height:15px;border-radius:3px;border:1px solid var(--sm-text-3);display:grid;place-items:center; opacity:0;transition:opacity .1s;}
+.se-shell .row:hover .chk,.se-shell .row.sel .chk,.se-shell .listbody.has-sel .chk{opacity:1}
+.se-shell .chk.on{background:var(--sm-accent);border-color:var(--sm-accent);color:#04283a}
+.se-shell .chk .ic{width:11px;height:11px}
+/* A subagent has no checkbox: the glyph in its place says the row is bound to
+   its parent, and stays quiet at rest so the list does not read as a wall of
+   marks. */
+.se-shell .chk-bound{width:15px;height:15px;display:grid;place-items:center;color:var(--sm-text-3);opacity:.55;flex:0 0 auto}
+.se-shell .row:hover .chk-bound,.se-shell .row.sel .chk-bound{opacity:1;color:var(--sm-accent)}
+.se-shell .row.bound-row .nm{color:var(--sm-text-2)}
+.se-shell .st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--sm-text-2)}
+.se-shell .dot{width:7px;height:7px;border-radius:50%;background:var(--sm-text-3)}
+.se-shell .dot.run{background:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.16)}
+.se-shell .dot.warn{background:#e0a44a;box-shadow:0 0 0 3px rgba(224,164,74,.16)}
+.se-shell .dot.done{background:#3ecf8e;box-shadow:0 0 0 3px rgba(62,207,142,.16)}
+.se-shell .row.frow .col-date,.se-shell .row.frow .col-status{display:none}
+.se-shell .frow .fl-ic{display:inline-flex;color:var(--sm-accent)}
+.se-shell .pinbadge{display:inline-grid;place-items:center;width:14px;height:14px;flex:0 0 14px;color:var(--sm-text-3)}
+.se-shell .pinbadge .ic{width:10px;height:10px}
+.se-shell .wstag{font-size:10px;padding:0 5px;border-radius:3px;background:color-mix(in oklab, var(--sm-accent) 18%, transparent);color:var(--sm-accent);line-height:15px}
+.se-shell .row.wsrow .nm{font-weight:600}
+.se-shell .row.arch .cell,.se-shell .row.arch .namecell .ic,.se-shell .row.arch .tag{opacity:.45}
+.se-shell .row.arch:hover .cell,.se-shell .row.arch:hover .namecell .ic{opacity:.72}
+.se-shell .row.arch .arcbadge{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:3px;margin-left:2px; border:1px solid var(--sm-text-3);color:var(--sm-text-3);flex:0 0 14px;}
+.se-shell .row.arch .arcbadge .ic{width:9px;height:9px}
+.se-shell .trow.archrow .lbl{opacity:.45}
+.se-shell .row.pinned-row .nm::after{content:"";}
+.se-shell .row.cut{opacity:.45}
+.se-shell .row.cut .nm{text-decoration:line-through;text-decoration-thickness:1px}
+.se-shell .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px; color:var(--sm-text-3);padding:40px;}
+.se-shell .empty .big{font-size:34px;opacity:.5}
+.se-shell .empty .t{font-size:13.5px;color:var(--sm-text-2)}
+.se-shell .empty .s{font-size:12px}
+.se-shell .det-head{padding:14px 14px 10px;display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--sm-border-soft)}
+.se-shell .det-ic{width:34px;height:34px;border-radius:6px;display:grid;place-items:center;flex:0 0 34px; background:color-mix(in oklab, var(--sm-accent) 16%, transparent);color:var(--sm-accent)}
+.se-shell .det-title{font-size:14px;font-weight:600;line-height:1.3;word-break:break-word}
+.se-shell .det-sub{font-size:11.5px;color:var(--sm-text-3);margin-top:2px}
+.se-shell .dclose{width:26px;height:26px;flex:0 0 26px;display:grid;place-items:center;border-radius:4px; border:0;background:transparent;color:var(--sm-text-3);cursor:pointer;}
+.se-shell .dclose:hover{background:color-mix(in oklab, var(--sm-text) 10%, transparent);color:var(--sm-text)}
+.se-shell[data-bp="wide"] .dclose{display:none}
+.se-shell .det-body{padding:10px 14px;display:flex;flex-direction:column;gap:2px}
+.se-shell .kv{display:flex;gap:10px;padding:4px 0;font-size:12.5px;align-items:baseline}
+.se-shell .kv .k{flex:0 0 62px;color:var(--sm-text-3);font-size:11.5px}
+.se-shell .kv .v{flex:1;min-width:0;color:var(--sm-text);word-break:break-word}
+.se-shell .det-sec{padding:10px 14px 6px;border-top:1px solid var(--sm-border-soft)}
+.se-shell .det-sec h4{margin:0 0 8px;font-size:11px;color:var(--sm-text-3);font-weight:600;letter-spacing:.3px}
+/* The description reads as prose, so it keeps a real line-height and wraps long tokens
+   instead of laying out like the kv rows that follow it. */
+.se-shell .ai-sum{white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.62;color:var(--sm-text)}
+.se-shell .ai-sum-empty{font-size:12px;color:var(--sm-text-3)}
+.se-shell .ai-sum-meta{margin-top:6px;font-size:11px;color:var(--sm-text-3)}
+.se-shell .ai-sum-act{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+/* One generated field per row: a short label, then the value and whatever
+   applies it. The tag row wraps because six short tags are wider than a detail
+   pane that is often 300px. */
+.se-shell .ai-field{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:3px 0}
+.se-shell .ai-field-h{flex:0 0 40px;font-size:11px;color:var(--sm-text-3)}
+.se-shell .ai-field-v{flex:1 1 120px;font-size:12px;color:var(--sm-text);word-break:break-word}
+.se-shell .ai-field-tag{font-size:11px;color:var(--sm-text-3)}
+.se-shell .ai-tags{display:flex;flex-wrap:wrap;gap:4px;flex:1 1 120px}
+/* Tags here are toggles, not labels: a generated tag is only merged when the
+   user leaves it ticked, so the row has to look pressable and the unticked ones
+   have to stay legible. */
+.se-shell .ai-tag{font-size:11px;line-height:17px;padding:0 6px;border-radius:9px;background:color-mix(in oklab, var(--sm-text) 7%, transparent);color:var(--sm-text-2);border:1px solid transparent;cursor:pointer;user-select:none}
+.se-shell .ai-tag:hover{border-color:var(--sm-border)}
+.se-shell .ai-tag.on{background:color-mix(in oklab, var(--sm-accent) 16%, transparent);color:var(--sm-text);border-color:color-mix(in oklab, var(--sm-accent) 45%, transparent)}
+.se-shell .ai-tag:focus-visible{outline:2px solid var(--sm-accent);outline-offset:1px}
+.se-shell .note{width:100%;min-height:168px;resize:vertical;border-radius:4px;padding:8px 9px;font:inherit;font-size:12.5px; line-height:1.5; background:color-mix(in oklab, var(--sm-text) 5%, transparent);border:1px solid var(--sm-border); color:var(--sm-text);outline:none;}
+.se-shell .note:focus{border-color:var(--sm-accent)}
+.se-shell .taglist{display:flex;flex-wrap:wrap;gap:5px}
+.se-shell .tagchip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:10px;font-size:11px; background:color-mix(in oklab, var(--sm-accent) 16%, transparent); color:color-mix(in oklab, var(--sm-accent) 72%, var(--sm-text));}
+.se-shell .tagchip .x{cursor:pointer;opacity:.6}
+.se-shell .tagchip .x:hover{opacity:1}
+.se-shell .tagadd{padding:2px 8px;border-radius:10px;font-size:11px;border:1px dashed var(--sm-border); color:var(--sm-text-3);background:transparent;cursor:pointer;font-family:inherit;}
+.se-shell .tagadd:hover{border-color:var(--sm-accent);color:var(--sm-accent)}
+.se-shell .tagpanel{margin-top:8px;padding:8px;border-radius:6px;display:flex;flex-wrap:wrap;gap:5px; background:color-mix(in oklab, var(--sm-text) 4%, transparent); border:1px solid var(--sm-border-soft);}
+.se-shell .tagopt{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:10px;font:inherit;font-size:11px; background:transparent;border:1px solid var(--sm-border);color:var(--sm-text-2);cursor:pointer;}
+.se-shell .tagopt:hover{border-color:var(--sm-accent);color:var(--sm-text)}
+.se-shell .tagopt.on{background:color-mix(in oklab, var(--sm-accent) 20%, transparent); border-color:color-mix(in oklab, var(--sm-accent) 50%, transparent); color:color-mix(in oklab, var(--sm-accent) 70%, var(--sm-text));}
+.se-shell .tagopt svg{width:11px;height:11px}
+.se-shell .row.frow .nm{font-weight:500}
+.se-shell .row.frow{cursor:default}
+.se-shell .row.krow .nm{font-style:italic}
+.se-shell .row.krow .arcbadge{opacity:.55}
+.se-shell .row.krow{cursor:pointer}
+.se-shell .row.droptarget{outline:2px dashed var(--sm-accent);outline-offset:-2px;background:color-mix(in oklab, var(--sm-accent) 14%, transparent)}
+.se-shell .msel{font:inherit;font-size:11.5px;padding:3px 6px;border-radius:4px;cursor:pointer; background:color-mix(in oklab, var(--sm-text) 7%, transparent); border:1px solid var(--sm-border);color:var(--sm-text);}
+.se-shell .msel option{background:var(--sm-surface);color:var(--sm-text)}
+.se-shell .mdesc{font-size:10.5px;color:var(--sm-text-3);line-height:1.35}
+.se-shell .fmodal{position:fixed;inset:0;z-index:9600;display:none;place-items:center; background:color-mix(in oklab,#000 26%,transparent); backdrop-filter:blur(3px) brightness(.96);}
+.se-shell .fmodal.open{display:grid}
+.se-shell .fdlg{width:min(480px,92vw);max-height:min(640px,88vh);display:flex;flex-direction:column; border-radius:10px;border:1px solid var(--sm-border); background:color-mix(in oklab, var(--sm-tint) 96%, transparent); box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden;}
+/* The settings dialog is a page, not a prompt: it gets the height the filter
+   dialog does not need, and its body owns the scroll. */
+.se-shell .fdlg.se-setdlg{width:min(560px,94vw);max-height:min(760px,90vh)}
+.se-shell .se-setdlg .fbody{padding:0}
+.se-shell .fhead{display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 14px;border-bottom:1px solid var(--sm-border-soft)}
+.se-shell .fhead .ftitle{font-size:13px;font-weight:600;color:var(--sm-text)}
+.se-shell .fbody{padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+.se-shell .frow{display:flex;align-items:center;gap:10px}
+.se-shell .flb{flex:0 0 88px;font-size:12px;color:var(--sm-text-2);display:flex;flex-direction:column;gap:2px}
+.se-shell .fsub{font-size:10px;color:var(--sm-text-3)}
+.se-shell .fseg{display:flex;flex:1;min-width:0;gap:0;border:1px solid var(--sm-border);border-radius:5px;overflow:hidden}
+.se-shell .fseg button{flex:1 1 0;min-width:0;font:inherit;font-size:11.5px;padding:5px 8px;background:transparent;border:0;color:var(--sm-text-2);cursor:pointer; border-right:1px solid var(--sm-border-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .12s ease,color .12s ease}
+.se-shell .fseg button:last-child{border-right:0}
+.se-shell .fseg button:hover{background:color-mix(in oklab, var(--sm-text) 7%, transparent);color:var(--sm-text)}
+.se-shell .fseg button.on{background:color-mix(in oklab, var(--sm-accent) 26%, transparent);color:var(--sm-text);font-weight:600}
+
+.se-shell .ftags{flex:1;display:flex;flex-wrap:wrap;gap:5px}
+.se-shell .ffoot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--sm-border-soft)}
+.se-shell .ffoot .spacer{flex:1}
+/* 搜索范围: the funnel is a toggle, so it carries state. Tinted rather than
+   filled — it sits next to the search box and must not out-shout the text the
+   user is typing. */
+.se-shell .nbtn.scopes.on{color:var(--sm-accent);background:color-mix(in oklab, var(--sm-accent) 14%, transparent)}
+/* A 会话内容 hit is a different kind of match from a tag: solid enough to be
+   read at a glance, and the only badge in the tag column that is not a tag. */
+.se-shell .row .tag.hit{background:color-mix(in oklab, var(--sm-accent) 34%, transparent);color:var(--sm-text);font-weight:600}
+.se-shell .cmd{gap:6px;padding:0 10px}
+/* The action row is a grid, not a wrapped flex line: on a wrapped flex line a
+   long label pushes its neighbours onto the next line, leaving every row a
+   different width. Equal columns make every button the same size and line up in
+   columns. */
+.se-shell .det-actions{margin-top:auto;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px;border-top:1px solid var(--sm-border-soft)}
+.se-shell .det-actions .act{justify-content:center;min-width:0;white-space:nowrap}
+.se-shell .act{display:flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:4px;font:inherit;font-size:12px; background:color-mix(in oklab, var(--sm-text) 7%, transparent);border:1px solid var(--sm-border); color:var(--sm-text);cursor:pointer;}
+.se-shell .act:hover{background:color-mix(in oklab, var(--sm-text) 12%, transparent)}
+.se-shell .act.primary{background:var(--sm-accent);border-color:transparent;color:#04283a;font-weight:600}
+.se-shell .act.danger{color:var(--sm-danger)}
+.se-shell .act:disabled{opacity:.4;cursor:default;pointer-events:none}
+/* Dialog bodies: the native Modal supplies the frame, these only style content. */
+.se-shell .se-dlg-msg{margin:0 0 10px;font-size:13px;line-height:1.55;color:var(--sm-text-2);white-space:pre-wrap}
+.se-shell .se-dlg-input{box-sizing:border-box;width:100%;height:32px;padding:0 9px;border-radius:5px;font:inherit;font-size:13px;
+  border:1px solid var(--sm-border);background:color-mix(in oklab,var(--sm-text) 4%,transparent);color:var(--sm-text);outline:none}
+.se-shell .se-dlg-input:focus{border-color:var(--sm-accent)}
+.se-shell .se-dlg-err{margin:8px 0 0;font-size:12px;color:var(--sm-danger)}
+.se-shell .se-dlg-ack{display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--sm-text-2);cursor:pointer}
+/* ── dialog layer ─────────────────────────────────────────────────────────
+   Dialogs are drawn by the plugin and must sit ABOVE the panel and above every
+   popover the panel opens (menus are at 9000 inside this same stacking
+   context). 9600 keeps a confirmation on top of the window that asked for it,
+   which is exactly what the retired "DSH native dialog" path got wrong: the
+   app's dialog tier is below this panel, so those confirmations appeared
+   underneath it.
+
+   .fmodal is a full-viewport layer with its own scrim, so a dialog also dims
+   the panel behind it instead of looking like another pane. */
+.se-shell .status{flex:0 0 28px;height:28px;display:flex;align-items:center;gap:12px;padding:0 10px 0 14px; position:relative;z-index:9; border-top:1px solid var(--sm-border);font-size:11.5px;color:var(--sm-text-2); background:color-mix(in oklab, var(--sm-tint) 94%, transparent);}
+.se-shell .status .s-item{display:flex;align-items:center;gap:5px}
+.se-shell .status .s-item.clickable{cursor:pointer;border-radius:3px;padding:2px 5px;margin:-2px -5px}
+.se-shell .status .s-item.clickable:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text-2)}
+.se-shell .status .s-item.clickable.on{background:color-mix(in oklab, var(--sm-accent) 22%, transparent);color:var(--sm-text)}
+/* A refused action stays on screen until it is read: red, bordered, dismissable. */
+.se-shell .status .s-item.s-error{color:var(--sm-danger, #c0392b);font-weight:500;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid color-mix(in oklab, var(--sm-danger, #c0392b) 45%, transparent);background:color-mix(in oklab, var(--sm-danger, #c0392b) 10%, transparent);border-radius:3px;padding:1px 6px}
+.se-shell .status .s-item.s-error:hover{background:color-mix(in oklab, var(--sm-danger, #c0392b) 18%, transparent)}
+.se-shell .viewswitch{margin-left:auto;display:flex;align-items:center;gap:1px}
+.se-shell .vsw{width:26px;height:22px;display:grid;place-items:center;border-radius:3px;color:var(--sm-text-3);background:transparent;border:0;cursor:pointer}
+.se-shell .vsw:hover{background:color-mix(in oklab, var(--sm-text) 9%, transparent);color:var(--sm-text)}
+.se-shell .vsw.on{color:var(--sm-accent);background:color-mix(in oklab, var(--sm-accent) 14%, transparent)}
+.se-shell .rz{display:none}
+.se-shell .ctxmenu{position:fixed;z-index:9000;min-width:190px;padding:4px;border-radius:8px; background:color-mix(in oklab, var(--sm-tint) 88%, transparent); backdrop-filter:blur(30px) saturate(1.5); border:1px solid var(--sm-border); box-shadow:0 16px 40px rgba(0,0,0,.42); display:none;}
+.se-shell .ctxmenu.open{display:block;animation:pop .12s ease-out}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(-2px)}to{opacity:1;transform:none}}
+.se-shell .mi{display:flex;align-items:center;gap:9px;height:30px;padding:0 9px;border-radius:4px;font-size:12.5px; cursor:default;color:var(--sm-text);}
+.se-shell .mi:hover{background:color-mix(in oklab, var(--sm-text) 9%, transparent)}
+.se-shell .mi .ic{color:var(--sm-text-2);flex:0 0 16px}
+.se-shell .mi .k{margin-left:auto;font-size:11px;color:var(--sm-text-3)}
+.se-shell .mi.danger{color:var(--sm-danger)}
+.se-shell .mi.danger .ic{color:var(--sm-danger)}
+.se-shell .mi.disabled{opacity:.45;cursor:default}
+.se-shell .mi.disabled:hover{background:transparent}
+.se-shell .misep{height:1px;margin:4px 6px;background:var(--sm-border-soft)}
+.se-shell .ctxmenu.sub{min-width:180px}
+.se-shell .mi.has-sub .k{display:grid;place-items:center;width:14px;height:14px;margin-left:auto;color:var(--sm-text-3)}
+.se-shell .mi.has-sub .k .ic{width:11px;height:11px}
+/* 发送到: a nested menu is a flyout, not a second overlay. Hovering the parent
+   row opens it to the right, which is how a file manager's Send-to works and
+   keeps the parent menu's own click behaviour untouched. */
+.se-shell .mi.has-sub{position:relative}
+.se-shell .mi.has-sub>.submenu{display:none;position:absolute;left:100%;top:-5px;min-width:190px;padding:4px;border-radius:8px;
+  background:color-mix(in oklab, var(--sm-tint) 92%, transparent);backdrop-filter:blur(30px) saturate(1.5);
+  border:1px solid var(--sm-border);box-shadow:0 16px 40px rgba(0,0,0,.42);z-index:1}
+.se-shell .mi.has-sub:hover>.submenu{display:block}
+/* The flyout opens to the right by default; when the menu itself sits against
+   the right edge (see data-flip on the menu) it opens to the left instead. */
+.se-shell .ctxmenu[data-flip="1"] .mi.has-sub>.submenu{left:auto;right:100%}
+.se-shell .mi.has-sub:hover{background:color-mix(in oklab, var(--sm-text) 9%, transparent)}
+.se-shell[data-bp="mid"] .pane-detail{position:absolute;right:0;top:0;bottom:0;width:330px;z-index:8; box-shadow:-14px 0 34px rgba(0,0,0,.32); background:color-mix(in oklab, var(--sm-tint) 92%, transparent); backdrop-filter:blur(28px) saturate(1.4); transform:translateX(100%);transition:transform .18s ease;}
+.se-shell[data-bp="mid"] .pane-detail.open{transform:none}
+.se-shell[data-bp="mid"] .rsz-detail{display:none}
+.se-shell[data-bp="mid"] .col-tags{display:none}
+.se-shell[data-bp="narrow"] .pane-tree{flex:0 0 196px;width:196px;min-width:196px;padding:8px 8px 12px;}
+.se-shell[data-bp="narrow"] .pane-detail{position:absolute;left:0;right:0;bottom:0;top:auto;height:52%;width:auto;z-index:8; transform:translateY(100%);transition:transform .18s ease; box-shadow:0 -14px 34px rgba(0,0,0,.32); background:color-mix(in oklab, var(--sm-tint) 94%, transparent);}
+.se-shell[data-bp="narrow"] .pane-detail.open{transform:none}
+.se-shell[data-bp="narrow"] .col-tags,.se-shell[data-bp="narrow"] .col-note,.se-shell[data-bp="narrow"] .col-date{display:none}
+.se-shell[data-bp="narrow"] .cmdbar .cmd{font-size:0;gap:0;padding:0 8px}
+.se-shell[data-bp="narrow"] .cmdbar .cmd>span[data-i]{display:block}
+.se-shell[data-bp="narrow"] .cmdbar .sep{margin:0 3px}
+/* ── 图标视图 ──────────────────────────────────────────────────────────────
+   横向排列，不是瀑布流：每一项是一张横放的小卡片（图标在左、文字在右），
+   卡片按行从左到右铺开，窗口变窄时自动换行。竖排卡片会把图标浮到文字上方、
+   撑开行高，读起来就是纵向列表。 */
+.se-shell[data-view="icons"] .listhead{display:none}
+.se-shell[data-view="icons"] .listbody{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;padding:10px 14px;align-content:flex-start;}
+/* Each group is wrapped in its own <div>, so *that* wrapper is the flex
+   container the cards must flow in. Without this rule the cards are block-level
+   children of a block wrapper and stack vertically, one card per line. */
+.se-shell[data-view="icons"] .listbody>div{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px;flex:1 1 100%;min-width:0;align-content:flex-start}
+/* A group caption is a full-width band that always starts a new row, so the
+   cards inside it keep a left-to-right order instead of flowing around it. */
+.se-shell[data-view="icons"] .grp{flex:0 0 100%;width:100%;position:static;margin:8px 0 0;background:transparent;backdrop-filter:none}
+.se-shell[data-view="icons"] .grp+.row{margin-top:0}
+.se-shell[data-view="icons"] .row{
+  flex:0 0 232px;width:232px;height:auto;min-height:52px;
+  /* A card is a column: a top line (icon + name) and the preview lines under
+     it. The row stays left-aligned so the icon column lines up across cards. */
+  flex-direction:column;align-items:stretch;justify-content:flex-start;
+  padding:8px 10px;border:1px solid var(--sm-border-soft);border-radius:6px;gap:2px;
+}
+.se-shell[data-view="icons"] .row:hover{border-color:var(--sm-border)}
+/* Every cell starts hidden: a card shows only the name line plus the preview
+   rows re-enabled below. The .cell rule is more specific than .col-tags, so the
+   preview rules have to come after it (they do). */
+.se-shell[data-view="icons"] .row .cell{display:none}
+.se-shell[data-view="icons"] .row .col-name{display:block;padding:0;flex:1 1 auto;width:auto;min-width:0}
+/* The card carries a preview of the tags and the note: that is the point of a
+   card view — you pick a session by glancing at it, not by scanning a column. */
+.se-shell[data-view="icons"] .row .col-tags{display:flex;flex:0 0 auto;width:100%;padding:0;margin-top:2px;gap:3px;overflow:hidden}
+.se-shell[data-view="icons"] .row .col-tags .tag{max-width:88px;margin-right:0}
+.se-shell[data-view="icons"] .row .col-note{display:block;flex:0 0 auto;width:100%;padding:0;margin-top:2px;
+  font-size:10.5px;line-height:1.3;color:var(--sm-text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.se-shell[data-view="icons"] .row .col-note:empty{display:none}
+.se-shell[data-view="icons"] .row .col-date{display:none}
+.se-shell[data-view="icons"] .row .namecell{flex-direction:row;align-items:center;flex-wrap:wrap;gap:6px;width:100%}
+.se-shell[data-view="icons"] .row .namecell .ic{flex:0 0 24px;width:24px;height:24px}
+.se-shell[data-view="icons"] .row .nm{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:12px;line-height:1.35;text-align:left}
+/* The resize handles and the column header do not exist in this view, so the
+   row must not keep the list's right padding for them. */
+.se-shell[data-view="icons"] .row{padding-right:10px}
+.se-shell[data-view="icons"] .row .col-check{display:none}
+/* A container card has no tags and no note, so it collapses to just the name
+   line instead of reserving empty preview rows. */
+.se-shell[data-view="icons"] .row.frow{min-height:44px}
+.se-shell[data-view="icons"] .row.frow .col-tags,.se-shell[data-view="icons"] .row.frow .col-note{display:none}
+.se-shell[data-view="icons"] .row .col-fill{display:none}
+.se-shell[data-view="icons"] .row .twist{margin-left:0}
+.se-shell[data-view="icons"] .row .wstag,.se-shell[data-view="icons"] .row .subtag{margin-left:0}
+.se-shell[data-view="icons"] .row.sel::before{display:none}
+.se-shell[data-view="icons"] .row.sel{border-color:var(--sm-accent);background:color-mix(in oklab, var(--sm-accent) 12%, transparent)}
+.se-shell ::-webkit-scrollbar-thumb{background:color-mix(in oklab, var(--sm-text) 22%, transparent); border:4px solid transparent;background-clip:content-box;border-radius:8px;}
+.se-shell ::-webkit-scrollbar-thumb:hover{background:color-mix(in oklab, var(--sm-text) 34%, transparent);background-clip:content-box}
+.se-shell ::-webkit-scrollbar-track{background:transparent}
+.se-shell::-webkit-scrollbar,.se-shell *::-webkit-scrollbar{width:12px;height:12px}
+.se-shell::-webkit-scrollbar-thumb,.se-shell *::-webkit-scrollbar-thumb{background:color-mix(in oklab,var(--sm-text) 22%,transparent);border:4px solid transparent;background-clip:content-box;border-radius:8px}
+.se-shell::-webkit-scrollbar-thumb:hover,.se-shell *::-webkit-scrollbar-thumb:hover{background:color-mix(in oklab,var(--sm-text) 34%,transparent);background-clip:content-box}
+.se-shell::-webkit-scrollbar-track,.se-shell *::-webkit-scrollbar-track{background:transparent}
+
+/* ── shortcuts ──────────────────────────────────────────────────────
+   A shortcut is a reference, not the thing itself. The row keeps the *type*
+   glyph of what it points at — a referenced session still reads as a session,
+   a folder as a folder — and says "this is a pointer" with a 快捷方式 tag.
+   Swapping the icon for an arrow made a reference look like a third kind of
+   thing instead of a second row for one of the existing two. */
+.se-shell .sctag{font-size:10px;line-height:1;padding:1px 4px;border-radius:3px;background:color-mix(in oklab, var(--sm-accent) 14%, transparent);color:var(--sm-accent);flex:0 0 auto;white-space:nowrap;letter-spacing:.02em}
+.se-shell .row.scrow .fl-ic .ic{color:var(--sm-accent);opacity:.85}
+.se-shell .trow.sc .ic{color:var(--sm-accent);opacity:.85}
+/* The tag hugs the name instead of floating at the row's right edge, where it
+   would read as part of the count. Everything after it (pencil, count) keeps
+   its place: the tag trades its auto margin for the leftover space. */
+.se-shell .trow.sc .lbl{flex:0 1 auto;margin-right:5px}
+.se-shell .trow.sc .sctag{margin-left:0;margin-right:auto}
+.se-shell .row.scrow .wstag{background:color-mix(in oklab, var(--sm-accent) 14%, transparent);color:var(--sm-accent)}
+.se-shell .row.pinned-row .nm::after{content:"";}
+/* 置顶 is a ranking inside the row's own band, so a pinned row does not
+   move to a 置顶 group the way sessions do in the list: the glyph is the only
+   thing that explains why it leads its siblings. Bold alone was too quiet —
+   two folders at the top of 目录 with no mark read like an accident. */
+.se-shell .trow .tpin{margin-left:5px;flex:0 0 auto;display:inline-flex;align-items:center;color:var(--sm-accent);opacity:.8}
+/* 快速访问 整条是一个投放面: the caption, the empty line and the blank
+   strips beside them all mean "add a bookmark", so the *band* lights up while a
+   folder is in flight — highlighting the caption alone reads as "only that line
+   takes the drop". The negative margin lets the surface reach into the rail
+   gutter, and the rows inside keep their own drop handler (a row is the folder it
+   names, not the strip). */
+.se-shell .qband{margin:0 -7px;padding:0 7px 1px;border-radius:6px;transition:background .12s ease}
+.se-shell .qband.qdrop{background:color-mix(in oklab, var(--sm-accent) 12%, transparent);outline:1px dashed var(--sm-accent);outline-offset:-2px}
+.se-shell .tghost{padding:3px 12px 5px 26px;font-size:11px;color:var(--sm-text-3);opacity:.72;user-select:none}
+/* The rail is a drop target and a menu surface below its last row. Rows stop
+   their own events, so without a filler that reaches the bottom of the rail
+   there is nothing left to right-click or drop onto once the tree is short. */
+.se-shell .tblank{flex:1 1 auto;min-height:28px}
+.se-shell .trow.pinned .lbl{font-weight:600}
+
+/* ── subagent nesting ───────────────────────────────────────
+   A subagent session is a real session, but showing it flat next to its parent
+   makes a delegation look like a sibling conversation. Rows indent one level
+   and pick up a guide rail so the parent/child relation survives at a glance. */
+.se-shell .row.sub-row{padding-left:14px}
+.se-shell .row.sub-row::after{content:"";position:absolute;left:5px;top:4px;bottom:4px;width:1px;background:var(--sm-border);border-radius:1px}
+.se-shell .row.sub-row .namecell .ic{opacity:.72}
+.se-shell .row.sub-row .col-name{padding-left:0}
+.se-shell .subtag{font-size:10px;line-height:1;padding:1px 4px;border-radius:3px;background:color-mix(in oklab,var(--sm-accent) 18%,transparent);color:var(--sm-accent);margin-left:5px;flex:0 0 auto}
+.se-shell .row.child-hidden{display:none}
+.se-shell .row .twist{width:14px;height:14px;flex:0 0 14px;margin-left:-4px;opacity:.55;cursor:pointer}
+.se-shell .row .twist:hover{opacity:1}
+.se-shell .detail-parent{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer}
+.se-shell .detail-parent:hover{color:var(--sm-text)}
+.se-shell .detail-parent .nm{text-decoration:underline;text-underline-offset:2px}
+
+/* ── P2 write affordances ──────────────────────────────────────────────── */
+/* The tag panel shows how many sessions already carry each tag, so the same
+   vocabulary gets reused instead of a dozen near-duplicate tags appearing. */
+.se-shell .tagopt .tagcount{font-size:10px;opacity:.6;font-variant-numeric:tabular-nums}
+/* A row or tree entry that accepts a drop lights up while dragging over it. */
+.se-shell .row.drop{background:color-mix(in oklab, var(--sm-accent) 12%, transparent);outline:1px dashed color-mix(in oklab, var(--sm-accent) 60%, transparent);outline-offset:-2px}
+.se-shell .row[draggable="true"]{cursor:default}
+.se-shell .trow[draggable="true"] .lbl{cursor:grab}
+.se-shell .note{width:100%;min-height:96px;resize:vertical;padding:8px 9px;border-radius:6px;
+  border:1px solid var(--sm-border-soft);background:color-mix(in oklab, var(--sm-text) 3%, transparent);
+  color:var(--sm-text);font:inherit;font-size:12.5px;line-height:1.5}
+.se-shell .note::placeholder{color:var(--sm-text-3)}
+.se-shell .note:focus{outline:none;border-color:color-mix(in oklab, var(--sm-accent) 55%, transparent)}
+.se-shell .act.on{background:color-mix(in oklab, var(--sm-accent) 16%, transparent);color:var(--sm-accent)}
+
+/* ── detail pane: inline rename + tag library ─────────────────────── */
+/* The title row is the only place a name is edited; the pencil is
+   dimmed until the header is hovered so it never competes with the title. */
+.se-shell .det-title-row{display:flex;align-items:flex-start;gap:6px;min-width:0}
+.se-shell .det-title-row .det-title{min-width:0}
+.se-shell .det-title-edit{flex:0 0 18px;width:18px;height:18px;display:grid;place-items:center;margin-top:1px;
+  border:0;border-radius:3px;background:transparent;color:var(--sm-text-3);cursor:pointer;opacity:.55;transition:opacity .12s}
+.se-shell .det-head:hover .det-title-edit{opacity:1}
+.se-shell .det-title-edit:hover{background:color-mix(in oklab,var(--sm-text) 12%,transparent);color:var(--sm-text)}
+.se-shell .det-rename{width:100%;font:inherit;font-size:14px;font-weight:600;line-height:1.3;padding:2px 6px;border-radius:4px;
+  background:color-mix(in oklab,var(--sm-text) 8%,transparent);border:1px solid var(--sm-accent);color:var(--sm-text);outline:none}
+.se-shell .det-fork{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:11px;color:var(--sm-text-3)}
+.se-shell .det-link{cursor:pointer;color:var(--sm-accent);text-decoration:underline;text-underline-offset:2px}
+.se-shell .det-link:hover{color:var(--sm-text)}
+.se-shell .det-sep{color:var(--sm-text-3);margin:0 2px}
+.se-shell .tagadd.on{border-style:solid;border-color:var(--sm-accent);color:var(--sm-accent)}
+.se-shell .tagempty{flex:0 0 100%;font-size:11px;color:var(--sm-text-3);padding:2px 2px 4px}
+.se-shell .taglib-del{display:grid;place-items:center;width:12px;height:12px;margin-left:1px;border-radius:50%;opacity:.45;cursor:pointer}
+.se-shell .taglib-del:hover{opacity:1;background:color-mix(in oklab,var(--sm-danger) 26%,transparent);color:var(--sm-danger)}
+.se-shell .tagnewrow{flex:0 0 100%;display:flex;align-items:center;gap:5px;margin-top:2px;padding-top:7px;
+  border-top:1px dashed var(--sm-border-soft)}
+.se-shell .tagnew{flex:1;min-width:0;font:inherit;font-size:11.5px;padding:4px 8px;border-radius:10px;
+  background:color-mix(in oklab,var(--sm-text) 6%,transparent);border:1px solid var(--sm-border);color:var(--sm-text);outline:none}
+.se-shell .tagnew:focus{border-color:var(--sm-accent)}
+.se-shell .tagnew-go{flex:0 0 22px;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;
+  border:1px solid var(--sm-border);background:transparent;color:var(--sm-text-2);cursor:pointer}
+.se-shell .tagnew-go:hover{border-color:var(--sm-accent);color:var(--sm-accent)}
+
+/* ── overlay placement (must follow the ported sheet) ──────────────────── */
+.se-shell{
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(1120px, 92vw);
+  height: min(720px, 86vh);
+  z-index: 1050;
+  pointer-events: auto;
+}
+.se-shell *{box-sizing: border-box;}
+.se-shell[data-detail="off"] .pane-detail,
+.se-shell[data-detail="off"] .rsz-detail{display:none}
+.se-shell .rsz-detail{flex:0 0 4px;width:4px;cursor:col-resize;background:transparent;position:relative;z-index:3}
+.se-shell .rsz-detail:hover{background:color-mix(in oklab, var(--sm-accent) 45%, transparent)}
+
+/* ── sidebar entry ────────────────────────────────────────────────────────
+   The one element outside the shell, so it uses the host tokens directly.
+
+   It shares the sidebar footer with every other plugin's entry, and that row
+   is a flex container whose items are content-sized. A width:100% entry
+   therefore competes with its neighbours instead of filling its own line: with
+   two plugins installed the labels squeezed each other until both were
+   ellipsised. The fix is the generic one — claim a full row, and shrink rather
+   than push:
+
+     - flex:1 1 100% puts it on its own line whatever else is there;
+     - min-width:0 lets the label ellipsise instead of forcing overflow;
+     - box-sizing:border-box keeps the padding inside the claimed width.
+
+   The height is declared rather than left to the content: the label's line box
+   is only ~18px, so padding alone yielded a 27px target that read as a cramped
+   footnote next to the host's own controls. min-height:34px with 8px of
+   vertical padding gives a comfortable hit area at either text size without
+   depending on the host's row height.
+
+   None of this assumes a particular host layout: if the footer is a plain
+   block container the rules are inert, and if it is flex/grid they do exactly
+   what is described. */
+.se-footerBtn{
+  display:flex;align-items:center;gap:8px;
+  flex:1 1 100%;min-width:0;box-sizing:border-box;
+  width:100%;min-height:34px;padding:8px 10px;
+  border:0;border-radius:6px;background:transparent;
+  color:var(--dsw-alias-label-secondary, #cfd3d6);
+  font:inherit;font-size:12.5px;line-height:1.4;text-align:left;cursor:pointer;
+}
+.se-footerBtn > svg{flex:0 0 auto}
+.se-footerBtn:hover{
+  background:var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.08));
+  color:var(--dsw-alias-label-primary, #f5f6f7);
+}
+
+/* ── DSH's own session surfaces ──────────────────────────────────────────
+   The header buttons and the two row-menu entries render *outside* .se-shell,
+   so these rules are global and namespaced by the se- prefix instead. They
+   copy the shell's type scale and hover surface, so the strip reads as part of
+   DSH rather than as a plugin bolted beside it. */
+.se-hdrActions{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;padding:2px 0}
+.se-hdrBtn{
+  display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 9px;
+  border:1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.16));border-radius:7px;
+  background:var(--dsw-alias-fill-l2, rgba(255,255,255,.06));
+  color:var(--dsw-alias-label-primary, #f5f6f7);
+  font:inherit;font-size:12.5px;line-height:1;cursor:pointer;white-space:nowrap;
+  transition:background .12s ease,border-color .12s ease,color .12s ease;
+}
+.se-hdrBtn:hover:not(:disabled){
+  background:var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.13));
+  border-color:var(--dsw-alias-border-l2, rgba(255,255,255,.26));
+}
+.se-hdrBtn:disabled{opacity:.45;cursor:default}
+.se-hdrBtn.is-on{
+  border-color:var(--dsw-alias-brand-primary, #4f8cff);
+  color:var(--dsw-alias-brand-primary, #4f8cff);
+  background:color-mix(in srgb, var(--dsw-alias-brand-primary, #4f8cff) 14%, transparent);
+}
+.se-hdrIco{
+  display:block;flex:0 0 auto;fill:none;stroke:currentColor;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;
+}
+/* A set star fills; the outline icons stay outlines. */
+.se-hdrBtn.is-on .se-hdrIco-favorite path{fill:currentColor}
+/* 删除 is the strip's one destructive action: red at rest, and the dialog it
+   opens confirms in the same red (.act.danger-solid). */
+.se-hdrBtn[data-action="delete"]{
+  border-color:color-mix(in srgb, #e5484d 55%, transparent);
+  color:#ff6369;
+  background:color-mix(in srgb, #e5484d 14%, transparent);
+}
+.se-hdrBtn[data-action="delete"]:hover:not(:disabled){
+  border-color:#e5484d;background:color-mix(in srgb, #e5484d 24%, transparent);color:#ff8085;
+}
+.se-hdrNote{
+  display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;
+  font-size:11.5px;color:var(--dsw-alias-label-secondary, #cfd3d6);
+  background:var(--dsw-alias-fill-l2, rgba(255,255,255,.07));
+}
+/* 会话界面按钮样式 = 仅显示图标: the same icon-only shape as the narrow
+   window, applied at every width. The label stays in the title attribute and
+   the aria-label, so hiding it never removes the button's name. */
+.se-hdrActions-icons .se-hdrLabel{display:none}
+.se-hdrActions-icons .se-hdrBtn{padding:0 7px}
+/* A narrow window keeps the icons and drops the words, so the strip never
+   pushes DSH's own header actions off the bar. */
+@media (max-width: 1100px){
+  .se-hdrLabel{display:none}
+  .se-hdrBtn{padding:0 7px}
+}
+.se-menuItem{
+  display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;
+  border:0;background:transparent;color:inherit;
+  font:inherit;font-size:12.5px;text-align:left;cursor:pointer;white-space:nowrap;
+}
+.se-menuItem:hover{
+  background:var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.08));
+}
+.se-menuItem-sep{border-top:1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))}
+/* 删除 is destructive in the row menu too, so it carries the same red as the
+   header button instead of blending in with 查看. */
+.se-menuItem-danger{color:#ff6369}
+.se-menuItem-danger:hover{background:color-mix(in srgb, #e5484d 16%, transparent);color:#ff8085}
+/* The confirm dialog's destructive button: solid red, the same hue as 删除. */
+.se-shell .act.danger-solid{
+  background:#e5484d;border-color:transparent;color:#fff;font-weight:600;
+}
+.se-shell .act.danger-solid:hover{background:#ef5b60}
+
+/* ── row alignment / workspace emphasis ─────────────────────
+   The prototype's .frow rule (gap:10px) also matched .row.frow and pushed the
+   folder/workspace columns 10px right of every session row. Rows are a single
+   flex grid, so gap must stay 0 and indentation lives on the name cell only. */
+.se-shell .row.frow{gap:0}
+.se-shell .row.sub-row{padding-left:0}
+/* The guide rail must meet the centre of the parent row's collapse button
+   (.twist), not a fixed offset from the row's left edge: the twist moves with
+   the indentation, so the old "indent + 5px" put the line ~22px left of the
+   chevron it belongs to. The rail is set per row in SessionRow, because the
+   geometry is not a single formula: depth 0 keeps the name cell's 8px padding
+   while deeper rows zero it (see the indentation rule below), so the first
+   level lands at 43px and every deeper level at 19px + indent. */
+.se-shell .row.sub-row::after{left:calc(var(--rail, 43px) - .5px)}
+.se-shell .row.sub-row .namecell{padding-left:var(--indent,0px)}
+/* Workspace rows are distinguished by colour alone: the icon and the label
+   pick up the accent, the row keeps the same hover/selection surface as every
+   other row so the list stays visually uniform. */
+.se-shell .row.wsrow .nm{color:var(--sm-accent);font-weight:600}
+.se-shell .row.wsrow .fl-ic .ic{color:var(--sm-accent)}
+.se-shell .row.wsrow .wstag{background:color-mix(in oklab, var(--sm-accent) 18%, transparent);color:var(--sm-accent)}
+/* A user folder is a container like a workspace, but it is the plugin's own
+   node rather than a DSH record, so it keeps the neutral label colour and gets
+   a muted type tag: two containers, two provenances, one row shape. */
+.se-shell .row.folderrow .nm{font-weight:600}
+.se-shell .row.folderrow .fl-ic .ic{color:var(--sm-text-2)}
+.se-shell .row.folderrow .wstag.ftag{background:color-mix(in oklab, var(--sm-text) 10%, transparent);color:var(--sm-text-2)}
+.se-shell .row.folderrow.sel .fl-ic .ic{color:var(--sm-text)}
+/* 特殊文件夹 (根目录 / 未分组 / 收藏 / 待办) are fixed views, not the user's objects:
+   they read as navigation, so they are dimmer than a real container and their
+   type tag is a quiet outline rather than a filled chip. */
+.se-shell .row.specialrow .nm{font-weight:500;color:var(--sm-text-2)}
+.se-shell .row.specialrow .fl-ic .ic{color:var(--sm-text-3)}
+.se-shell .row.specialrow.sel .nm{color:var(--sm-text)}
+.se-shell .row.specialrow .wstag.stag{background:transparent;border:1px solid var(--sm-border);color:var(--sm-text-3)}
+
+/* command bar split: the write commands may scroll, the view cluster must not */
+/* ── command bar layout ────────────────────────────────────────────────────
+   两个区域，一条实心分隔线：
+     .cmdscroll 写操作，放不下时横向滚动
+     .cmdfixed  排序/查看/更多/详细信息，永远钉在右边缘
+
+   右区不能压在滚动区上（透明渐变背景 + 负向视觉叠加）：滚到最后一个按钮时
+   图标会被盖住一半。所以右区有不透明底色和独立边框，滚动区在它左侧结束，两者
+   不可能重叠；按钮本身不压缩（flex:0 0 auto）。 */
+.se-shell .cmdbar{overflow:hidden;gap:0;padding:0 8px;align-items:center}
+.se-shell .cmdscroll{
+  display:flex;align-items:center;gap:2px;flex:1 1 auto;min-width:0;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  /* keep the last button's focus ring / hover surface visible at the edge */
+  padding:0 2px;scroll-padding-inline:2px;
+}
+.se-shell .cmdscroll::-webkit-scrollbar{display:none}
+.se-shell .cmdfixed{
+  display:flex;align-items:center;gap:2px;flex:0 0 auto;
+  padding-left:8px;margin-left:8px;
+  border-left:1px solid var(--sm-border-soft);
+  /* Opaque, not a gradient: a translucent overlay is what let the scrolled
+     buttons show through and look "covered". */
+  background:color-mix(in oklab, var(--sm-tint) 96%, transparent);
+  align-self:stretch;
+}
+.se-shell .cmdbar .cmd{flex:0 0 auto;min-width:0}
+.se-shell .cmdbar .cmd .ic{flex:0 0 16px;width:16px;height:16px;display:grid;place-items:center}
+.se-shell .cmdbar .cmd .ic svg{width:14px;height:14px}
+.se-shell .cmdbar .cmd>span:not([data-i]){overflow:hidden;text-overflow:ellipsis}
+.se-shell .cmdbar .cmsep{flex:0 0 1px;margin:0 4px}
+.se-shell .cmd.on{background:color-mix(in oklab, var(--sm-accent) 14%, transparent);color:var(--sm-accent)}
+
+.se-footerBtn-rail{justify-content:center;padding:8px 0}
+
+/* A panel that failed to render must still leave the entry usable, so the
+   message is a small inline card rather than a full-screen takeover. */
+.se-crash{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1051;
+  display:flex;flex-direction:column;gap:8px;width:min(420px,92vw);padding:14px 16px;
+  border-radius:8px;border:1px solid var(--dsw-alias-border-l2,rgba(255,255,255,.12));
+  background:var(--dsw-alias-bg-layer-1,#232324);color:var(--dsw-alias-label-primary,#f5f6f7);
+  box-shadow:0 24px 64px rgba(0,0,0,.4);font-size:13px;
+}
+.se-crash .t{font-weight:600}
+.se-crash .s{font-size:12px;color:var(--dsw-alias-label-tertiary,#979da6);word-break:break-word;max-height:120px;overflow:auto}
+.se-crash .row-btns{display:flex;gap:8px;margin-top:2px}
+.se-crash .act{height:28px;padding:0 12px;border-radius:5px;cursor:pointer;
+  border:1px solid var(--dsw-alias-border-l2,rgba(255,255,255,.12));
+  background:transparent;color:inherit;font:inherit;font-size:12px}
+.se-crash .act:hover{background:color-mix(in oklab,currentColor 10%,transparent)}
+.se-footerBtn-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── settings page ────────────────────────────────────────────────────────
+   This page mounts inside the DSH settings window, not inside .se-shell, so
+   it carries its own copy of the token bridge and none of the shell rules.
+   Every colour still comes from a --dsw-alias-* token (hard constraint 8). */
+.se-set{
+  --sm-tint: var(--dsw-alias-bg-layer-1, #232324);
+  --sm-surface: var(--dsw-alias-bg-layer-2, var(--sm-tint));
+  --sm-text: var(--dsw-alias-label-primary, #f5f6f7);
+  --sm-text-2: var(--dsw-alias-label-secondary, #cfd3d6);
+  --sm-text-3: var(--dsw-alias-label-tertiary, #979da6);
+  --sm-border: var(--dsw-alias-border-l2, rgba(255,255,255,.12));
+  --sm-border-soft: var(--dsw-alias-border-l1, rgba(255,255,255,.06));
+  --sm-accent: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary, #4176e6));
+  /* The settings page mounts outside .se-shell, so it needs its own red. Without
+     this line every var(--sm-danger) below is invalid at computed-value time and
+     the danger group renders exactly like the other groups. */
+  --sm-danger: var(--dsw-alias-state-error-primary, #f25a5a);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sm-text);
+}
+.se-set-grp{border:1px solid var(--sm-border-soft);border-radius:8px;overflow:hidden;background:color-mix(in oklab, var(--sm-text) 2%, transparent)}
+.se-set-h{padding:10px 14px;font-size:12.5px;font-weight:600;border-bottom:1px solid var(--sm-border-soft);background:color-mix(in oklab, var(--sm-text) 3%, transparent)}
+.se-set-row{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid var(--sm-border-soft)}
+.se-set-row:last-child{border-bottom:0}
+.se-set-main{flex:1 1 auto;min-width:0}
+.se-set-lbl{font-size:12.5px}
+.se-set-hint{font-size:11.5px;color:var(--sm-text-3);margin-top:2px}
+.se-set-choices{display:flex;gap:6px;flex:0 0 auto}
+.se-set-chip{height:26px;padding:0 10px;border-radius:5px;border:1px solid var(--sm-border);background:transparent;color:var(--sm-text-2);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.se-set-chip:hover:not(:disabled){background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text)}
+.se-set-chip.on{background:color-mix(in oklab, var(--sm-accent) 16%, transparent);border-color:color-mix(in oklab, var(--sm-accent) 42%, transparent);color:var(--sm-accent)}
+.se-set-chip:disabled{opacity:.4;cursor:default}
+/* 下拉框 — the model list. The closed control is ours; the option list is drawn
+   by the platform, which reads the option colours and nothing else. Those two
+   colours therefore have to come from the same pair the theme flips together —
+   surface and text — or the light theme paints black text on a black list. */
+.se-set-select{height:26px;min-width:190px;max-width:340px;padding:0 6px;border-radius:5px;border:1px solid var(--sm-border);background:transparent;color:var(--sm-text);font:inherit;font-size:12px;cursor:pointer}
+.se-set-select:hover:not(:disabled){background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
+.se-set-select:disabled{opacity:.4;cursor:default}
+.se-set-select option,.se-set-select optgroup{background:var(--sm-surface);color:var(--sm-text)}
+/* 清除数据 — red is used nowhere else on this page, so red means "cannot be undone". */
+.se-set-danger{border-color:color-mix(in oklab, var(--sm-danger) 42%, var(--sm-border-soft));background:color-mix(in oklab, var(--sm-danger) 5%, transparent)}
+.se-set-danger .se-set-h{color:var(--sm-danger);background:color-mix(in oklab, var(--sm-danger) 12%, transparent);border-bottom-color:color-mix(in oklab, var(--sm-danger) 26%, var(--sm-border-soft))}
+.se-set-chip.danger{color:var(--sm-danger);border-color:color-mix(in oklab, var(--sm-danger) 45%, var(--sm-border))}
+.se-set-chip.danger:hover:not(:disabled){background:color-mix(in oklab, var(--sm-danger) 14%, transparent);color:var(--sm-danger)}
+.se-set-chip.danger.on{background:var(--sm-danger);border-color:transparent;color:#fff}
+.se-set-chip.danger.on:hover:not(:disabled){background:color-mix(in oklab, var(--sm-danger) 88%, #000);color:#fff}
+.se-set-reset{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--sm-border-soft);background:color-mix(in oklab, var(--sm-danger) 6%, transparent)}
+.se-set-reset .se-set-hint{flex:1 1 100%;margin:0}
+.se-set-input{box-sizing:border-box;flex:1 1 150px;height:26px;padding:0 8px;border-radius:5px;font:inherit;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  border:1px solid var(--sm-border);background:transparent;color:var(--sm-text);outline:none}
+.se-set-input:focus{border-color:var(--sm-danger)}
+.se-set-range{width:170px;flex:0 0 auto;accent-color:var(--sm-accent)}
+.se-set-val{width:44px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;color:var(--sm-text-2)}
+.se-set-switch{width:34px;height:20px;flex:0 0 auto;border-radius:10px;border:1px solid var(--sm-border);background:color-mix(in oklab, var(--sm-text) 10%, transparent);position:relative;cursor:pointer;transition:background .15s}
+.se-set-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--sm-text-2);transition:transform .15s,background .15s}
+.se-set-switch.on{background:color-mix(in oklab, var(--sm-accent) 55%, transparent)}
+.se-set-switch.on::after{transform:translateX(14px);background:#fff}
+.se-set-switch:disabled{opacity:.4;cursor:default}
+.se-set-path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--sm-text-2);word-break:break-all}
+.se-set-ver{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--sm-text-2);font-variant-numeric:tabular-nums;flex:0 0 auto}
+.se-set-note{font-size:12px;color:var(--sm-text-3)}
+.se-set-err{font-size:12px;color:var(--sm-danger, var(--dsw-alias-state-error-primary, #f25a5a))}
+.se-set-warn{font-size:12px;color:var(--sm-text-2);padding:8px 14px}
+.se-set-foot{display:flex;align-items:center;gap:10px;min-height:18px}
+/* 更新说明 — the release-notes layer draws itself, because the settings window
+   does not mount the panel's DialogHost. Colours come from the --sm-* bridge
+   defined on .se-set above, which this layer is always a child of. */
+/* The token bridge is repeated here rather than inherited: the layer is drawn
+   inside .se-set today, but a fixed layer that only looks right while it is a
+   child of one particular group is a trap for whoever moves it later. */
+/* pointer-events: the portal root is click-through (DSH must stay usable under
+   it), so a layer drawn inside it has to opt back in or every click lands on
+   whatever is behind the modal. */
+.se-notes{position:fixed;inset:0;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:28px;background:color-mix(in oklab, #000 45%, transparent);
+  --sm-tint: var(--dsw-alias-bg-layer-1, #232324);
+  --sm-surface: var(--dsw-alias-bg-layer-2, var(--sm-tint));
+  --sm-text: var(--dsw-alias-label-primary, #f5f6f7);
+  --sm-text-2: var(--dsw-alias-label-secondary, #cfd3d6);
+  --sm-text-3: var(--dsw-alias-label-tertiary, #979da6);
+  --sm-border: var(--dsw-alias-border-l2, rgba(255,255,255,.12));
+  --sm-border-soft: var(--dsw-alias-border-l1, rgba(255,255,255,.06));
+  --sm-accent: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary, #4176e6));
+  --sm-danger: var(--dsw-alias-state-error-primary, #f25a5a);
+  color: var(--sm-text);
+  font-family: inherit;
+  font-size: 13px}
+.se-notes-card{display:flex;flex-direction:column;width:min(660px,100%);max-height:min(78vh,720px);border:1px solid var(--sm-border);border-radius:12px;background:var(--sm-tint);box-shadow:0 24px 60px color-mix(in oklab, #000 45%, transparent);overflow:hidden}
+.se-notes-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--sm-border-soft)}
+.se-notes-title{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-notes-body{flex:1 1 auto;overflow:auto;padding:14px;font-size:12.5px;line-height:1.62;color:var(--sm-text-2)}
+.se-notes-body strong{color:var(--sm-text);font-weight:600}
+.se-notes-p{margin:0 0 8px}
+.se-notes-list{margin:0 0 10px;padding-left:18px}
+.se-notes-list li{margin:0 0 4px}
+.se-notes-h2,.se-notes-h3,.se-notes-h4{margin:14px 0 6px;color:var(--sm-text);font-weight:600}
+.se-notes-h2{font-size:13px}
+.se-notes-h3{font-size:12.5px}
+.se-notes-h4{font-size:12px}
+.se-notes-rule{height:1px;margin:12px 0;background:var(--sm-border-soft)}
+.se-notes-code{padding:0 4px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:color-mix(in oklab, var(--sm-text) 10%, transparent)}
+.se-notes-foot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--sm-border-soft)}
+.se-notes-gap{flex:1 1 auto}
+.se-notes-foot .se-set-chip{display:inline-flex;align-items:center;gap:6px}
+/* Both mounts portal this layer to the page root: over the settings window's
+   content, and over the panel, whose own menus are at 9000/9600 and which
+   itself sits at 1050 in the overlay root. */
+.se-notes{z-index:9900}
