@@ -601,7 +601,7 @@
                                   {
                                     className: "act",
                                     icon: "check",
-                                    onClick: () => applySummary(session.id, "title", T("已经用这个名字了"), onHint, { onApplied }),
+                                    onClick: () => applySummary(session.id, "title", T("名字已经应用"), onHint, { onApplied }),
                                   },
                                   T("用这个标题"),
                                 )
@@ -690,13 +690,13 @@
                         // title that no longer describes the work is the one way
                         // these fields can be wrong without looking wrong.
                         summaryEntry.sourceAt && session.activityAt && summaryEntry.sourceAt < session.activityAt
-                          ? h("div", { className: "ai-sum-meta" }, T("生成之后这个会话又动过"))
+                          ? h("div", { className: "ai-sum-meta" }, T("生成之后这个会话又发生了变动"))
                           : null,
                       )
                     : h(
                         "div",
                         { className: "ai-sum-empty" },
-                        summaryWriting ? T("正在写…") : T("还没有生成"),
+                        summaryWriting ? T("正在生成…") : T("还没有生成"),
                       ),
                   h(
                     "div",
@@ -713,7 +713,7 @@
                             onHint,
                           ),
                       },
-                      summaryWriting ? T("正在写…") : summaryEntry ? T("重新生成") : T("让 AI 写标题和标签"),
+                      summaryWriting ? T("正在生成…") : summaryEntry ? T("重新生成") : T("让 AI 写标题和标签"),
                     ),
                     summaryEntry && !summaryWriting
                       ? h(
@@ -1079,7 +1079,7 @@
               "div",
               { className: "fsub" },
               anyOn
-                ? T("会话内容会读取会话日志，第一次检索需要几秒建立索引，之后走缓存")
+                ? T("会话内容会读取会话日志，第一次检索需要几秒建立索引")
                 : T("至少选择一项，否则搜索无法命中任何会话"),
             ),
           ),

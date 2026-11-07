@@ -309,7 +309,7 @@
         onHint?.(done);
         options.onApplied?.();
       } catch (failure) {
-        onHint?.(T("应用没成功：{0}", [failure?.message ?? String(failure)]));
+        onHint?.(T("应用失败：{0}", [failure?.message ?? String(failure)]));
       }
     }
 

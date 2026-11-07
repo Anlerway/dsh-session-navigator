@@ -298,7 +298,7 @@
               inTrash ? null : h(Btn, { className: "cmd", icon: "todo", onClick: () => flagMany("todo") }, T("待办")),
               inTrash ? null : h(Btn, { className: "cmd", icon: "pin", onClick: togglePinOrNode }, T("置顶")),
               inTrash ? null : h(Btn, { className: "cmd", icon: "archive", onClick: toggleArchive }, T("归档")),
-              inTrash ? null : h(Btn, { className: "cmd", icon: "branch", title: T("分叉会话（从当前位置另起一支）"), onClick: forkSession }, T("分叉")),
+              inTrash ? null : h(Btn, { className: "cmd", icon: "branch", title: T("分叉会话"), onClick: forkSession }, T("分叉")),
               // One separator, and the only one: 分叉 closed the flags group and
               // 筛选 opens the last one. The pair here drew two hairlines four
               // pixels apart, which read as a glitch rather than a group break.

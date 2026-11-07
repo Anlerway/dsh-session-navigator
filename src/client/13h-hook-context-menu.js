@@ -404,7 +404,7 @@
                 items.push({ sep: true });
                 items.push({ label: T("永久删除"), icon: "trash", danger: true, run: () => deleteSelection() });
               } else {
-                items.push({ label: T("删除（进回收站）"), icon: "trash", danger: true, run: () => deleteSelection() });
+                items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection() });
               }
               items.push({ label: T("子智能体 · 随父会话操作"), disabled: true });
               setContextMenu({ left: x, top: y, items });
@@ -476,7 +476,7 @@
               items.push({ label: T("在文件管理器中显示"), icon: "folder", run: () => revealSessionDir(id) });
               items.push({ label: T("复制文件路径"), icon: "copy", run: () => copySessionPath(id) });
               items.push({ sep: true });
-              items.push({ label: T("删除（进回收站）"), icon: "trash", danger: true, run: () => deleteSelection() });
+              items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection() });
             }
           } else if (kind === "workspace") {
             const pinned = Boolean(tree?.pins?.[nodeId]);

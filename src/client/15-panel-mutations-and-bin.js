@@ -458,7 +458,7 @@
         if (workspaces.length > 0) parts.push(T("{0} 个工作区（删除登记，会话移到「未分组」）", [workspaces.length]));
         if (folders.length > 0) parts.push(T("{0} 个文件夹（其中内容会移到上一级）", [folders.length]));
         if (ids.length > 0) parts.push(T("{0} 个会话（移入回收站）", [ids.length]));
-        if (shortcuts.length > 0) parts.push(T("{0} 个快捷方式（只移除标注，原文件保留）", [shortcuts.length]));
+        if (shortcuts.length > 0) parts.push(T("{0} 个快捷方式（原文件保留）", [shortcuts.length]));
         const doneParts = [];
         if (workspaces.length > 0) doneParts.push(T("已删除 {0} 个工作区", [workspaces.length]));
         if (folders.length > 0) doneParts.push(T("已删除 {0} 个文件夹", [folders.length]));

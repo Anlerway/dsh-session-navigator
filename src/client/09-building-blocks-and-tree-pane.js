@@ -512,7 +512,7 @@
                 // 已放到快速访问 for an id the host would only skip.
                 const bookmarkable = sources.filter((id) => isBookmarkableNode(nodes[id]));
                 if (bookmarkable.length === 0) {
-                  quickSay(T("快速访问只能放文件夹或工作区：固定入口、快捷方式和会话都放不进来"));
+                  quickSay(T("快速访问只能放文件夹或工作区"));
                   event.dataTransfer.dropEffect = "none";
                   return;
                 }

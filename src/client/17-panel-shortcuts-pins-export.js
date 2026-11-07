@@ -299,7 +299,7 @@
           const refused = [];
           for (const id of list) (isBookmarkableNode(nodesById[id]) ? legal : refused).push(id);
           if (legal.length === 0) {
-            setHint(T("快速访问只能放文件夹或工作区：固定入口、快捷方式和会话都放不进来"));
+            setHint(T("快速访问只能放文件夹或工作区"));
             return;
           }
           // A multi-drag parks every container it carries; the ones
