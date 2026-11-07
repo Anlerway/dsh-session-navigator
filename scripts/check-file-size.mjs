@@ -31,7 +31,7 @@ const FRAGMENT_LIMIT = 2000;
 const EXEMPTIONS = new Map([
   ["lib/client.js", {
     limit: Infinity,
-    reason: "由 lib/client-src/ 的分片拼接生成的产物，不手写（分片数见 manifest）",
+    reason: "由 src/client/ 的分片拼接生成的产物，不手写（分片数见 manifest）",
     until: "长期（产物）",
   }],
   ["test/render-smoke.mjs", {
@@ -41,8 +41,8 @@ const EXEMPTIONS = new Map([
   }],
 ]);
 
-const CODE_DIRS = ["lib", "test", "scripts"];
-const SKIP_DIRS = new Set(["node_modules", "client-src", ".git"]);
+const CODE_DIRS = ["src", "test", "scripts"];
+const SKIP_DIRS = new Set(["node_modules", "client", ".git"]);
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
@@ -106,15 +106,15 @@ for (const full of files) {
 
 // 分片另有 2000 行上限：分片是拼接单位，粗到读不动就失去拆分意义。
 const fragments = [];
-const fragDir = join(ROOT, "lib", "client-src");
+const fragDir = join(ROOT, "src", "client");
 try {
   for (const name of readdirSync(fragDir)) {
     if (!name.endsWith(".js")) continue;
     const lines = countLines(join(fragDir, name));
-    fragments.push({ path: `lib/client-src/${name}`, lines });
+    fragments.push({ path: `src/client/${name}`, lines });
     if (lines > FRAGMENT_LIMIT) {
       over.push({
-        path: `lib/client-src/${name}`,
+        path: `src/client/${name}`,
         lines,
         limit: FRAGMENT_LIMIT,
         reason: "分片过大",
@@ -123,7 +123,7 @@ try {
     }
   }
 } catch {
-  // 没有 client-src 目录的检出（例如 git archive 的子集）不影响本门禁。
+  // 没有 src/client 目录的检出（例如 git archive 的子集）不影响本门禁。
 }
 
 if (asJson) {

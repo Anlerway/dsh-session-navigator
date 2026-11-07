@@ -17,7 +17,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeStatusRows } from "../lib/host/bridge.js";
+import { normalizeStatusRows } from "../src/host/bridge.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 /** The slice of a DSH page the bundle needs at definition time. */

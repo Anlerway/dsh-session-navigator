@@ -11,7 +11,7 @@
 DSH 没有提供"借用运行时"的接口（`ctx.sidebarRight.openTab("browser")` 只是 tab 宿主，不给插件
 注入 Electron 或 Node），所以扫描是本插件自己用 `readdir` 做的有界遍历，见 §8。
 
-五条设计规则（`lib/component/layout.js`），其余模块都靠它们成立：
+五条设计规则（`src/component/layout.js`），其余模块都靠它们成立：
 
 1. **从不隐式下载。** 缺席是正常状态，主插件在没有组件时完全可用。
 2. **`ready` 意味着"能启动的东西确实在"。** 自己装的看标记文件 + 可执行文件，借来的看那棵树上的
@@ -65,7 +65,7 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 ## 3. 镜像
 
-`MIRRORS`（`lib/component/layout.js`），按顺序尝试：
+`MIRRORS`（`src/component/layout.js`），按顺序尝试：
 
 | id | 前缀 |
 |---|---|
@@ -76,26 +76,26 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 三个独立的国内镜像排在 GitHub 前面，因为 GitHub 的 release 下载在国内经常 302 到一个会卡住的 CDN。
 它们提供的都是**同一份**官方 zip，固定 SHA-256 仍然会校验，所以镜像换不掉字节。
-`install` 传 `source: "github"` 时顺序反转（`lib/component/manager.js` 的 `install()` 里，`github` 把 `MIRRORS` 反过来遍历）。
+`install` 传 `source: "github"` 时顺序反转（`src/component/manager.js` 的 `install()` 里，`github` 把 `MIRRORS` 反过来遍历）。
 
-**续传只能续同一个镜像**（`lib/component/downloader.js`）：`.part.json` 里的 `url` 与当前
+**续传只能续同一个镜像**（`src/component/downloader.js`）：`.part.json` 里的 `url` 与当前
 镜像不符时先删掉旧片段。另一个镜像的字节是另一条流，追加进去正是"续传出坏包"的成因。
 镜像不支持 Range（对分段请求直接返回整个文件）时，清空重下一次。
 
 下载用系统的 `curl` 子进程，`--progress` 由轮询 `.part` 的大小得到（`PROGRESS_INTERVAL_MS`），
 不解析 curl 的输出。
 
-**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`lib/component/downloader.js`）：`content-length`
+**体积上限** 1 GiB（`MAX_ASSET_BYTES`，`src/component/downloader.js`）：`content-length`
 超限在写第一个字节前就拒（`component-download-too-large`），实际落盘超限同样拒；curl 侧还有
 `--max-filesize` 兜底。正常的 Electron 包约 110 MB，一个数量级的余量足够，同时把"被劫持的镜像
 先写满磁盘再被摘要拒掉"变成"直接拒掉"。
 
 ## 4. 状态机
 
-`PHASES`（`lib/component/state.js`）：`absent` / `downloading` / `verifying` / `extracting` /
+`PHASES`（`src/component/state.js`）：`absent` / `downloading` / `verifying` / `extracting` /
 `ready` / `error`。未知 phase 降级成 `absent`，UI 不会去渲染一个不认识的状态。
 
-一次 `install` 的顺序（`lib/component/manager.js`）：
+一次 `install` 的顺序（`src/component/manager.js`）：
 
 | # | 步骤 | 细节 |
 |---|---|---|
@@ -115,9 +115,9 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 （§8）。借用**不进上面任何一步**——不下载、不校验、不解压、不扫旧，只写一条记录。
 
 **卸载前先关窗口，而且"关掉了"必须是真的**：`remove()` 调 `closeHelper()`（即
-`api.detached.close()`），只有它返回 `true` 才继续（`lib/component/manager.js`）。
+`api.detached.close()`），只有它返回 `true` 才继续（`src/component/manager.js`）。
 `close()` 的返回值因此是"现在确实没有在跑的 helper"：先发 `close` 消息，1.5 秒后还在就 `SIGTERM`，
-再 0.5 秒后还在就 `SIGKILL`，最后用 `exitCode !== null` 判断（`lib/detached/launcher.js`）。
+再 0.5 秒后还在就 `SIGKILL`，最后用 `exitCode !== null` 判断（`src/detached/launcher.js`）。
 以前它无条件返回 `true`，于是一个不理会退出信号的窗口会让 `remove` 删掉它正在用的可执行文件。
 
 ## 5. 那个删不掉的 111 KB：已经不存在了
@@ -140,11 +140,11 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 旧版本装下的运行时里还有这个文件——它还在，但**现在谁都不打开它**，所以卸载时能正常删掉；
 `isKnownUnremovable` 只作为兜底留着。`pending-cleanup.v1.json` 因此只剩"扫描器/索引器临时占用"
 这一种来源，下次启动再扫一遍即可（仍是纯磁盘 JSON，读取时只接受 `component/` 之内的路径——
-`readPending` + `lib/paths.js` 的 `isInside`，坏文件不能让启动清理变成删任意目录）。
+`readPending` + `src/paths.js` 的 `isInside`，坏文件不能让启动清理变成删任意目录）。
 
 ## 6. 窗口怎么起来
 
-`lib/detached/` 三件：
+`src/detached/` 三件：
 
 | 文件 | 职责 |
 |---|---|
@@ -162,7 +162,7 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 | 文件 | 内容 |
 |---|---|
 | `resources/app/package.json` | `{"name": "dsh-session-navigator-helper", "main": "main.cjs"}` |
-| `resources/app/main.cjs` | `require` 仓库里的 `lib/detached/main.cjs`，**绝对路径** |
+| `resources/app/main.cjs` | `require` 仓库里的 `src/detached/main.cjs`，**绝对路径** |
 
 Electron 在没有命令行路径时去 `resources/app` 找应用，而且它**优先于** `default_app.asar`——
 所以同一行命令既服务新运行时，也服务旧版本装下的（还带着 bundle 的）运行时。
@@ -181,34 +181,34 @@ electron.exe <dataDir>\detached\helper-app --user-data-dir=<dataDir>\detached\ch
 ```
 
 Electron 的第一个参数是目录时按应用加载，所以借来的树一个字节都不用变——它自己的
-`resources/default_app.asar` 或 `resources/app` 都不被使用，也不被打开（拼参数的那段在 `lib/detached/launcher.js`）。
+`resources/default_app.asar` 或 `resources/app` 都不被使用，也不被打开（拼参数的那段在 `src/detached/launcher.js`）。
 
 还有一处必须显式清掉的环境变量：DSH 桌面版自己是带着 `ELECTRON_RUN_AS_NODE=1` 跑的，子进程会
 继承它，于是"窗口"变成一个跑完就退的纯 Node 进程。`launch()` 里 `delete env.ELECTRON_RUN_AS_NODE`。
 
 窗口通过 `onEvent` 把 `hello` / `closed` 报告给 host，host 再转成总线上的 `window-open` /
-`window-closed`（`lib/index.js`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
+`window-closed`（`src/index.js`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
 面板不需要第二条通道。
 
 ## 7. 相关文件
 
 | 文件 | 职责 |
 |---|---|
-| `lib/component/layout.js` | 版本、固定哈希、镜像、路径表、体积常量 |
-| `lib/component/state.js` | phase 集合、state 的读写与归一化、进度写入节流 |
-| `lib/component/downloader.js` | curl 下载、续传、镜像切换、进度轮询 |
-| `lib/component/install.js` | `verifyZip` / `extractZip` / `writeHelperApp` / `installHelperApp` / `publishRuntime` / `removeTree` / `freeBytes` |
-| `lib/component/borrow.js` | 借用：`borrowedPaths` / `inspectBorrowed` / `scanBorrowedRuntimes`（只 `readdir`，不碰 `.asar`） |
-| `lib/component/manager.js` | 单飞状态机、`status()`、`scan()`、`install` / `cancel` / `remove` / `retry`、pending 清扫 |
-| `lib/detached/launcher.js` | spawn / 聚焦 / 关闭；spawn 前刷 `resources/app`（借来的刷 `helper-app`） |
-| `lib/detached/main.cjs` | Electron 窗口 |
-| `lib/detached/preload.cjs` | 预加载注入 |
+| `src/component/layout.js` | 版本、固定哈希、镜像、路径表、体积常量 |
+| `src/component/state.js` | phase 集合、state 的读写与归一化、进度写入节流 |
+| `src/component/downloader.js` | curl 下载、续传、镜像切换、进度轮询 |
+| `src/component/install.js` | `verifyZip` / `extractZip` / `writeHelperApp` / `installHelperApp` / `publishRuntime` / `removeTree` / `freeBytes` |
+| `src/component/borrow.js` | 借用：`borrowedPaths` / `inspectBorrowed` / `scanBorrowedRuntimes`（只 `readdir`，不碰 `.asar`） |
+| `src/component/manager.js` | 单飞状态机、`status()`、`scan()`、`install` / `cancel` / `remove` / `retry`、pending 清扫 |
+| `src/detached/launcher.js` | spawn / 聚焦 / 关闭；spawn 前刷 `resources/app`（借来的刷 `helper-app`） |
+| `src/detached/main.cjs` | Electron 窗口 |
+| `src/detached/preload.cjs` | 预加载注入 |
 ## 8. 借来的运行时
 
 机器上常常已经有 Electron 了：dsh-orb 之类的插件自己就装了一份。为同一个窗口再下 150 MB 说不过去，
 所以设置页有个 **扫描其它插件** 按钮（`GET /component/scan`），把候选列出来，用户挑一个 **借用**。
 
-**扫描是只读的，而且很小。** `scanBorrowedRuntimes()`（`lib/component/borrow.js`）从 DSH 的主目录
+**扫描是只读的，而且很小。** `scanBorrowedRuntimes()`（`src/component/borrow.js`）从 DSH 的主目录
 （`dshHome()`：`$DSH_HOME` 或 `~/.dsh`）开始做**宽度优先、最多 3 层**的 `readdir` 遍历：
 
 | 规则 | 理由 |

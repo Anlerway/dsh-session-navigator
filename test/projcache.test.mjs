@@ -23,7 +23,7 @@ import {
   clearProjcacheCache,
   readProjcache,
   readProjcacheFile,
-} from "../lib/sources/projcache.js";
+} from "../src/sources/projcache.js";
 
 /** @returns {Promise<string>} */
 async function tempDir() {

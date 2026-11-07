@@ -39,12 +39,12 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CHECK_CONCURRENCY = 8;
 
 /**
- * What gets linted, and with which extension. lib/detached/*.cjs is excluded on
+ * What gets linted, and with which extension. src/detached/*.cjs is excluded on
  * purpose: those are CommonJS Electron entries loaded by a different runtime,
  * and node --check would judge them under package type "module".
  */
 const TARGETS = [
-  { dir: "lib", extensions: new Set([".js"]) },
+  { dir: "src", extensions: new Set([".js"]) },
   { dir: "test", extensions: new Set([".mjs"]) },
   { dir: "scripts", extensions: new Set([".mjs"]) },
 ];
@@ -69,12 +69,12 @@ const ALLOWLIST = [
 ];
 
 /**
- * Directories never walked. client-src holds the numbered fragments that the
+ * Directories never walked. src/client holds the numbered fragments that the
  * client bundle is concatenated from — individually they are not modules (they
  * open a function and close it many files later), so node --check would fail on
  * them by design. The concatenated result, lib/client.js, is linted instead.
  */
-const SKIP_DIRECTORIES = new Set(["node_modules", "client-src"]);
+const SKIP_DIRECTORIES = new Set(["node_modules", "client"]);
 
 /** Rules that run over the masked text. */
 const RULES = [
@@ -93,8 +93,8 @@ const RULES = [
   {
     name: "no-console-log",
     mask: "code",
-    scope: "lib/",
-    description: "lib/ reports through the host, never to stdout",
+    scope: "src/",
+    description: "src/ reports through the host, never to stdout",
     pattern: /console[ \t]*\.[ \t]*log\b/g,
   },
   {
@@ -402,7 +402,7 @@ const ANSI = new RegExp(String.fromCharCode(27) + "\[[0-9;]*m", "gu");
 
 /**
  * Ask Node itself whether a file parses. node --check honours package.json
- * "type", so every lib/ .js file is checked as the ESM it actually is.
+ * "type", so every src/ .js file is checked as the ESM it actually is.
  *
  * @param {string} file absolute path
  * @returns {Promise<{ file: string, line: number, rule: string, snippet: string, rawLine: string } | null>}

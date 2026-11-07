@@ -1,5 +1,5 @@
 /**
- * 产物护航：磁盘上的 lib/client.js 必须能从 lib/client-src/ 逐字节重建。
+ * 产物护航：磁盘上的 lib/client.js 必须能从 src/client/ 逐字节重建。
  *
  * 负责：把「改了分片却忘了重建」变成一条红的用例，而不是等某个用户装上插件
  * 发现面板少了一块。产物不进仓库（CI、pretest、prepack 各自重建），所以这条
@@ -15,10 +15,10 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FRAGMENT_DIR = fileURLToPath(new URL("../lib/client-src/", import.meta.url));
+const FRAGMENT_DIR = fileURLToPath(new URL("../src/client/", import.meta.url));
 const BUNDLE = fileURLToPath(new URL("../lib/client.js", import.meta.url));
 
-test("the bundle on disk is reproducible from lib/client-src", () => {
+test("the bundle on disk is reproducible from src/client", () => {
   const run = spawnSync(process.execPath, ["scripts/build-client.mjs", "--check"], {
     cwd: ROOT,
     encoding: "utf8",

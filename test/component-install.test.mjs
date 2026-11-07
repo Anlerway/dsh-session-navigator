@@ -13,7 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES } from "../lib/index.js";
+import { ROUTES } from "../src/index.js";
 
 const install = ROUTES["POST /component/install"];
 const retry = ROUTES["POST /component/retry"];
@@ -69,7 +69,7 @@ test("borrowing passes the runtime path through to the manager", async () => {
 
 test("a key the route does not know is refused, not ignored", async () => {
   // A mirror override was never part of this contract: the list lives in
-  // lib/component/layout.js. Sending one used to start the default download.
+  // src/component/layout.js. Sending one used to start the default download.
   await rejects(install, { mirror: "http://127.0.0.1:9/electron/" }, /unknown install option: mirror/);
   await rejects(install, { source: "mirror", borrowed: "C:/x", extra: 1 }, /unknown install option: extra/);
 });

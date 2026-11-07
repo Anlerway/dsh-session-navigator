@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES } from "../lib/index.js";
+import { ROUTES } from "../src/index.js";
 
 const reorder = ROUTES["POST /nodes/:id/reorder"];
 

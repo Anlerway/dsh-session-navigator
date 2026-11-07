@@ -7,12 +7,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES } from "../lib/index.js";
-import { normalizeSummaries } from "../lib/domain/summaries.js";
+import { ROUTES } from "../src/index.js";
+import { normalizeSummaries } from "../src/domain/summaries.js";
 
 const apply = ROUTES["POST /summaries/:id/apply"];
 
-/** A sidecar with the same mutate/read contract as lib/store/sidecar.js. */
+/** A sidecar with the same mutate/read contract as src/store/sidecar.js. */
 function sidecar(initial) {
   let document = { revision: 1, ...initial };
   return {

@@ -6,13 +6,13 @@
  *
  * The route writes nothing: it validates the container the draft is meant for
  * and answers with what the host remembered. The filing itself is
- * lib/host/pending-drafts.js, tested on its own.
+ * src/host/pending-drafts.js, tested on its own.
  */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES } from "../lib/index.js";
+import { ROUTES } from "../src/index.js";
 
 const pending = ROUTES["POST /sessions/placement/pending"];
 

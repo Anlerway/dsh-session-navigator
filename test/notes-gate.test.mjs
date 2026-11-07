@@ -6,7 +6,7 @@
  * first launch is the only time *that* version will ever be new, and the notes
  * are the one place that says what it does.
  *
- * The record of "already delivered" lives on the host (lib/host/notes-seen.js).
+ * The record of "already delivered" lives on the host (src/host/notes-seen.js).
  * It used to live in localStorage, which the DSH web GUI defeats by changing
  * port on every launch: a new origin is a new, empty storage, so the notice
  * came back at every start. The tests below cover both the decision (pure) and
@@ -22,7 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadClientBundle } from "./support/client-bundle.mjs";
-import { readNotesSeen, writeNotesSeen } from "../lib/host/notes-seen.js";
+import { readNotesSeen, writeNotesSeen } from "../src/host/notes-seen.js";
 
 const read = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 
@@ -80,7 +80,7 @@ test("a corrupt record reads as nothing delivered, and the next write repairs it
 // on Windows, and the gate needs a live page. Source-level guards, in the
 // spirit of test/panel-copy.test.mjs.
 test("the notes route answers which version it belongs to, and which was delivered", () => {
-  const source = read("lib/index.js");
+  const source = read("src/index.js");
   const start = source.indexOf('"GET /release-notes"');
   assert.notEqual(start, -1, "the /release-notes route is gone");
   const body = source.slice(start, source.indexOf("\n  },", start));

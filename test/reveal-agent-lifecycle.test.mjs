@@ -2,7 +2,7 @@
  * The reveal agent must not outlive the work it was warmed for.
  *
  * PowerShell is started once and kept warm because `Add-Type` costs about a
- * second per reveal (see lib/host/reveal-agent.js). That child is a daemon, and
+ * second per reveal (see src/host/reveal-agent.js). That child is a daemon, and
  * a daemon with piped stdio holds the event loop open: any process that merely
  * answered `GET /library` — which warms the agent — would sit there after its
  * last test, its last request, its last line of output.
@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const AGENT = pathToFileURL(join(HERE, "..", "lib", "host", "reveal-agent.js")).href;
+const AGENT = pathToFileURL(join(HERE, "..", "src", "host", "reveal-agent.js")).href;
 
 /** PowerShell only exists on Windows; the agent is never started elsewhere. */
 const windows = process.platform === "win32";

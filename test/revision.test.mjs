@@ -18,7 +18,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { expectedRevision, statusFor } from "../lib/index.js";
+import { expectedRevision, statusFor } from "../src/index.js";
 import { loadClientBundle, recordingFetch } from "./support/client-bundle.mjs";
 
 // ── host: what a request expects ────────────────────────────────────────────

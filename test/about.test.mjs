@@ -13,9 +13,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { LINK_TARGETS, openInBrowser, openLink } from "../lib/host/open-link.js";
-import { clearCaches } from "../lib/host/maintenance.js";
-import { REPO_URL } from "../lib/constants.js";
+import { LINK_TARGETS, openInBrowser, openLink } from "../src/host/open-link.js";
+import { clearCaches } from "../src/host/maintenance.js";
+import { REPO_URL } from "../src/constants.js";
 
 /** A data directory with the leftovers a clear is supposed to take. */
 function makeDataDir() {

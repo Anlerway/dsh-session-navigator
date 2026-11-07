@@ -230,7 +230,7 @@ export function idleState() {
 
 /** What `GET /release-notes` answers with: a title and the blocks the host
  *  parsed out of the document. The shapes here are the contract in
- *  lib/domain/notes.js — h / p / list / hr. */
+ *  src/domain/notes.js — h / p / list / hr. */
 export function releaseNotes() {
   return {
     title: "更新说明：V1.1.0",

@@ -15,8 +15,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createContentIndex } from "../lib/sources/content.js";
-import { createIndexBuilder, searchSessionContent } from "../lib/index.js";
+import { createContentIndex } from "../src/sources/content.js";
+import { createIndexBuilder, searchSessionContent } from "../src/index.js";
 
 /** A session as the reader reports it: only these three fields matter. */
 const session = (id, extra = {}) => ({

@@ -13,7 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isAnnotationId, patchAnnotation } from "../lib/domain/annotations.js";
+import { isAnnotationId, patchAnnotation } from "../src/domain/annotations.js";
 
 test("an id that is not a session id cannot become an annotation key", () => {
   for (const id of ["__proto__", "constructor", "prototype", "", "  ", "a b", "a/b"]) {

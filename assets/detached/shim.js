@@ -33,7 +33,7 @@
   /**
    * The languages this plugin draws in.
    *
-   * A copy of lib/lang.js LANGS: this file is a plain script in a document, so
+   * A copy of src/lang.js LANGS: this file is a plain script in a document, so
    * there is no module to import. test/lang-chain.test.mjs keeps the copies
    * honest.
    */
@@ -59,7 +59,7 @@
    * The window is a separate process with its own document, so it cannot see
    * DSH's language switch. The Host puts the answer in the URL when it loads the
    * page, and reloads the page with the other value when the panel's language
-   * changes (see `applyLang` in lib/detached/main.cjs) — a dictionary only ever
+   * changes (see `applyLang` in src/detached/main.cjs) — a dictionary only ever
    * changes by reloading, because the panel reads the language once per render.
    *
    * @type {string} one of LANGS
@@ -603,7 +603,7 @@
    * Paint the palette the panel last reported.
    *
    * The Host stores exactly the tokens the stylesheets consume, already filtered
-   * (lib/host/theme.js), so they are safe to write as custom properties. A
+   * (src/host/theme.js), so they are safe to write as custom properties. A
    * `null` snapshot means DSH has never shown the panel; the stylesheet's own
    * fallbacks are a legible dark palette, so this is an improvement, not a
    * requirement.

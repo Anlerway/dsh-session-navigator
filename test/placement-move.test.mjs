@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 
-import { projectKey, readArtifact } from "../lib/sources/artifact.js";
-import { ROUTES } from "../lib/index.js";
+import { projectKey, readArtifact } from "../src/sources/artifact.js";
+import { ROUTES } from "../src/index.js";
 
 const LOG = "session.v4.jsonl.zstd";
 const placement = ROUTES["POST /sessions/placement"];

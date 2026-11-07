@@ -14,9 +14,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES, announceWrite } from "../lib/index.js";
-import { createBridge, normalizeCommand, normalizeStatusRows, WINDOW_COMMANDS } from "../lib/host/bridge.js";
-import { createThemeStore } from "../lib/host/theme.js";
+import { ROUTES, announceWrite } from "../src/index.js";
+import { createBridge, normalizeCommand, normalizeStatusRows, WINDOW_COMMANDS } from "../src/host/bridge.js";
+import { createThemeStore } from "../src/host/theme.js";
 
 /** A bus that records what was published instead of keeping a ring buffer. */
 function recordingBridge() {

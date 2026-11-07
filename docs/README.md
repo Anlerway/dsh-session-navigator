@@ -19,15 +19,15 @@
 ## 三条最容易被违反的约定
 
 1. **不重构 `sessions/` 的物理布局。** 移动会话是唯一改文件的操作，走
-   `lib/host/move.js` 的三件事一个事务；"换个分组"用侧车覆盖（`sessionPlacement`），不动字节。
-2. **规则只有一份。** `lib/domain/tree-rules.js` 拥有全部树规则；`lib/client.js` 只读 host 算好的
+   `src/host/move.js` 的三件事一个事务；"换个分组"用侧车覆盖（`sessionPlacement`），不动字节。
+2. **规则只有一份。** `src/domain/tree-rules.js` 拥有全部树规则；`lib/client.js` 只读 host 算好的
    字段，不持有任何决策表。历史上三份规则漂移过一次，`test/tree-mirror.test.mjs` 就是为那次写的。
 3. **侧车只存 DSH 不知道的东西。** 标题、cwd、归档集、置顶集每次从 DSH 读；侧车删掉也不会丢会话。
 
 ## 源码地图
 
 ```
-lib/
+src/
   index.js            83 条路由的键、分发、错误映射、apply() 装配（668 行）
   routes/             路由表按域拆开：library / folders / layout / settings /
                       summaries / release / maintenance / sessions / tools /
@@ -38,7 +38,6 @@ lib/
   errors.js           错误码表：statusFor 查表、normalizeCode 兼容两种拼写
   validate.js         请求体校验：requireText / requireEnum / requireIdArray / …
   lang.js             界面语言的唯一清单 LANGS 与 normalizeLang
-  client.js           整个面板与设置页（单文件，由 33 个分片拼出来）
   http.js             信封与请求体解析
   constants.js        API 前缀、插件 id、固定节点 id
   capabilities.js     对宿主服务的防御式探测
@@ -54,7 +53,9 @@ lib/
                       reset（清除数据，唯一不可逆的操作）
   component/          Electron 组件：layout、state、downloader、install、manager
   detached/           Electron helper：launcher、main.cjs、preload.cjs
-lib/client-src/       面板源码的分片与 manifest.json（构建输入，不是产物）
+  client/             面板源码：33 个分片与 manifest.json（构建输入）
+lib/
+  client.js           面板与设置页的产物，由那 33 个分片拼成（gitignore，不入库）
 scripts/              零依赖闸门：build-client（拼接与 --check）、lint、check-docs、
                       check-prose、check-file-size、check-i18n
 assets/detached/      独立窗口的页面：index.html、window.css、shim.js（不自带 UI）
@@ -65,9 +66,9 @@ test/                 72 个测试文件 + render-smoke
 ```
 
 `client.js` 是**刻意的**单文件产物：DSH 只给一个 `window.__ModuleLoader__.load({ id, factory })` 入口，
-它必须自带全部代码。源在 `lib/client-src/` 的 33 个分片里，由 `scripts/build-client.mjs` 顺序拼接
+它必须自带全部代码。源在 `src/client/` 的 33 个分片里，由 `scripts/build-client.mjs` 顺序拼接
 （零依赖，没有打包器）。产物**不进仓库**：CI 跑测试前构建，`npm test` 走 `pretest`，`prepack`
 构建进 tarball；本地想确认磁盘上的产物是否还跟得上分片，用 `--check`。
 
-上表的 `lib/` 是**产物的位置**，不是唯一可改的地方：样式在 `assets/panel.css`、词典在
-`assets/i18n/<code>.json`，两者都在构建期内联进 `client.js`。
+`src/` 是源，`lib/` 只剩那一个产物；源还有两处在别的地方：样式在 `assets/panel.css`、词典在
+`assets/i18n/<code>.json`，都在构建期内联进 `client.js`。

@@ -16,7 +16,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { boundIds, descendantsOf, isBound, withDescendants } from "../lib/domain/subagents.js";
+import { boundIds, descendantsOf, isBound, withDescendants } from "../src/domain/subagents.js";
 
 const session = (id, extra = {}) => ({ id, isSubagent: false, parentSession: null, ...extra });
 const child = (id, parentSession, extra = {}) => session(id, { isSubagent: true, parentSession, ...extra });

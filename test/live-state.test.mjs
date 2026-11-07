@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { liveSessions } from "../lib/sources/live.js";
+import { liveSessions } from "../src/sources/live.js";
 
 /** A context whose only service is the one under test. */
 const contextWith = (services) => ({

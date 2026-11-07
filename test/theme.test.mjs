@@ -1,5 +1,5 @@
 /**
- * Tests for lib/host/theme.js — the live palette the detached window follows.
+ * Tests for src/host/theme.js — the live palette the detached window follows.
  *
  * Two properties matter. The store must hand back exactly the tokens the window
  * can use (no more), and every value must be safe to hand to
@@ -10,7 +10,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createThemeStore, isSafeTokenValue, THEME_TOKENS } from "../lib/host/theme.js";
+import { createThemeStore, isSafeTokenValue, THEME_TOKENS } from "../src/host/theme.js";
 
 test("a fresh store has no palette, so the window keeps its fallbacks", () => {
   const store = createThemeStore();

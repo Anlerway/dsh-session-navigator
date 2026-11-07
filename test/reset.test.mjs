@@ -16,9 +16,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { dataPaths } from "../lib/paths.js";
-import { openDocuments } from "../lib/store/documents.js";
-import { resetData, RESET_CONFIRMATION } from "../lib/host/reset.js";
+import { dataPaths } from "../src/paths.js";
+import { openDocuments } from "../src/store/documents.js";
+import { resetData, RESET_CONFIRMATION } from "../src/host/reset.js";
 
 /** A migrated install: five documents with content, a bin with a session in it,
  *  a quarantined parse failure, a tmp leftover, and the Electron component. */

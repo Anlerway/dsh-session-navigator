@@ -26,7 +26,7 @@ import {
   modalSizeOf,
   normalizeBounds,
   normalizeSettings,
-} from "../lib/domain/settings.js";
+} from "../src/domain/settings.js";
 
 test("defaults keep the panel plain: 浮窗, fixed medium, no scrim", () => {
   const settings = defaultSettings();

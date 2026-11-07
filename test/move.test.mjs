@@ -30,10 +30,10 @@ import {
   readArtifact,
   inheritedCutOf,
   isContiguousLog,
-} from "../lib/sources/artifact.js";
-import { moveSessions, reconcileMoves } from "../lib/host/move.js";
-import { recordMove, journalPath } from "../lib/host/move-journal.js";
-import { dataPaths } from "../lib/paths.js";
+} from "../src/sources/artifact.js";
+import { moveSessions, reconcileMoves } from "../src/host/move.js";
+import { recordMove, journalPath } from "../src/host/move-journal.js";
+import { dataPaths } from "../src/paths.js";
 
 const LOG = "session.v4.jsonl.zstd";
 

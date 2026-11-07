@@ -12,7 +12,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createSessionSync } from "../lib/host/session-sync.js";
+import { createSessionSync } from "../src/host/session-sync.js";
 
 /** A context that records listeners so a test can emit at them by name. */
 function fakeContext() {

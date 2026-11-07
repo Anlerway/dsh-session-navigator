@@ -8,14 +8,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-// 语言清单只有一处权威：lib/lang.js。这里 import 而不是抄一份 —— 抄一份的话，
+// 语言清单只有一处权威：src/lang.js。这里 import 而不是抄一份 —— 抄一份的话，
 // 加一门语言时最容易漏的就是门禁自己，门禁从此只检查旧的七门。
-import { LANGS } from "../lib/lang.js";
+import { LANGS } from "../src/lang.js";
 
 const DIR = "assets/i18n";
 // 十门语言都有两节：zh 的 panel 值是键本身（中文原文即译文），结构上与别的语言没有区别。
-// 服务端写摘要的提示模板只有中文与英文两套（lib/host/summarize.js 与
-// lib/domain/summaries.js 都是 lang === "en" 的两分支），所以凡是中文词典 ——
+// 服务端写摘要的提示模板只有中文与英文两套（src/host/summarize.js 与
+// src/domain/summaries.js 都是 lang === "en" 的两分支），所以凡是中文词典 ——
 // 简体与繁体 —— 都让 AI 讲中文，其余语言一律 "en"。
 const AI_ZH = new Set(["zh", "zh-hant"]);
 
@@ -39,7 +39,7 @@ if (!fs.existsSync(DIR)) {
 const onDisk = fs.readdirSync(DIR).filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -5)).sort();
 const unexpected = onDisk.filter((code) => !LANGS.includes(code));
 const missing = LANGS.filter((code) => !onDisk.includes(code));
-for (const code of unexpected) fail(code, "unexpected-file", code + ".json is not one of the languages lib/lang.js lists");
+for (const code of unexpected) fail(code, "unexpected-file", code + ".json is not one of the languages src/lang.js lists");
 for (const code of missing) fail(code, "missing-file", code + ".json is missing");
 
 const dicts = new Map();

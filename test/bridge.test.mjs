@@ -1,5 +1,5 @@
 /**
- * Tests for lib/host/bridge.js — the panel ↔ detached-window command bus.
+ * Tests for src/host/bridge.js — the panel ↔ detached-window command bus.
  *
  * The bridge is small enough that its value is entirely in its edge cases: a
  * consumer that missed commands, a command that went stale, a listener that
@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createBridge, normalizeCommand, WINDOW_COMMANDS } from "../lib/host/bridge.js";
+import { createBridge, normalizeCommand, WINDOW_COMMANDS } from "../src/host/bridge.js";
 
 test("publish assigns increasing sequence numbers and hands the command to listeners", () => {
   const bridge = createBridge();

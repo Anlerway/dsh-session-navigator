@@ -3,8 +3,8 @@
  *
  *   node --test test/notes.test.mjs
  *
- * Two halves worth testing separately. The parser (lib/domain/notes.js) turns a
- * changelog into blocks, and the search (lib/host/changelog.js) decides which of
+ * Two halves worth testing separately. The parser (src/domain/notes.js) turns a
+ * changelog into blocks, and the search (src/host/changelog.js) decides which of
  * the two candidate files the notes are — a checkout has 更新说明.md above the
  * package, an installed copy has only the CHANGELOG.md it shipped.
  *
@@ -20,8 +20,8 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NOTES_MAX_BYTES, notesRuns, parseNotes } from "../lib/domain/notes.js";
-import { NOTE_FILES, readNotes } from "../lib/host/changelog.js";
+import { NOTES_MAX_BYTES, notesRuns, parseNotes } from "../src/domain/notes.js";
+import { NOTE_FILES, readNotes } from "../src/host/changelog.js";
 
 const kinds = (blocks) => blocks.map((block) => block.kind + (block.kind === "list" ? block.items.length : "")).join(",");
 

@@ -22,9 +22,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ROUTES } from "../lib/index.js";
-import { createBridge } from "../lib/host/bridge.js";
-import { createStatusBoard } from "../lib/host/status-board.js";
+import { ROUTES } from "../src/index.js";
+import { createBridge } from "../src/host/bridge.js";
+import { createStatusBoard } from "../src/host/status-board.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 /** A host slice with a controllable clock, so "30 seconds later" is free. */

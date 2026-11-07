@@ -13,7 +13,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
-const SKIP_DIRS = new Set(["node_modules", "archive", ".git", "lib/client-src"]);
+const SKIP_DIRS = new Set(["node_modules", "archive", ".git", "src/client"]);
 
 const RULES = [
   {

@@ -1,5 +1,5 @@
 /**
- * Tests for lib/domain/export.js — turning a session log into Markdown/JSONL.
+ * Tests for src/domain/export.js — turning a session log into Markdown/JSONL.
  *
  * Every fixture here is shaped the way a real v4 log is shaped, because that is
  * the bug these tests exist to prevent: the first version of this file invented
@@ -17,7 +17,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { blocksOf, collectTurns, exportFileName, maskedSeqs, toJsonl, toMarkdown, turnsOf } from "../lib/domain/export.js";
+import { blocksOf, collectTurns, exportFileName, maskedSeqs, toJsonl, toMarkdown, turnsOf } from "../src/domain/export.js";
 
 const T0 = 1_760_000_000_000;
 

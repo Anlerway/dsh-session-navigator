@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { sessionStateOf } from "../lib/domain/session-state.js";
+import { sessionStateOf } from "../src/domain/session-state.js";
 
 // The sidecar stores shortcuts as a plain map, keyed by node id.
 const shortcuts = (entries) => entries;

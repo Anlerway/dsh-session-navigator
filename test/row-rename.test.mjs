@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decorateTree } from "../lib/domain/tree-rules.js";
+import { decorateTree } from "../src/domain/tree-rules.js";
 
 // ── a stub React with real useState ────────────────────────────────────────
 const cells = new Map();

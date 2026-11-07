@@ -1,5 +1,5 @@
 /**
- * Tests for lib/domain/shortcuts.js and lib/host/theme.js.
+ * Tests for src/domain/shortcuts.js and src/host/theme.js.
  *
  * Both modules exist to keep one promise: a shortcut never moves its target,
  * and a theme token can never be a style-injection vector.
@@ -7,9 +7,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createShortcut, deleteShortcut, dropShortcutsTo, isShortcutContainer, isShortcutNodeId, normalizeShortcut } from "../lib/domain/shortcuts.js";
-import { moveNode } from "../lib/domain/folders.js";
-import { FIXED_NODES } from "../lib/constants.js";
+import { createShortcut, deleteShortcut, dropShortcutsTo, isShortcutContainer, isShortcutNodeId, normalizeShortcut } from "../src/domain/shortcuts.js";
+import { moveNode } from "../src/domain/folders.js";
+import { FIXED_NODES } from "../src/constants.js";
 
 const ids = () => {
   let n = 0;

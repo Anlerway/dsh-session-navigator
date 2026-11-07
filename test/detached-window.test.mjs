@@ -16,7 +16,7 @@ const read = (path) => readFileSync(here(path), "utf8");
 
 const SHIM = read("assets/detached/shim.js");
 const PAGE = read("assets/detached/index.html");
-const HOST = read("lib/index.js");
+const HOST = read("src/index.js");
 
 const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -533,7 +533,7 @@ test("the Host answers the panel's language with a window in it", () => {
 });
 
 test("the controller passes the language to the helper, and to a window already open", () => {
-  const launcher = read("lib/detached/launcher.js");
+  const launcher = read("src/detached/launcher.js");
   assert.match(launcher, /DSH_SE_LANG: lang/, "the helper learns it from the environment");
   assert.match(launcher, /async open\(request = \{\}\)/, "open carries the request");
   // A window that is already on screen keeps the dictionary it loaded: the only
@@ -542,7 +542,7 @@ test("the controller passes the language to the helper, and to a window already 
 });
 
 test("the helper puts the language in the page's URL, and reloads on a switch", () => {
-  const main = read("lib/detached/main.cjs");
+  const main = read("src/detached/main.cjs");
   assert.match(main, /normalizeLang\(process\.env\.DSH_SE_LANG\) \|\| "zh"/, "the helper starts in the language it was spawned with");
   assert.match(main, new RegExp("\\?lang=\\$\\{pageLang\\}"), "and tells the page");
   assert.match(main, /message\.type === "lang"/, "a later switch arrives as a control message");
@@ -565,7 +565,7 @@ test("the panel tells the Host which language it is drawing in", () => {
 // be written to, so the app is this plugin's and travels as an argument.
 
 test("a borrowed runtime is started with this plugin's app path, an owned one without", () => {
-  const launcher = read("lib/detached/launcher.js");
+  const launcher = read("src/detached/launcher.js");
   // The app is refreshed in our own directory for a borrow …
   assert.match(launcher, /if \(runtime\.appDir\) await writeHelperApp\(runtime\.appDir\);/, "a borrow writes the app outside the borrowed tree");
   // … and inside the runtime for an install we own.
@@ -584,13 +584,13 @@ test("a borrowed runtime is started with this plugin's app path, an owned one wi
 });
 
 test("the Host hands the launcher the borrowed app directory and the borrow record", async () => {
-  const host = read("lib/index.js");
+  const host = read("src/index.js");
   assert.match(host, /appDir: status\.borrowed \? component\.paths\.helperApp : null/, "the runtime thunk names the app directory");
   assert.match(host, /"GET \/component\/scan": async \(api\) => api\.component\.scan\(\{ home: dshHome\(\) \}\)/, "the scan route reads DSH's home on the Host, never in the page");
   // The status used to be a `case` in the Host's switch; the mapping is a table
-  // in lib/errors.js now, so the fact is asked of the function that reads it
+  // in src/errors.js now, so the fact is asked of the function that reads it
   // instead of grepping the shape the table no longer has.
-  const { statusFor } = await import("../lib/index.js");
+  const { statusFor } = await import("../src/index.js");
   assert.equal(statusFor("component-borrow-invalid"), 400, "a refused borrow is a bad request, not a server error");
 });
 
@@ -599,7 +599,7 @@ test("the scan route resolves DSH's home itself, instead of asking the page for 
   // services, never a home path. Reading one there threw "api.dshHome is not a
   // function" the moment the page asked to scan, so the home is resolved on the
   // Host — the same rule every other route follows.
-  const { ROUTES } = await import("../lib/index.js");
+  const { ROUTES } = await import("../src/index.js");
   const handler = ROUTES["GET /component/scan"];
   assert.equal(typeof handler, "function", "the route is registered");
 

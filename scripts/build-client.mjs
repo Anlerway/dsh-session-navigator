@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Rebuild lib/client.js from the fragments in lib/client-src/.
+ * Rebuild lib/client.js from the fragments in src/client/.
  *
  * The client half is one factory the module loader hands to us, so there is no
  * module system to split it into: the fragments are plain byte ranges of the one
  * file, and this script is the only thing that ever writes lib/client.js. It
- * concatenates the fragments named in lib/client-src/manifest.json, in order,
+ * concatenates the fragments named in src/client/manifest.json, in order,
  * prepends the one-line marker below, and performs exactly one transform: a
  * `@inline` marker is replaced by the text of the asset file it names. There is
  * no wrapper and no import, so what a reviewer reads in the fragments is what
@@ -24,13 +24,13 @@
  * without knowing which fragment moved.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ASSET_DIR = join(ROOT, "assets");
-const SRC_DIR = join(ROOT, "lib", "client-src");
+const SRC_DIR = join(ROOT, "src", "client");
 const MANIFEST = join(SRC_DIR, "manifest.json");
 const OUTPUT = join(ROOT, "lib", "client.js");
 
@@ -38,7 +38,7 @@ const OUTPUT = join(ROOT, "lib", "client.js");
  * The first line of every build. One line, so it survives being pasted into an
  * issue and so `git diff` on a real edit still starts at the edit.
  */
-const HEADER = "// GENERATED FILE — edit lib/client-src/ then run `node scripts/build-client.mjs`. Do not edit by hand.\n";
+const HEADER = "// GENERATED FILE — edit src/client/ then run `node scripts/build-client.mjs`. Do not edit by hand.\n";
 
 /** `/* @inline <path> *\/ ""` or `/* @inline <dir>/*.json *\/ {}`. */
 const INLINE_RE = /\/\* @inline ([A-Za-z0-9_./*-]+) \*\/ (""|\{\})/g;
@@ -49,7 +49,7 @@ const FRAGMENT_WARN_LINES = 2000;
 const USAGE = [
   "usage: node scripts/build-client.mjs [--check | --list]",
   "",
-  "  (no flag)  concatenate lib/client-src/ into lib/client.js",
+  "  (no flag)  concatenate src/client/ into lib/client.js",
   "  --check    rebuild in memory and compare with the file on disk; exit 1 on drift",
   "  --list     print the fragment table (order, lines, bytes) and exit",
 ].join("\n");
@@ -69,10 +69,10 @@ function readManifest() {
   try {
     entries = JSON.parse(raw);
   } catch (cause) {
-    throw new Error("lib/client-src/manifest.json is not valid JSON: " + cause.message);
+    throw new Error("src/client/manifest.json is not valid JSON: " + cause.message);
   }
   if (!Array.isArray(entries) || entries.length === 0) {
-    throw new Error("lib/client-src/manifest.json must be a non-empty array");
+    throw new Error("src/client/manifest.json must be a non-empty array");
   }
   const seen = new Set();
   for (const entry of entries) {
@@ -90,7 +90,7 @@ function readManifest() {
     .filter((name) => name.endsWith(".js") && !seen.has(name))
     .sort();
   if (stray.length > 0) {
-    throw new Error("lib/client-src/ has fragments the manifest does not list: " + stray.join(", "));
+    throw new Error("src/client/ has fragments the manifest does not list: " + stray.join(", "));
   }
   return entries;
 }
@@ -153,7 +153,7 @@ function build() {
  * file name, so ten languages cost one marker instead of ten.
  *
  * Only `assets/` is readable here. A build script that can inline any path turns
- * a review of lib/client-src/ into a review of the machine.
+ * a review of src/client/ into a review of the machine.
  *
  * @param {string} text the concatenated fragments
  * @returns {string} the same text with every marker replaced
@@ -392,7 +392,7 @@ function main(argv) {
       return 1;
     }
     if (onDisk.equals(built.output)) {
-      console.log("lib/client.js matches lib/client-src: " + summarize(built));
+      console.log("lib/client.js matches src/client: " + summarize(built));
       for (const part of tooBig) console.warn("  ! " + part.file + " is over " + FRAGMENT_WARN_LINES + " lines");
       return 0;
     }
@@ -416,6 +416,9 @@ function main(argv) {
     console.log("lib/client.js unchanged: " + summarize(built));
     return 0;
   }
+  // lib/ holds nothing but this artifact, so a fresh checkout has no such
+  // directory; the build creates it rather than making the caller do it.
+  mkdirSync(dirname(OUTPUT), { recursive: true });
   writeFileSync(OUTPUT, built.output);
   console.log("wrote lib/client.js: " + summarize(built));
   for (const part of tooBig) console.warn("  ! " + part.file + " is over " + FRAGMENT_WARN_LINES + " lines");

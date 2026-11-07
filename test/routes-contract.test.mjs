@@ -6,7 +6,7 @@
  *
  * Three things used to drift apart in three places: the code a helper threw, the
  * status the dispatcher answered with, and the sentence the panel showed. The
- * first two now come from one table (lib/errors.js), and this file pins what
+ * first two now come from one table (src/errors.js), and this file pins what
  * that table owes its callers:
  *
  *   1. every row is complete, and its status is the one the old 52-case switch
@@ -15,13 +15,13 @@
  *      layer, "session-not-found" from this plugin's helpers) answer the same
  *      status, because a table that knew only one of them is what turned a 404
  *      into a 500;
- *   3. every code raised anywhere under lib/ has a row, so no raise site can
+ *   3. every code raised anywhere under src/ has a row, so no raise site can
  *      answer a bare 500 for a failure a client already knows how to handle;
- *   4. every route answers in the envelope lib/http.js builds, whatever body it
+ *   4. every route answers in the envelope src/http.js builds, whatever body it
  *      is handed — a write route that turns a body it cannot use into a server
  *      fault is the exact bug this file exists to catch.
  *
- * The sweep drives the real dispatcher (lib/index.js, handle()) with a probe
+ * The sweep drives the real dispatcher (src/index.js, handle()) with a probe
  * PluginApi on a throwaway data directory. Calling the route handler directly
  * would test the table against itself: the code-to-status mapping only runs in
  * handle()'s catch, which is where the 404-became-500 incident happened.
@@ -34,22 +34,22 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ERROR_CODES, messageFor, normalizeCode, statusFor } from "../lib/errors.js";
-import { ROUTES, handle, statusFor as statusForFromIndex } from "../lib/index.js";
-import { API_PREFIX } from "../lib/constants.js";
-import { fail, ok, send } from "../lib/http.js";
-import { dataPaths } from "../lib/paths.js";
-import { codedError } from "../lib/store/sidecar.js";
+import { ERROR_CODES, messageFor, normalizeCode, statusFor } from "../src/errors.js";
+import { ROUTES, handle, statusFor as statusForFromIndex } from "../src/index.js";
+import { API_PREFIX } from "../src/constants.js";
+import { fail, ok, send } from "../src/http.js";
+import { dataPaths } from "../src/paths.js";
+import { codedError } from "../src/store/sidecar.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIB = join(HERE, "..", "lib");
+const LIB = join(HERE, "..", "src");
 
 /** The whole file shares one data directory, and it is never the real one. */
 const DATA_DIR = mkdtempSync(join(tmpdir(), "se-contract-"));
 mkdirSync(join(DATA_DIR, ".tmp"), { recursive: true });
 
 /**
- * The status the old 52-case switch in lib/index.js answered, code by code.
+ * The status the old 52-case switch in src/index.js answered, code by code.
  *
  * Copied here on purpose rather than derived from the table: this is the
  * contract clients were already written against, so the table has to reproduce
@@ -142,11 +142,11 @@ function makeDocument(initial) {
 }
 
 /**
- * What lib/sources/reader.js answers with, emptied out.
+ * What src/sources/reader.js answers with, emptied out.
  *
  * The shape matters more than the emptiness: sessions is the live list (what
- * lib/index.js reads), view is the untrashed-plus-trashed view (what
- * lib/host/trash.js reads), and a stub missing either half is how a probe ends
+ * src/index.js reads), view is the untrashed-plus-trashed view (what
+ * src/host/trash.js reads), and a stub missing either half is how a probe ends
  * up "proving" a route is broken when the route is fine.
  */
 function emptySnapshot() {
@@ -171,7 +171,7 @@ function emptySnapshot() {
  * real counterpart answers with, so a route that reads .rows or .view off the
  * result is not tripped by the probe.
  *
- * dshHome goes through the same seam the host layer uses (lib/host/fsutil.js,
+ * dshHome goes through the same seam the host layer uses (src/host/fsutil.js,
  * dshHomeOf), so nothing here reads the developer's own DSH home.
  */
 function probeApi() {
@@ -223,7 +223,7 @@ function probeApi() {
     },
     theme: { snapshot: () => ({}), record: async () => ({}) },
     bridge: {
-      // A property, not a method: lib/index.js reads api.bridge.cursor bare in
+      // A property, not a method: src/index.js reads api.bridge.cursor bare in
       // three places, and a function here would be serialised into the answer.
       cursor: 0,
       publish: () => {},
@@ -238,7 +238,7 @@ function probeApi() {
 }
 
 /**
- * The response object lib/http.js writes into.
+ * The response object src/http.js writes into.
  *
  * Only the members the dispatcher and the routes actually touch, and end()
  * records the payload the way ServerResponse would.
@@ -285,7 +285,7 @@ function fakeRes() {
 }
 
 /**
- * A request that lib/http.js (readJsonBody) can walk.
+ * A request that src/http.js (readJsonBody) can walk.
  *
  * body: null is an empty request: the iterator yields nothing, which is the
  * shape the GUI sends for a command with no arguments.
@@ -324,7 +324,7 @@ async function callRoute(routeKey, options = {}) {
 }
 
 /**
- * Assert one answer is the envelope lib/http.js defines, and that its status is
+ * Assert one answer is the envelope src/http.js defines, and that its status is
  * the one the table gives its own code.
  *
  * The second half is the whole point of the table: an answer whose status and
@@ -362,7 +362,7 @@ function jsFiles(dir) {
 }
 
 test("the table is complete, and index.js exports the table's own statusFor", () => {
-  assert.equal(statusForFromIndex, statusFor, "lib/index.js must re-export the statusFor it imported, not wrap it");
+  assert.equal(statusForFromIndex, statusFor, "src/index.js must re-export the statusFor it imported, not wrap it");
   const codes = Object.keys(ERROR_CODES);
   assert.ok(codes.length >= 52, "the table has " + codes.length + " rows; the old switch named 52 codes, so rows went missing");
   for (const code of codes) {
@@ -430,7 +430,7 @@ test("messageFor speaks the language it was asked for, and falls back to the rea
 
 test("every code a helper raises has a row", () => {
   const files = jsFiles(LIB);
-  assert.ok(files.length >= 50, "the scan found " + files.length + " files; it is probably not reading lib/");
+  assert.ok(files.length >= 50, "the scan found " + files.length + " files; it is probably not reading src/");
   /** @type {Map<string, string>} */
   const raised = new Map();
   for (const file of files) {
@@ -443,7 +443,7 @@ test("every code a helper raises has a row", () => {
   }
   assert.ok(raised.size >= 40, "the scan found " + raised.size + " codes; it is probably not matching anything");
   for (const [code, file] of raised) {
-    assert.ok(ERROR_CODES[code], file.slice(LIB.length + 1) + " raises " + code + ", which has no row in lib/errors.js");
+    assert.ok(ERROR_CODES[code], file.slice(LIB.length + 1) + " raises " + code + ", which has no row in src/errors.js");
   }
 });
 

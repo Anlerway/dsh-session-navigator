@@ -1,6 +1,6 @@
 # HTTP API
 
-所有端点都挂在 `/session-navigator/api` 前缀下，由 `lib/index.js` 的 `ROUTES` 表定义、
+所有端点都挂在 `/session-navigator/api` 前缀下，由 `src/index.js` 的 `ROUTES` 表定义、
 `handle()` 分发。共 **83 条**。
 
 ## 1. 信封
@@ -14,7 +14,7 @@
 
 - 只有 `code` 是契约，`error` 的文案随时可以改。
 - 响应头固定 `Cache-Control: no-store`。
-- 请求体上限 8 MiB，非 JSON 或超限都是 `bad-request`（`lib/http.js`）。
+- 请求体上限 8 MiB，非 JSON 或超限都是 `bad-request`（`src/http.js`）。
 - 空 body 解析成 `{}`。
 
 **九条路由不写信封**，它们自己接管响应：`GET /bridge/events`（SSE）、`GET /export`（文件），
@@ -36,7 +36,7 @@
 bad-request`：一个写错的头不该变成"最后写入者赢"。
 
 两者都不给 = 最后写入者赢（单窗口用户的预期）。给了但落后 = `409 revision-conflict`，
-客户端应重新拉取后重试。实现见 `lib/index.js` 的 `expectedRevision()`（读期望值）与 `lib/store/sidecar.js`（比对）。
+客户端应重新拉取后重试。实现见 `src/index.js` 的 `expectedRevision()`（读期望值）与 `src/store/sidecar.js`（比对）。
 
 ### 迁移守卫
 
@@ -58,7 +58,7 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 
 ## 3. 错误码 → HTTP 状态
 
-`lib/index.js` 的 `statusFor()`。DSH 原生的命名空间码原样透出，不翻译。
+`src/index.js` 的 `statusFor()`。DSH 原生的命名空间码原样透出，不翻译。
 
 | code | 状态 | 含义 |
 |---|---|---|
@@ -102,7 +102,7 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 ### 3.1 写请求的同源约束
 
 路由挂在 DSH 自己的端口上，没有 token，所以浏览器里任何一个页面都能往这里 POST——
-响应它读不到，但 `POST /trash/empty` 已经生效了。`lib/index.js` 的 `assertSameOrigin()`
+响应它读不到，但 `POST /trash/empty` 已经生效了。`src/index.js` 的 `assertSameOrigin()`
 用两个浏览器自己加、脚本伪造不了的信号堵住这条路（只对 `GET`/`HEAD` 以外的请求生效）：
 
 - `Sec-Fetch-Site: cross-site` → `403 cross-site`；
@@ -122,7 +122,7 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 ### 3.2 子智能体的绑定
 
 子智能体是父会话一次委派的产物，DSH 仍然把它写成完整的会话目录，但它不是用户可以
-单独处置的会话。规则集中在 `lib/domain/subagents.js`，路由侧只有一个入口，即 `lib/index.js` 的 `assertStandalone(api, ids)`：
+单独处置的会话。规则集中在 `src/domain/subagents.js`，路由侧只有一个入口，即 `src/index.js` 的 `assertStandalone(api, ids)`：
 
 | 操作 | 子智能体 | 为什么 |
 |---|---|---|
@@ -157,12 +157,12 @@ curl -X POST -H 'content-type: application/json' -d '{"ids":["s1"]}' \
 | `GET /theme` | — | `null` 或 `{ mode, tokens, at }` |
 | `POST /theme` | `{ mode?, tokens? }` | 同 `GET /theme`（调色板真的变了才广播 `theme-changed`） |
 
-`GET /bootstrap` 是面板唯一的一次往返（`lib/index.js` 的 `ROUTES` 里同名 handler），字段：
+`GET /bootstrap` 是面板唯一的一次往返（`src/index.js` 的 `ROUTES` 里同名 handler），字段：
 
 ```jsonc
 {
   "hello":       { "plugin": "dsh-session-navigator", "schema": 1 },
-  "capabilities":{ /* 见 lib/capabilities.js */ },
+  "capabilities":{ /* 见 src/capabilities.js */ },
   "workspaces":  { "workspaces": [ { id, title, path, sessionIds, createdAt, updatedAt } ] },
   "sessions":    [ /* 合并视图 + home + homeOverride */ ],
   "trashed":     [ /* 回收站条目，按删除时间倒序 */ ],
@@ -186,7 +186,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 这与 `workspaceId` 不是一回事——后者只出现在工作区节点上，意思是「这个节点就是那个工作区」。
 文件夹节点从不存 `workspaceId`，客户端要判断「在这个位置新建的会话该归谁」时读 `homeWorkspaceId`。
 
-这个字段由插件从日志里读出（`lib/sources/logfacts.js`），DSH 不提供：
+这个字段由插件从日志里读出（`src/sources/logfacts.js`），DSH 不提供：
 
 | 字段 | 含义 | 从哪来 |
 |---|---|---|
@@ -228,7 +228,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 
 `favorite` / `todo` **不在**这条路由的 body 里：收藏和待办是树上的快捷方式（`f-favorites` / `f-todos`
 两个固定节点的子项），注解文档只放标签与备注。传这两个键回 `400 bad-request`，消息指向 `POST /shortcuts`；
-旧版本写进注解文档的标志由 `migrateFlagsToShortcuts` 一次性搬成快捷方式（`lib/host/flags.js`）。
+旧版本写进注解文档的标志由 `migrateFlagsToShortcuts` 一次性搬成快捷方式（`src/host/flags.js`）。
 所以响应里的 `favorites` / `todos` 读的是树（`shortcutSessionTargets`），不是注解文档；两份都是**成员表**，
 同一个会话被两条快捷方式指到也只出现一次。
 未知会话 id 回 `404 session-not-found`，不写孤儿条目。
@@ -239,8 +239,8 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 `patchAnnotation` 里各挡一次。
 
 `GET /session-state/:id` 是给 DSH 自己的会话标题栏和行菜单用的：它们没有 bootstrap 快照，
-只想知道三个布尔，其中 `favorite` / `todo` 同样按树上的快捷方式判（`lib/domain/session-state.js`）。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
-任一为真即"不在"（`lib/domain/session-state.js`）。
+只想知道三个布尔，其中 `favorite` / `todo` 同样按树上的快捷方式判（`src/domain/session-state.js`）。`trashed` 有两个来源（本插件的回收站索引，或 DSH 报告的 `trashed`），
+任一为真即"不在"（`src/domain/session-state.js`）。
 
 ### 4.4 树：文件夹、快捷方式、置顶、快速访问、放置
 
@@ -264,7 +264,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 - `POST /shortcuts` 的 `kind ∈ {folder, workspace, session}`，永远是**引用**，绝不移动目标。
 - `POST /folders` 撞名不报错：同一父节点下已有同名（`trim` + 小写比较）时自动编号成 `名称（1）`、
   `名称（2）`……，响应里的 `folder.name` 才是最终名字，客户端提示要用它。改名（`PATCH`）与移动仍然拒绝重名。
-- `POST /nodes/:id/move` 先过 `canMove()`（`lib/domain/tree.js`），不合法直接带规则码抛错。
+- `POST /nodes/:id/move` 先过 `canMove()`（`src/domain/tree.js`），不合法直接带规则码抛错。
 - `POST /nodes/:id/reorder` 写同级里的名次（`order`），文件夹、快捷方式与 workspace 都吃这一条；
   workspace 的名次落在 `workspaceOrder[workspaceId]`（裸 id，树推导读的就是这个键），也就是左栏 目录 的顺序；
   写成 `workspaceOrder["w-<id>"]` 的名字不会被读到，所以写入时顺手清掉。不是数字时 `400 order must be a number`；
@@ -272,7 +272,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 - `POST /sessions/placement` 默认只写侧车的 `sessionPlacement`，**不动文件**：DSH 从 header 的
   `cwd` 推导会话归属，改它意味着搬 payload。`parent` 省略 = 清除覆盖。
   能接受会话的容器是「未分组」、任何工作区，以及**工作区里的普通文件夹**（`acceptsSessions()`，
-  `lib/domain/tree-rules.js`）——最后一种就是工作区内的再分类。工作区外的文件夹仍然拒绝。
+  `src/domain/tree-rules.js`）——最后一种就是工作区内的再分类。工作区外的文件夹仍然拒绝。
 - 落到**工作区内的文件夹**上，语义分两种：
   - 会话已经属于那个工作区：纯虚拟摆放（同上），一个树写入就够。
   - 会话属于别的工作区：请求必须带 `move: true`。此时 host 先按 `/move` 的事务把 payload 搬进
@@ -287,7 +287,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 - `POST /sessions/placement/pending` 是**意图**，不是写入：它只说「下一步会在 `parent` 这个
   文件夹里新建一个会话」，并附上此刻已经存在的会话 id 作为基线（响应里的 `since` 是主机时钟）。
   DSH 的 `uiWorkspace.startSession(workspaceId)` 只认工作区、且会话 id 由它自己决定，所以文件夹
-  内的落位只能**等会话出现之后**补一条 placement（`lib/host/pending-drafts.js`）。命中条件是：
+  内的落位只能**等会话出现之后**补一条 placement（`src/host/pending-drafts.js`）。命中条件是：
   同一个工作区里、基线里没有、`createdAt` 不早于 `since` 减 3 秒（两条请求走的是不同的线，草稿
   可能快一点）、不是子智能体 / 回收站 / 已归档、且没有已经写好的 placement。一个文件夹同时只留
   一条意图（再点一次就是覆盖），120 秒后作废——点一下却没建会话的用户，不该让十分钟后他
@@ -324,7 +324,7 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 | `POST /trash/empty` | — | `{ purged }` |
 | `GET /export` | `?sessionId&format=md\|jsonl&download=1` | 文件本体 |
 
-前六个都是**DSH 自己的概念**，走 DSH 的服务（`lib/host/actions.js`），插件不落盘：
+前六个都是**DSH 自己的概念**，走 DSH 的服务（`src/host/actions.js`），插件不落盘：
 
 - 改名追加一条用户署名的 `session/title` 事件并压制自动标题生成；随后显式 flush 投影缓存，
   否则新标题最多要等 5 秒（缓存默认 200 事件 / 5 秒节流）。
@@ -333,11 +333,11 @@ DSH 自己的归属。两者都由 host 算好，客户端不重放规则。
 - 派生失败的子代理会话返回 `subagent-unsupported`。
 - 所有"单独改存储"的路由（`PATCH /annotations/:id`、`POST /move`、`POST /sessions/placement`，
   以及改名 / 归档 / 置顶这一组会话动作）先过 `assertStandalone`：ids 里只要有一个子智能体就整单拒绝
-  `subagent-unsupported`，不做"跳过后继续"。规则在 `lib/domain/subagents.js`，理由在 §3.2。
+  `subagent-unsupported`，不做"跳过后继续"。规则在 `src/domain/subagents.js`，理由在 §3.2。
 - `/trash`、`/restore`、`/purge` **不过** `assertStandalone`：删除是子智能体唯一能单独做的写操作
   （见 §3.2）。它们仍然用 `withDescendants` 把父会话的整条委派链一起带走，所以删父会话会连带
   删掉子会话，删子会话只影响它自己和它自己的下级。
-`POST /move`（`lib/host/move.js`）是唯一会**改会话文件**的操作：重写 header 的 `cwd` + 搬目录
+`POST /move`（`src/host/move.js`）是唯一会**改会话文件**的操作：重写 header 的 `cwd` + 搬目录
 + 换 registry 登记，三件事一个事务；只有其中一件成功会导致下次启动找不到会话。
 `copy: true` 写第二份独立会话（新 id），不移动原会话。有会话在跑时拒绝（`session-active`）——
 DSH 还握着旧路径的写句柄，从底下挪走会损坏尾部。
@@ -351,7 +351,7 @@ DSH 还握着旧路径的写句柄，从底下挪走会损坏尾部。
 `originalLogPath`）。两处都查不到就 `session-not-found`，不做猜测。它和 `POST /reveal-path` 分开，
 是因为后者的白名单只认目录。
 
-Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
+Windows 上还多两件事，都是踩过的坑（`src/host/actions.js`）：
 
 - **分隔符**：`C:/x/y` 交给资源管理器的 `Explore` 找不到窗口，交给 `explorer.exe` 会打开"文档"。
   所以只在实际调系统时把 `/` 换成 `\`（`nativePath`），返回值仍是调用方给的原样路径。
@@ -364,14 +364,14 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
   而命令行交接走 DDE，DSH 进程是提权的（`WindowsPrincipal.IsInRole(Administrator)` 为真）驱动不了
   非提权的资源管理器，于是它退回去打开"文档"。原生 API 把这两个坑一起绕开。
 
-**三级顺序**（`lib/host/actions.js` 的 `revealOnWindows`，前一级成功就不再往下走）：
+**三级顺序**（`src/host/actions.js` 的 `revealOnWindows`，前一级成功就不再往下走）：
 
-1. **shell API**（首选，`lib/host/native-reveal.js`）：`SHOpenFolderAndSelectItems`（shell32）。这就是
+1. **shell API**（首选，`src/host/native-reveal.js`）：`SHOpenFolderAndSelectItems`（shell32）。这就是
    资源管理器"在文件夹中显示"和 Electron `shell.showItemInFolder` 用的那个调用——由 shell 自己开窗
    并置前，实测 42–57 ms（进程内第一次 155 ms），不产生任何外部进程。Node 没有内置 FFI，所以经
    `koffi`（Node-API 预编译绑定，不需要编译器）调用；绑定缺失、平台不是 Windows、或调用失败时
    该模块返回 `null`/`{ok:false}`，自动落到下一级——**缺绑定只损失速度，不损失功能**。
-2. **常驻 PowerShell**（`lib/host/reveal-agent.js`）：`Shell.Application.Explore` + 前台验证，冷启动
+2. **常驻 PowerShell**（`src/host/reveal-agent.js`）：`Shell.Application.Explore` + 前台验证，冷启动
    约 1.8 s，之后每次 130–180 ms。只有在第 1 级不可用时才会在面板打开时预热。
 3. **DSH `openWorkspacePath`**：最后兜底。反过来做过（先 DSH），结果是**没有桌面宿主的构建里它会正常
    resolve 而什么也不做**——面板提示"已打开"，桌面上却没有窗口。DSH 的返回值不能证明窗口出现过。
@@ -387,7 +387,7 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 
 `POST /trash` 的 `ids` 必须是非空数组，否则 `400 ids must be a non-empty array`：「删 0 个」不可能是用户的意思，
 多半是勾选状态丢了。它也是真移动：会话目录离开 DSH 的 sessions 树，**并且**从 DSH 的工作区登记里解绑
-（`workspace.json` 的 `sessionIds`，见 `lib/host/registry.js`）——两件缺一不可。面板列的是磁盘，登记没解绑时
+（`workspace.json` 的 `sessionIds`，见 `src/host/registry.js`）——两件缺一不可。面板列的是磁盘，登记没解绑时
 目录搬走了行就没，DSH 自己的侧栏却还画着它，开着的会话连标签页都留着；那正是「删了还在」的样子。
 登记拒绝解绑时整条删除回滚（`registry-detach-failed`）：宁可没删，也不留一个删了一半的会话。
 恢复反过来做同一件事：文件搬回去之后把 id 绑回原工作区，绑不回去只说明 DSH 侧栏少一行（header 的 `cwd`
@@ -451,7 +451,7 @@ JSONL 导出"；JSONL 一条回合一行，参数与输出全量。思考过程�
 终端或另一台机器的对话框里，而不必在宿主所在的那台机器上开窗。
 
 `POST /reveal-path` 只接受**本插件已经列出的目录**：某个会话的 `cwd`，或某个 workspace 自己的
-`path`（`lib/index.js` 的 `knownDirectory`）。其他路径一律 `400 path is not a directory this plugin
+`path`（`src/index.js` 的 `knownDirectory`）。其他路径一律 `400 path is not a directory this plugin
 knows about`——客户端只会送它正在显示的会话的 cwd，所以这条路由不该是一个"打开任意路径"的通用原语
 （`\\host\share` 交给资源管理器是凭据泄露面，不是便利）。子目录不算：比对的是完整路径，不是前缀。
 
@@ -480,7 +480,7 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 | `POST /component/remove` | — | 同 status |
 | `POST /component/retry` | — | 同 status（续传已有 `.part`） |
 
-status 的形状（`lib/component/manager.js` 的 `status()`，整个 state 加上算出来的几个字段）：
+status 的形状（`src/component/manager.js` 的 `status()`，整个 state 加上算出来的几个字段）：
 
 ```jsonc
 {
@@ -522,7 +522,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 | `POST /detached/close` | — | `{ closed, wasOpen }` |
 
 `kind ∈ {open-session, new-session, reveal, refresh, open-settings, lang-changed, session-status, status-request}`
-（`lib/host/bridge.js` 的 `WINDOW_COMMANDS`），payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自
+（`src/host/bridge.js` 的 `WINDOW_COMMANDS`），payload 只接受 `sessionId` / `workspaceId` / `scope` 三个字符串字段，各自
 截断到 200 字符（`lang-changed` 例外：它只带 `lang`，值先经 `normalizeLang` 归一，十种语言码
 `zh` / `en` / `ja` / `ko` / `de` / `fr` / `es` / `ru` / `pt` / `zh-hant` 通过，`ja-JP` 归成 `ja`，`zh-TW` 归成
 `zh-hant`，`it-IT` 丢掉）。其它 kind
@@ -538,7 +538,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 { "kind": "status-request", "payload": {} }
 ```
 
-`rows` 由 `normalizeStatusRows()` 重建（`lib/host/bridge.js`）：只认四个键，`id` 截 200、`pending`
+`rows` 由 `normalizeStatusRows()` 重建（`src/host/bridge.js`）：只认四个键，`id` 截 200、`pending`
 只认 `approval` / `plan-review` / `question`、两个布尔只认 `true`，最多 500 行；缺 id 或三样信号
 都没有的行被丢掉。原因是它决定另一侧画哪个徽章，把未知的等待类型猜成已知的，等于凭坏数据挂上
 「等待审批」。`status-request` 带什么都会丢。窗口在挂载与回到前台时发它；页面若收到这条，
@@ -546,7 +546,7 @@ Electron 时回 `400 component-borrow-invalid`（用户选错了，不是服务�
 这样刚打开的窗口不必等下一个节拍，host 也会同时用下面那份缓存回答。
 
 Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时间存进状态板
-（`lib/host/status-board.js`），发布出去的那一帧带 `at`。于是
+（`src/host/status-board.js`），发布出去的那一帧带 `at`。于是
 
 - `status-request` 由 Host 立刻用缓存回答，同时页面自己也重播一遍快照，问的人两条路都拿到；
 - `GET /bridge/status` 把同一份缓存交出来，窗口每秒拉一次——它不等谁去发，也不依赖
@@ -593,7 +593,7 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
 | `GET /ui/icon.png` | `assets/icon.png` | `image/png` |
 
-路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`lib/index.js` 的 `UI_ASSETS`）。
+路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`src/index.js` 的 `UI_ASSETS`）。
 全部 `no-store`：面板和窗口必须跑同一份代码，缓存一份旧的正是这套安排要消除的漂移。
 文件缺失时 `ui-asset-missing`（500）。
 
@@ -613,9 +613,9 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 `GET /version` 是客户端模块的构建戳：`build` 是 `lib/client.js` 的 hash，`version` 是 `package.json` 的版本号。
 面板把自己那份和它对一下，不一致就提示刷新——插件更新后没刷新的面板还在跑旧模块，看着就像坏了。
 
-`GET /update` 在 host 侧访问 `api.github.com`（`lib/host/update.js`）：客户端是个网页，
+`GET /update` 在 host 侧访问 `api.github.com`（`src/host/update.js`）：客户端是个网页，
 直连会撞 CORS；独立窗口里 `window.open` 又被主进程拒掉，两条路都不通，所以这件事只能
-host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 地址由它拼出来。
+host 做。仓库地址只在 `src/constants.js` 的 `REPO_URL` 写一次，API 地址由它拼出来。
 结果缓存 5 分钟：设置页每开一次就问一次 GitHub 的话，未登录的 60 次/小时会很快用完。
 
 `latest` 为 `null` 不是错误——仓库还没有 release，和"连不上"是两回事（后者是
@@ -623,7 +623,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 相等，预发布版低于同号正式版。`current` 读的是 `package.json`，不是第二份写死的数字。
 
 `POST /about/open` 收的是**名字**不是 URL，白名单 `{ repo, star, issues, releases }`
-（`lib/host/open-link.js` 的 `LINK_TARGETS`）。这条 API 没有 token，任何页面都能调；
+（`src/host/open-link.js` 的 `LINK_TARGETS`）。这条 API 没有 token，任何页面都能调；
 如果它接受任意 URL，就等于给每个网页一个"用系统浏览器打开这个地址"的按钮。所以只认
 这四个键，别的（包括 `"https://…"`、`"STAR"`）一律 `bad-request`，且什么都不拉。
 
@@ -634,7 +634,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 壳子也会被当成成功，用户看到的就是"点了没反应"。全链失败才是 `502 open-failed`，且消息里
 带上那个 URL，面板把它原样显示出来，至少还能复制。
 
-`POST /cache/clear` 只清插件自己的缓存（`lib/host/maintenance.js`）：
+`POST /cache/clear` 只清插件自己的缓存（`src/host/maintenance.js`）：
 
 - 内存：`reader.invalidate()`、`clearLogFacts()`、各侧车的 `invalidate()`。
 - 磁盘：数据目录的 `.tmp`（`cleanTmp`，被中断的写会被**搬进** `quarantine/` 而不是删掉）、
@@ -647,7 +647,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 其余页面缓存属于 DSH 自己的渲染进程和独立窗口，不在插件手里。
 
 `GET /release-notes` 是「更新说明」弹窗的正文，而正文是**文档**，不是代码里的字符串
-（`lib/domain/notes.js` + `lib/host/changelog.js`）。改一次文案就是改一个 markdown 文件，
+（`src/domain/notes.js` + `src/host/changelog.js`）。改一次文案就是改一个 markdown 文件，
 不用动这个插件的源码，更不用等它被重新构建。
 
 两个候选文件，先到先用：仓库里是包目录上一层的 `更新说明.md`，装好的包里只有随包发出去的
@@ -670,7 +670,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
   就打开；相同就什么也不做。**第一次装也弹**——第一次启动正是这个版本唯一一次"新"的时候，
   更新说明说的就是它；选在启动时弹，是因为"用户可能根本不打开面板，但插件已经更新了"。
   `version` 随这份响应一起回来，所以判断要不要弹不需要第二次请求，也不需要 `/bootstrap` 去扫会话。
-  "已读"记在**宿主**的 `<dataDir>/notes-seen.v1.json`（`lib/host/notes-seen.js`），不是 localStorage：
+  "已读"记在**宿主**的 `<dataDir>/notes-seen.v1.json`（`src/host/notes-seen.js`），不是 localStorage：
   DSH web GUI 每次启动换一个端口，而浏览器存储按 origin（含端口）隔离，换端口就是空存储——
   记在那里等于"每次启动都弹"。写回走 `POST /release-notes/seen`（最新的一次覆盖旧的，不需要 revision）；
   也没写进设置文档，因为"哪个版本看过"不需要一次合并和一条冲突规则。
@@ -684,7 +684,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 |---|---|---|
 | `POST /data/reset` | `{ confirm: "DELETE" }` | `{ freedBytes, documents, trash, quarantine, tmp, keptLocation, dataDir, tookMs }` |
 
-插件里唯一一个**不可逆**的操作（`lib/host/reset.js`），因此有两道门，且都在 host 侧：
+插件里唯一一个**不可逆**的操作（`src/host/reset.js`），因此有两道门，且都在 host 侧：
 
 1. `confirm` 去掉首尾空白后必须**恰好**是 `DELETE`（`RESET_CONFIRMATION`），否则
    `400 confirm-required`——在读到任何文件之前就返回，一个字节都不动。门装在 host 这一侧，
@@ -696,7 +696,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 - 四份侧车文档 `tree.v1.json` / `annotations.v1.json` / `settings.v1.json` /
   `trash/index.v1.json`：**虚拟树**（文件夹、工作区摆放与顺序）、标签、备注、设置、回收站索引；
-- `trash/` 里的**净内容**。回收站是 move 不是 copy（`lib/host/trash.js`），里面的目录
+- `trash/` 里的**净内容**。回收站是 move 不是 copy（`src/host/trash.js`），里面的目录
   曾经就是 DSH 的会话目录，删掉它们等于把这些会话永久删掉——这就是它必须被 `DELETE` 拦住的原因；
 - `quarantine/`（解析不了的文档，是用户自己的字节）与 `.tmp/`（写了一半的原子写残留）。
 - `content-index.v1.json`：会话内容索引的缓存（§4.14）。派生文件，删了只是下次重建一次；
@@ -728,7 +728,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 面板里 会话名 / 标签 / 备注 三个字段本来就在列表行上，读一遍内存就有答案；**会话内容**只在会话日志里
 ——本机 63 份日志、解压后约 100 万字符正文，全量读一次 6.5 秒。所以按键时查的是内存索引，不读文件
-（`lib/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
+（`src/sources/content.js`）：内存里按 `logPath | sizeBytes | activityAt` 判定某份日志要不要重读，
 逐份构建、每份之间让出事件循环（一次最多 `budgetMs = 700`），并且同一时刻只允许一个构建在跑。
 
 索引里装的是**说的话**：用户消息与助手回复的文字（`collectTurns` 的 `role` 为 `user` 与
@@ -761,7 +761,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 | `POST /search/index/rebuild` | — | `{ ...state, cache, building }` |
 | `POST /search/index/clear` | — | `{ freedBytes, sessions, cache, building }` |
 
-对应设置文档（`lib/domain/settings.js`）里的一个开关，缺省值就在 `defaultSettings()`：
+对应设置文档（`src/domain/settings.js`）里的一个开关，缺省值就在 `defaultSettings()`：
 
 | 键 | 缺省 | 含义 |
 |---|---|---|
@@ -800,7 +800,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 | `POST /summaries/:id/apply` | `{ field: "title" \| "description" \| "tags", tags?: string[] }` | `{ revision }` |
 | `DELETE /summaries/:id` | — | `{ revision }` |
 
-`state`（`lib/host/summarize.js` 的 `state()`）是客户端唯一要知道的东西：
+`state`（`src/host/summarize.js` 的 `state()`）是客户端唯一要知道的东西：
 
 ```jsonc
 {

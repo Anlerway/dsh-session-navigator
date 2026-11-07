@@ -6,7 +6,7 @@
   "engines": {
     "node": "^22.15.0 || >=24.0.0"
   },
-  "main": "./lib/index.js",
+  "main": "./src/index.js",
   "icon": "./assets/icon.png",
   "scripts": {
     "pretest": "node scripts/build-client.mjs",
@@ -22,15 +22,16 @@
     "prepack": "node scripts/build-client.mjs && node scripts/sync-notes.mjs"
   },
   "exports": {
-    ".": "./lib/index.js",
+    ".": "./src/index.js",
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
-    "lib/",
-    "!lib/client-src/",
+    "src/",
+    "!src/client/",
+    "lib/client.js",
     "assets/",
     "cordis.patch.yml",
     "CHANGELOG.md",

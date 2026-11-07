@@ -62,7 +62,7 @@ dsh plugin --profile desktop add dsh-session-navigator  # 桌面版
 
 - 全部状态在 `~/.dsh-session-navigator/`——`~/.dsh` 的兄弟目录，不是子目录，卸载插件就是删一个目录。
 - 不联网，没有遥测。
-- 零运行时依赖，没有构建步骤，`lib/` 直接跟着仓库走。
+- 零运行时依赖，没有构建步骤，`src/` 直接跟着仓库走。
 
 ## English summary
 

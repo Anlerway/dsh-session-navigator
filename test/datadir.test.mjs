@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 
-import { describeDataDir, inspectDataDir, migrateDataDir, readLocation } from "../lib/host/datadir.js";
+import { describeDataDir, inspectDataDir, migrateDataDir, readLocation } from "../src/host/datadir.js";
 import {
   DATA_DIR_NAME,
   LEGACY_DATA_DIR_NAME,
@@ -25,8 +25,8 @@ import {
   ensureDataDir,
   dataPaths,
   resolveDataDir,
-} from "../lib/paths.js";
-import { openDocuments } from "../lib/store/documents.js";
+} from "../src/paths.js";
+import { openDocuments } from "../src/store/documents.js";
 
 /**
  * A minimal host api: a data directory, its documents, and the `reopen` hook the

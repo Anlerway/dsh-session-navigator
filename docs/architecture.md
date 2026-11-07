@@ -6,15 +6,15 @@
 ## 1. 两个半体
 
 一个 DSH 插件包 = 一个 bundle row + 两个半体。两者没有共享模块，只共享字符串常量
-（`lib/constants.js`）和一套 HTTP 契约。
+（`src/constants.js`）和一套 HTTP 契约。
 
 | 半体 | 入口 | 由谁加载 | 运行环境 |
 |---|---|---|---|
-| Host | `lib/index.js` | Cordis，应用启动时加载一次 | DSH 主进程（Node ESM） |
-| Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`；源在 `lib/client-src/`，构建期拼接 | 渲染进程（浏览器环境） |
+| Host | `src/index.js` | Cordis，应用启动时加载一次 | DSH 主进程（Node ESM） |
+| Client | `lib/client.js` | `window.__ModuleLoader__.load({ id, factory })`；源在 `src/client/`，构建期拼接 | 渲染进程（浏览器环境） |
 
 Host 半体在 DSH 的 web 服务器上注册**一个**前缀路由 `/session-navigator/api`，所有端点都在
-它下面（`lib/index.js` 的 `apply(ctx)` 里那次 `webServer.register()`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
+它下面（`src/index.js` 的 `apply(ctx)` 里那次 `webServer.register()`）。Client 半体往 DSH 的 UI 插槽里注册 5 个组件，并把浮窗
 portal 到 `<body>` 上的固定层。
 
 ### 加载链路
@@ -24,7 +24,7 @@ package.json
 ├─ dsh.bundle.patch = "./cordis.patch.yml"
 │    └─ - insert: [{ id: session-navigator, name: 'dsh-session-navigator', config: {} }]
 │         → Cordis 按包名 import，取 name / inject / apply
-│           (lib/index.js 的 name / inject / apply)
+│           (src/index.js 的 name / inject / apply)
 └─ dsh.client.inject = "@deepseek-ai/dsh-client-ui-slots"
    dsh.client.platform = "web"
      → 渲染进程把 lib/client.js 当作 out-of-tree client 模块执行
@@ -35,7 +35,7 @@ package.json
 
 ## 2. Host 半体：`apply(ctx)` 做了七件事
 
-`lib/index.js` 的 `apply(ctx)`，七步的顺序有意义：
+`src/index.js` 的 `apply(ctx)`，七步的顺序有意义：
 
 1. **拿 webServer**。`inject = ["webServer"]` 是唯一硬依赖：没有 HTTP 服务器的
    profile 就没有浏览器半体，此时直接 return，让 loader 跳过这一行。
@@ -62,37 +62,37 @@ package.json
 
 ## 3. 一次请求的生命周期
 
-`handle(api, req, res)`（`lib/index.js`）：
+`handle(api, req, res)`（`src/index.js`）：
 
 ```
-routeOf(req.url)                 // lib/http.js 剥掉 /session-navigator/api
+routeOf(req.url)                 // src/http.js 剥掉 /session-navigator/api
   ↓ null → 404 bad-request
-compileRoute 匹配表               // lib/index.js 段数相等 + :param 解码
+compileRoute 匹配表               // src/index.js 段数相等 + :param 解码
   ↓ 无 → 404 no route for <METHOD> <path>
 迁移守卫                          // 非 GET/HEAD 且非 /datadir* → migration-in-progress
 assertSameOrigin(req)            // 非 GET/HEAD：跨站 / 非 JSON → 403 / 415
-readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（lib/http.js）
+readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（src/http.js）
 handler(api, req, res, query, params)
   ↓ 正常 → ok(res, result)        // { ok: true, result }
-  ↓ 抛错 → statusFor(code)        // lib/index.js 错误码 → HTTP 状态
+  ↓ 抛错 → statusFor(code)        // src/index.js 错误码 → HTTP 状态
            fail(res, status, code, message)
 ```
 
 三条不变量：
 
-- **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`lib/http.js` 的 `ok()` / `fail()`）。
+- **信封唯一**：`{ ok: true, result }` / `{ ok: false, error, code }`（`src/http.js` 的 `ok()` / `fail()`）。
   客户端只对 `code` 分支，`error` 只给人看。
 - **错误码直通**：DSH 原生错误带的命名空间码（`workspace/name-conflict`、
-  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`lib/index.js`）。
+  `session/title-invalid`）原样透出，不翻译，避免多一层会漂移的映射（`errorCodeOf`，`src/index.js`）。
 - **SSE 例外**：`GET /bridge/events` 自己接管响应，`handle` 在 `headersSent` 时不再写信封。
 - **写请求必须同源**：没有 token，所以靠 `Sec-Fetch-Site` 与 `Content-Type: application/json`
-  这两个浏览器强制的信号拒绝跨站写（`lib/index.js` 的 `assertSameOrigin()`，见
+  这两个浏览器强制的信号拒绝跨站写（`src/index.js` 的 `assertSameOrigin()`，见
   [api.md](api.md#31-写请求的同源约束)）。
 
 ## 4. 分层
 
 ```
-lib/
+src/
 ├─ index.js          2417  插件装配 + 路由表（83 条）+ 错误映射（唯一编排层）
 ├─ http.js            101  信封、body 解析、URL 切分
 ├─ constants.js        39  API_PREFIX / PLUGIN_ID / REPO_URL / FIXED_NODES / WORKSPACE_NODE_PREFIX
@@ -305,8 +305,8 @@ host 画成「默认工作区」——节点因此带一个 `default: true` 标�
 
 独立窗口是另一侧：`assets/detached` 是静态页 + 冒充 DSH 的 shim，它读不到 DSH 的语言开关，
 也不会跟着 DSH 重渲染。所以语言由面板在 `POST /detached/open` 里报给 host（`uiLang()`，
-`lib/client.js`），经控制器 `lib/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
-helper 拼进页面 URL（`?lang=`，`lib/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`。
+`lib/client.js`），经控制器 `src/detached/launcher.js` 放进 helper 的 env（`DSH_SE_LANG`），
+helper 拼进页面 URL（`?lang=`，`src/detached/main.cjs` 的 `pageUrl()`），shim 从 URL 读出 `LANG`。
 面板注册词典时把八份 `settings` 表一起送进窗口，shim 的 `translate()` 按 `LANG` 取表，缺键时
 依次试英文表与中文表；窗口里面板自己画的句子由 `T()` 在渲染时查 `panel` 表翻好。shim 自带的那
 十几行启动文案仍走 `L(zh, en)`，那时面板还没渲染。中途切换语言时控制器用控制通道广播
@@ -444,16 +444,16 @@ effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅
 1. **零运行时依赖**。`dependencies` 为空，`peerDependencies` 只有 Cordis（optional）。
    React 由宿主提供，`assets/vendor/` 里的两个文件只给独立窗口用。
 2. **运行时无构建，但产物由脚本生成**。`lib/client.js` 直接是浏览器可执行的文件，宿主不做任何
-   编译。它由 `lib/client-src/` 的分片（`manifest.json` 定序）用 `node scripts/build-client.mjs`
+   编译。它由 `src/client/` 的分片（`manifest.json` 定序）用 `node scripts/build-client.mjs`
    拼出来，**不进仓库**：CI 在跑测试前先构建，`npm test` 通过 `pretest` 构建，`prepack` 构建进
    tarball。`--check` 保留给本地——它回答"磁盘上这份产物还是不是当前分片的"，直接跑
    `node --test` 时会由 `test/client-bundle-drift.test.mjs` 替你问一次。
 3. **拆的是源，不是模块系统**。模块加载器只给一个 factory，所以分片在构建期被拼进同一个
    factory 体，运行时仍是单文件、没有模块加载器。新增客户端代码写进对应分片并在
-   `lib/client-src/manifest.json` 里定序；`lib/client.js` 由脚本重写，手改会在下一次构建时
+   `src/client/manifest.json` 里定序；`lib/client.js` 由脚本重写，手改会在下一次构建时
    被覆盖（它不在仓库里，所以也没法提交一份改过的产物）。
 4. **绝不背着 kernel 写 DSH 的存储**。标题、归档、置顶、派生都调 DSH 自己的服务
-   （`lib/host/actions.js`）。两个受控例外：`host/move.js` 移动会话文件并重写 header 的 `cwd`
+   （`src/host/actions.js`）。两个受控例外：`host/move.js` 移动会话文件并重写 header 的 `cwd`
    （必须同时走 registry 的写路径，否则下次启动会话就丢了），`host/trash.js` 把会话目录整体
    移进/移出回收站（DSH 与插件对"它不在了"的理解因此天然一致）。两个例外都用"先记账、后动手"
    兜住崩溃：回收站写 `pending` 条目，移动写 `move-journal.v1.json`，启动时各自对账。

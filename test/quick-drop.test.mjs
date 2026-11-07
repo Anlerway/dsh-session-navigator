@@ -14,8 +14,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildAutoTree } from "../lib/domain/tree.js";
-import { FIXED_NODES } from "../lib/constants.js";
+import { buildAutoTree } from "../src/domain/tree.js";
+import { FIXED_NODES } from "../src/constants.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 const { test: client } = loadClientBundle({ expose: ["isBookmarkableNode", "dropRefusalFor", "dropEffectFor"] });

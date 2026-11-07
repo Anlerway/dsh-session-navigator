@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStorageWatch } from "../lib/host/storage-watch.js";
+import { createStorageWatch } from "../src/host/storage-watch.js";
 
 /** A fake bridge that records what the watch publishes. */
 function fakeBridge(listeners) {

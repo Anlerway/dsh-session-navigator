@@ -7,7 +7,7 @@
  * one another — the helper runs inside a downloaded Electron runtime, the shim is
  * a plain script in a document, and the panel is a single bundle — so each keeps
  * its own copy of the list. That is the kind of agreement that rots silently: a
- * ninth language added to lib/lang.js and forgotten in the helper would open a
+ * ninth language added to src/lang.js and forgotten in the helper would open a
  * window that draws 中文 for a reader of that language, and nothing else would
  * fail.
  *
@@ -16,8 +16,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { LANGS, normalizeLang } from "../lib/lang.js";
-import { normalizeCommand } from "../lib/host/bridge.js";
+import { LANGS, normalizeLang } from "../src/lang.js";
+import { normalizeCommand } from "../src/host/bridge.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 const here = (path) => new URL("../" + path, import.meta.url);
@@ -52,7 +52,7 @@ test("every language has a dictionary, and the list is the directory", () => {
 });
 
 test("the Electron helper carries the same list", () => {
-  assert.deepEqual(sorted(langsOf(read("lib/detached/main.cjs"))), sorted(LANGS));
+  assert.deepEqual(sorted(langsOf(read("src/detached/main.cjs"))), sorted(LANGS));
 });
 
 test("the shim carries the same list", () => {
@@ -93,8 +93,8 @@ test("the bridge lets every supported language through, and drops the rest", () 
 });
 
 test("the Host route and the controller both normalize rather than compare", () => {
-  const host = read("lib/index.js");
+  const host = read("src/index.js");
   assert.match(host, /api\.detached\.open\(\{ lang: normalizeLang\(req\.body\?\.lang\) \|\| "zh" \}\)/);
-  const launcher = read("lib/detached/launcher.js");
+  const launcher = read("src/detached/launcher.js");
   assert.match(launcher, /const next = normalizeLang\(request\.lang\) \|\| "zh"/);
 });

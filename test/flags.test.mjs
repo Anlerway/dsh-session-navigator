@@ -18,7 +18,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { migrateFlagsToShortcuts } from "../lib/host/flags.js";
+import { migrateFlagsToShortcuts } from "../src/host/flags.js";
 
 /**
  * A documents api with the two sidecars the migration touches.

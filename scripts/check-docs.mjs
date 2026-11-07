@@ -2,9 +2,9 @@
 /**
  * check-docs.mjs — documentation must not cite line numbers.
  *
- * Prose that says "see lib/index.js:2184" is wrong the moment anybody inserts a
+ * Prose that says "see src/index.js:2184" is wrong the moment anybody inserts a
  * line above it, and nothing catches that: the reader finds a plausible-looking
- * function and trusts it. Symbol references ("lib/index.js 的 handle()") survive
+ * function and trusts it. Symbol references ("src/index.js 的 handle()") survive
  * every refactor that renames nothing, so the fix is to name the symbol, not the
  * offset.
  *
@@ -32,7 +32,7 @@ const ROOT_FILES = ["README.md", "README.en.md", "CHANGELOG.md"];
 const EXTENSIONS = "js|mjs|cjs|ts|tsx|jsx|json|css|scss|md|ya?ml|html|sh";
 
 /**
- * A path with a line suffix: lib/index.js:2184, lib/client.js:6975-7100,
+ * A path with a line suffix: src/index.js:2184, lib/client.js:6975-7100,
  * assets/detached/shim.js:1-25. Group 1 is the bare path.
  */
 const PATH_WITH_LINE = new RegExp(
@@ -47,7 +47,7 @@ const PATH_WITH_LINE = new RegExp(
 const LIST_CONTINUATION = /、\s*:(?:\d+)(?:[-–]\d+)?/g;
 
 /**
- * The same continuation wrapped in backticks: "（`lib/component/manager.js`、`:532`）".
+ * The same continuation wrapped in backticks: "（`src/component/manager.js`、`:532`）".
  * The backticks are markdown, not part of the reference, so the fix drops both.
  */
 const BACKTICK_CONTINUATION = /、\s*`\s*:(?:\d+)(?:[-–]\d+)?\s*`/g;

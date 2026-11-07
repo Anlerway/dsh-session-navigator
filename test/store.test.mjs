@@ -15,8 +15,8 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSidecar, writeAtomic } from "../lib/store/sidecar.js";
-import { openDocuments } from "../lib/store/documents.js";
+import { createSidecar, writeAtomic } from "../src/store/sidecar.js";
+import { openDocuments } from "../src/store/documents.js";
 import {
   TAG_LIMIT,
   TAG_MAX_LENGTH,
@@ -24,10 +24,10 @@ import {
   normalizeTags,
   patchAnnotation,
   tagIndex,
-} from "../lib/domain/annotations.js";
-import { createFolder, deleteFolder, moveNode, renameFolder, reorderNode } from "../lib/domain/folders.js";
-import { buildAutoTree, canMove } from "../lib/domain/tree.js";
-import { FIXED_NODES } from "../lib/constants.js";
+} from "../src/domain/annotations.js";
+import { createFolder, deleteFolder, moveNode, renameFolder, reorderNode } from "../src/domain/folders.js";
+import { buildAutoTree, canMove } from "../src/domain/tree.js";
+import { FIXED_NODES } from "../src/constants.js";
 
 /** @returns {Promise<{ dir: string, paths: any, cleanup: () => Promise<void> }>} */
 async function sandbox() {

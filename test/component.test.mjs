@@ -23,8 +23,8 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { ELECTRON_VERSION, componentPaths, runtimePaths } from "../lib/component/layout.js";
-import { downloadAsset } from "../lib/component/downloader.js";
+import { ELECTRON_VERSION, componentPaths, runtimePaths } from "../src/component/layout.js";
+import { downloadAsset } from "../src/component/downloader.js";
 import {
   directorySize,
   extractZip,
@@ -34,10 +34,10 @@ import {
   publishRuntime,
   removeTree,
   verifyZip,
-} from "../lib/component/install.js";
-import { emptyState, normalizeState, readState, writeState, createProgressWriter } from "../lib/component/state.js";
-import { createComponentManager } from "../lib/component/manager.js";
-import { borrowedPaths, inspectBorrowed, scanBorrowedRuntimes } from "../lib/component/borrow.js";
+} from "../src/component/install.js";
+import { emptyState, normalizeState, readState, writeState, createProgressWriter } from "../src/component/state.js";
+import { createComponentManager } from "../src/component/manager.js";
+import { borrowedPaths, inspectBorrowed, scanBorrowedRuntimes } from "../src/component/borrow.js";
 
 async function sandbox() {
   const root = await mkdtemp(join(tmpdir(), "se-component-"));

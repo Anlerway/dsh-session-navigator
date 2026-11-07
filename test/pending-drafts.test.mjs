@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createPendingDrafts } from "../lib/host/pending-drafts.js";
+import { createPendingDrafts } from "../src/host/pending-drafts.js";
 
 /**
  * A host that answers `readSnapshot` from a mutable listing and records every

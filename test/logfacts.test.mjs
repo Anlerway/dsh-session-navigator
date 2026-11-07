@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { zstdCompressSync } from "node:zlib";
 
-import { clearLogFacts, readLogFacts } from "../lib/sources/logfacts.js";
+import { clearLogFacts, readLogFacts } from "../src/sources/logfacts.js";
 
 /** @returns {Promise<string>} */
 async function tempDir() {

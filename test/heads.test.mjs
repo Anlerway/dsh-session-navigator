@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 
-import { discoverLogs, readAllHeaders } from "../lib/sources/heads.js";
+import { discoverLogs, readAllHeaders } from "../src/sources/heads.js";
 
 /**
  * Write a session log whose first frame is a header line.

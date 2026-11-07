@@ -37,9 +37,9 @@ import {
   systemPrompt,
   transcriptOf,
   wantedFields,
-} from "../lib/domain/summaries.js";
-import { createSummarizer } from "../lib/host/summarize.js";
-import { statusFor } from "../lib/index.js";
+} from "../src/domain/summaries.js";
+import { createSummarizer } from "../src/host/summarize.js";
+import { statusFor } from "../src/index.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

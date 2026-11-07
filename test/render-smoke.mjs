@@ -13,7 +13,7 @@
  * every component's render body evaluates against realistic data.
  */
 import { readFileSync } from "node:fs";
-import { decorateTree } from "../lib/domain/tree-rules.js";
+import { decorateTree } from "../src/domain/tree-rules.js";
 
 // A minimal class base, because PanelBoundary is the one class component in the
 // bundle (an error boundary has no hook equivalent).

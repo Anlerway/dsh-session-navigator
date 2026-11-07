@@ -15,8 +15,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { dirname, join } from "node:path";
 
-import { knownDirectory } from "../lib/index.js";
-import { nativePath, revealSessionDir, revealSessionFile, sessionLogFile, sessionLogPath } from "../lib/host/actions.js";
+import { knownDirectory } from "../src/index.js";
+import { nativePath, revealSessionDir, revealSessionFile, sessionLogFile, sessionLogPath } from "../src/host/actions.js";
 
 /** @param {any} snapshot */
 function apiWithSnapshot(snapshot) {
@@ -194,7 +194,7 @@ test("a session that never recorded a cwd falls back to its log folder", async (
 });
 
 test("the native shell binding is optional, not required", async () => {
-  const { forgetNativeBinding, revealNatively } = await import("../lib/host/native-reveal.js");
+  const { forgetNativeBinding, revealNatively } = await import("../src/host/native-reveal.js");
   // A missing FFI binding must answer `null` (fall back to PowerShell), never
   // throw and never silently claim success.
   forgetNativeBinding();
@@ -218,7 +218,7 @@ test("a reveal that the shell API refuses falls through to the next opener", asy
 });
 
 test("复制文件夹地址 answers the workspace's directory without touching the OS", async () => {
-  const { workspaceDirPath } = await import("../lib/host/actions.js");
+  const { workspaceDirPath } = await import("../src/host/actions.js");
   const dir = join("C:", "work", "gamma");
   const api = {
     reader: { snapshot: async () => ({ registry: { workspaces: new Map([["w1", { id: "w1", path: dir }]]) } }) },
@@ -230,7 +230,7 @@ test("复制文件夹地址 answers the workspace's directory without touching t
 });
 
 test("a workspace with no recorded directory is refused, not guessed", async () => {
-  const { workspaceDirPath } = await import("../lib/host/actions.js");
+  const { workspaceDirPath } = await import("../src/host/actions.js");
   const api = { reader: { snapshot: async () => ({ registry: { workspaces: new Map([["w1", { id: "w1" }]]) } }) } };
   await assert.rejects(() => workspaceDirPath(api, "w1"), /没有记录路径/);
   await assert.rejects(() => workspaceDirPath(api, "nope"), /unknown workspace/);

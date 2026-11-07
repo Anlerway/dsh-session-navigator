@@ -3,13 +3,13 @@
 左侧那棵树不是 DSH 的树。DSH 只认识 **workspace** 和 **session** 两种东西；这棵树是它们加上
 用户自己造的节点（文件夹、快捷方式）的一个投影，**由 host 每次请求重建**，只有用户造的部分落盘。
 
-规则集中在 `lib/domain/tree-rules.js`，`lib/client.js` 里**没有任何决策表**——它只读节点上算好的
+规则集中在 `src/domain/tree-rules.js`，`lib/client.js` 里**没有任何决策表**——它只读节点上算好的
 字段（`accepts` / `scope` / `hasWorkspace`）和两条形状（子树、父链）。三处各写一份规则是 bug
 生成器，所以规则只有一份。
 
 ## 1. 节点种类
 
-`NODE_KINDS`（`lib/domain/tree-rules.js`）：
+`NODE_KINDS`（`src/domain/tree-rules.js`）：
 
 | kind | id | 能装目录 | 能装会话 | 说明 |
 |---|---|---|---|---|
@@ -42,7 +42,7 @@ R5 的降级是**纯函数**：`folderParent()` 只依赖 `folders` 表，与迭
 
 降级只适用于文件夹和 workspace。**引用不降级**：`f-root` 装的是目录（`canHoldShortcuts(f-root)`
 为假），所以把一条父节点已消失的快捷方式挂到根上，只会得到一行没有任何分支渲染、也没有任何手势
-能删掉的行（`lib/domain/tree.js`）。这种情况直接不建这一行；容器消失时 host 会先把里面的
+能删掉的行（`src/domain/tree.js`）。这种情况直接不建这一行；容器消失时 host 会先把里面的
 引用上提（删文件夹 → 父节点，父节点是根则进 `f-收藏`；删 workspace → `f-收藏`）。
 
 ## 3. 徽章数的是子树，列表画的是这一层
@@ -79,7 +79,7 @@ workspace、引用行——不会把里面 workspace 的会话翻上来跟 works
 - 快捷方式：指向会话的是 1 行；指向文件夹/workspace 的显示目标的大小，否则那个数字会看起来像 0。
 
 在这之前还有一道前置：**看不见的会话不计数**。`buildTree()` 先把 `sessions` 按 `listSettings.hideBlank`
-过一遍，计数用的是"列表真正会画"的那个集合（`lib/domain/tree.js`）：
+过一遍，计数用的是"列表真正会画"的那个集合（`src/domain/tree.js`）：
 
 ```js
 const shown = listSettings?.hideBlank === false ? live : live.filter((session) => session.blank !== true);
@@ -129,7 +129,7 @@ host 先按 `/move` 的事务把 payload 搬进文件夹所属工作区（重写
 
 ## 5. 快捷方式
 
-`lib/domain/shortcuts.js`。一条快捷方式是**自己的节点**，`targetId` 永远在目标自己的 id 空间里：
+`src/domain/shortcuts.js`。一条快捷方式是**自己的节点**，`targetId` 永远在目标自己的 id 空间里：
 文件夹 `d-…`、workspace 去掉 `w-` 前缀、会话原样。
 
 三条约束：
@@ -140,7 +140,7 @@ host 先按 `/move` 的事务把 payload 搬进文件夹所属工作区（重写
    一旦 payload 真的没了（清空回收站，或用户手工删了目录），这条引用就消失——
    否则用户会得到一行点了没反应、又不允许删的行。host 在 purge 时顺手清侧车，
    保证下次重建不会把它带回来。同样地，指向文件夹/workspace 的引用在目标不存在时也不建行
-   （`lib/domain/tree.js`）；而引用的**容器**不存在时也不建行，见 §2 的 R5 说明。
+   （`src/domain/tree.js`）；而引用的**容器**不存在时也不建行，见 §2 的 R5 说明。
 
 标签不在快捷方式上：`name` 留空，客户端从目标解析，所以目标改名后引用自动跟上。
 
@@ -150,8 +150,8 @@ host 先按 `/move` 的事务把 payload 搬进文件夹所属工作区（重写
 `工作区` / `文件夹` 标签，行 id 仍然是快捷方式的 `s-…`。所以移出、清空只删成员关系，永远不动原容器；
 双击进它的原位置，右键只有 `跳转到原位置` / `移出`。
 
-指向**会话**的成员不再多画一行：会话自己的 `favorite` / `todo` 就是这条成员关系——`lib/sources/reader.js`
-用 `shortcutTargetsIn(...)` 推导，注解里的旧标记由 `lib/host/flags.js` 在启动时迁移成快捷方式（写树在前、
+指向**会话**的成员不再多画一行：会话自己的 `favorite` / `todo` 就是这条成员关系——`src/sources/reader.js`
+用 `shortcutTargetsIn(...)` 推导，注解里的旧标记由 `src/host/flags.js` 在启动时迁移成快捷方式（写树在前、
 清标记在后，写失败就留着旧标记）。于是同一个会话可以同时在收藏和待办里，而回收站里那一份文件一个字节都没变。
 
 `转到会话原位置` 只在这两个页面里、且只在会话行上出现：它把列表切到会话的 `home` 再选中它。
@@ -193,7 +193,7 @@ DSH 置顶的是**会话**；这里还有容器置顶（文件夹、workspace）
 
 `canMove()` 看的是请求到达时读到的树。两个移动**同时**到达时，它们看到的是同一棵"之前"的树：
 A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支降级到根）。所以 `moveNode()`
-（`lib/domain/folders.js`）在 mutate 回调里再问一次 `isInsideDraft(draft, nodeId, parentId)`，
+（`src/domain/folders.js`）在 mutate 回调里再问一次 `isInsideDraft(draft, nodeId, parentId)`，
 看到的是"第二次移动即将扩展的那份 draft"，于是第二次被拒（`cannot move … inside itself`）。
 `sidecar.mutate` 的串行锁让这次检查是原子的。
 
@@ -209,7 +209,7 @@ A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支�
 
 ## 8. 快速访问（书签带）
 
-`tree.quickAccess`（规则在 `lib/domain/quick-access.js`）是「目录」上面那条按钮带：`{ 节点 id: 序号 }`，
+`tree.quickAccess`（规则在 `src/domain/quick-access.js`）是「目录」上面那条按钮带：`{ 节点 id: 序号 }`，
 投影按序号**从新到旧**排进 `quickAccessNodes`。它和置顶是两件事，这是刻意的：
 
 | | 存哪 | 是什么 | 行为 |
@@ -283,16 +283,16 @@ A 进 B 通过，B 进 A 也通过，写下去就是一个环（渲染时整支�
 
 方向是「全都已经在里面了才移出」，否则把缺的加进去（`flagMany` / `pinMany` / `quickMany`），文案跟着翻成
 `取消收藏 {n} 项` 这类。归档会把 DSH 那边的置顶清掉——那是 DSH 自己的规则（「DSH refuses to pin an archived
-session」，`lib/index.js` 有注释），不是这里的批量逻辑。
+session」，`src/index.js` 有注释），不是这里的批量逻辑。
 
 ## 10. 相关文件
 
 | 文件 | 职责 |
 |---|---|
-| `lib/domain/tree.js` | `buildTree()`：造节点、算 `sessionHome`、算徽章、排序 |
-| `lib/domain/tree-rules.js` | 全部规则：`placementOfNode` / `sessionsOfNode` / `sessionsUnderNode` / `acceptsOf` / `canMove` / `decorateTree` |
-| `lib/domain/shortcuts.js` | 快捷方式的规范化、目标解析、`canHoldShortcuts`、`dropShortcutsTo` |
-| `lib/domain/quick-access.js` | 快速访问：`isBookmarkable` 谁能当书签、`applyQuickAccessOrder` 整条写 |
-| `lib/host/flags.js` | 一次性迁移：注解里的收藏 / 待办标记 → 快捷方式 |
-| `lib/domain/folders.js` | 文件夹命名、新建、上提删除 |
-| `lib/domain/sessions.js` | 合并视图、`home` / `homeOverride` 的推导 |
+| `src/domain/tree.js` | `buildTree()`：造节点、算 `sessionHome`、算徽章、排序 |
+| `src/domain/tree-rules.js` | 全部规则：`placementOfNode` / `sessionsOfNode` / `sessionsUnderNode` / `acceptsOf` / `canMove` / `decorateTree` |
+| `src/domain/shortcuts.js` | 快捷方式的规范化、目标解析、`canHoldShortcuts`、`dropShortcutsTo` |
+| `src/domain/quick-access.js` | 快速访问：`isBookmarkable` 谁能当书签、`applyQuickAccessOrder` 整条写 |
+| `src/host/flags.js` | 一次性迁移：注解里的收藏 / 待办标记 → 快捷方式 |
+| `src/domain/folders.js` | 文件夹命名、新建、上提删除 |
+| `src/domain/sessions.js` | 合并视图、`home` / `homeOverride` 的推导 |

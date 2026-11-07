@@ -1,7 +1,7 @@
 /**
  * The hooks the panel destructures must actually return what it asks for.
  *
- * The panel is one function spread over several `lib/client-src/` fragments, and
+ * The panel is one function spread over several `src/client/` fragments, and
  * the state it uses was carved into hooks (13b–13h). Nothing checks the seam:
  * `const { renameEntity } = useRenameEditor(...)` is ordinary JavaScript, so a
  * hook that forgets a key still parses, still builds, and only fails when the
@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SRC = join(HERE, "..", "lib", "client-src");
+const SRC = join(HERE, "..", "src", "client");
 
 const fragments = readdirSync(SRC)
   .filter((name) => name.endsWith(".js"))

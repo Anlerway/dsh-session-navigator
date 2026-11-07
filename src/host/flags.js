@@ -1,0 +1,110 @@
+/**
+ * dsh-session-navigator — 收藏 / 待办 migrate into shortcuts.
+ *
+ * 收藏 and 待办 are *shortcut containers*: putting a session in 收藏 creates a
+ * `s-…` node that points at it, and removing it deletes that node — the session
+ * file is never touched. Membership is therefore derived from `tree.v1.json`
+ * (see src/sources/reader.js). An older document may still carry the two boolean
+ * flags (`favorite`, `todo`) in `annotations.v1.json`, and nothing but this
+ * migration reads them.
+ *
+ * This module is the one-way door from a flag to a shortcut: on start, every
+ * session a flag marks is given the shortcut it would have had, and the flag is
+ * cleared.
+ *
+ * Best effort, idempotent, and safe to interrupt: the shortcut write is first,
+ * and the annotation cleanup only clears flags whose shortcut exists.
+ */
+
+import { FIXED_NODES } from "../constants.js";
+import { normalizeAnnotation } from "../domain/annotations.js";
+import { SHORTCUT_NODE_PREFIX } from "../domain/shortcuts.js";
+
+/**
+ * Give one session a shortcut in a container, unless it already has one.
+ *
+ * Not `createShortcut`: that function validates against a built tree (parent
+ * must resolve, the target must exist), and the migration must not fail on a
+ * stale flag whose session has since been deleted. A stale flag is dropped by
+ * the tree projection itself, which already discards a session shortcut whose
+ * target is gone.
+ *
+ * @param {{ shortcuts?: Record<string, any> }} draft tree sidecar draft
+ * @param {string} container container node id (f-favorites / f-todos)
+ * @param {string} targetId session id
+ * @param {() => string} newId id factory
+ * @returns {{ id: string, created: boolean }} the shortcut, and whether this
+ *   call wrote it
+ */
+function ensureShortcut(draft, container, targetId, newId) {
+  const shortcuts = draft.shortcuts ?? (draft.shortcuts = {});
+  for (const [id, entry] of Object.entries(shortcuts)) {
+    if (!entry || entry.kind !== "session" || entry.targetId !== targetId) continue;
+    if ((entry.parent ?? FIXED_NODES.favorites) === container) return { id, created: false };
+  }
+  // Append: the migrated rows keep the order the flags were read in, after any
+  // shortcut the user made by hand.
+  const siblings = Object.values(shortcuts).filter((entry) => (entry?.parent ?? FIXED_NODES.root) === container);
+  const id = SHORTCUT_NODE_PREFIX + newId();
+  shortcuts[id] = {
+    id,
+    kind: "session",
+    targetId,
+    parent: container,
+    order: siblings.length,
+    label: null,
+    createdAt: Date.now(),
+  };
+  return { id, created: true };
+}
+
+/**
+ * Move every 收藏 / 待办 flag into a shortcut, then clear the flag.
+ *
+ * @param {any} api
+ * @param {() => string} newId id factory (the same one folders and shortcuts use)
+ * @returns {Promise<{ moved: number, created: number }>} sessions migrated,
+ *   shortcuts created (a session in both containers counts once as a session
+ *   and twice as a shortcut)
+ */
+export async function migrateFlagsToShortcuts(api, newId) {
+  const annotations = await api.documents.annotations.read();
+  const entries = annotations?.sessions ?? {};
+  /** @type {Array<{ id: string, favorite: boolean, todo: boolean }>} */
+  const flagged = [];
+  for (const [id, entry] of Object.entries(entries)) {
+    const state = normalizeAnnotation(entry);
+    if (!state.favorite && !state.todo) continue;
+    flagged.push({ id, favorite: state.favorite, todo: state.todo });
+  }
+  if (flagged.length === 0) return { moved: 0, created: 0 };
+
+  let created = 0;
+  await api.documents.tree.mutate((draft) => {
+    for (const item of flagged) {
+      if (item.favorite && ensureShortcut(draft, FIXED_NODES.favorites, item.id, newId).created) created += 1;
+      if (item.todo && ensureShortcut(draft, FIXED_NODES.todos, item.id, newId).created) created += 1;
+    }
+  });
+
+  await api.documents.annotations.mutate((draft) => {
+    // The two flags exist only in this old document, so clearing them is a
+    // delete, not a patch: `patchAnnotation` no longer carries them, and a
+    // rewritten `false` would read as "explicitly not favorited" forever. A
+    // session that was only favorited leaves the sidecar entirely.
+    for (const item of flagged) {
+      const entry = draft.sessions?.[item.id];
+      if (!entry) continue;
+      delete entry.favorite;
+      delete entry.todo;
+      const rest = normalizeAnnotation(entry);
+      if (rest.tags.length === 0 && rest.note === "") {
+        delete draft.sessions[item.id];
+        continue;
+      }
+      entry.updatedAt = Date.now();
+    }
+  });
+
+  return { moved: flagged.length, created };
+}

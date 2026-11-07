@@ -1,9 +1,9 @@
 /**
  * The client may hold one *traversal*, and no *rules*.
  *
- * Three copies of "where may a node go" used to exist (lib/domain/tree.js, the
+ * Three copies of "where may a node go" used to exist (src/domain/tree.js, the
  * static shell, and lib/client.js). The shell is gone and the rules moved to
- * lib/domain/tree-rules.js, but the client still has to grey out a bad drop
+ * src/domain/tree-rules.js, but the client still has to grey out a bad drop
  * *before* the host answers, so it keeps a predicate of its own. This file is
  * what stops that predicate from drifting: it loads the real client bundle,
  * builds a tree with the real builder, and demands the same verdict for every
@@ -15,9 +15,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildAutoTree, canMove, sessionsOfNode, sessionsUnderNode } from "../lib/domain/tree.js";
-import { placementOfNode, shortcutTargetNodeId, subtreeOf } from "../lib/domain/tree-rules.js";
-import { FIXED_NODES } from "../lib/constants.js";
+import { buildAutoTree, canMove, sessionsOfNode, sessionsUnderNode } from "../src/domain/tree.js";
+import { placementOfNode, shortcutTargetNodeId, subtreeOf } from "../src/domain/tree-rules.js";
+import { FIXED_NODES } from "../src/constants.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 // ── load the client bundle the same way the plugin host does ────────────────

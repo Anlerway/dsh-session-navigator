@@ -13,8 +13,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { applyQuickAccessOrder, isBookmarkable } from "../lib/domain/quick-access.js";
-import { FIXED_NODES } from "../lib/constants.js";
+import { applyQuickAccessOrder, isBookmarkable } from "../src/domain/quick-access.js";
+import { FIXED_NODES } from "../src/constants.js";
 
 const draftOf = (...folders) => ({
   folders: Object.fromEntries(folders.map((id) => [id, { id, name: id, parent: FIXED_NODES.root, order: 0 }])),

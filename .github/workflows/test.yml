@@ -1,7 +1,7 @@
 name: test
 
 # The plugin has no dependencies, so there is nothing to install. The client
-# bundle is assembled from lib/client-src/ by a plain node script rather than a
+# bundle is assembled from src/client/ by a plain node script rather than a
 # bundler — one build step, then the gates and the tests on the Node versions
 # package.json promises.
 on:
@@ -15,7 +15,7 @@ jobs:
   test:
     name: node ${{ matrix.node }}
     # windows-latest only, deliberately. The shipping target is the DSH desktop
-    # app, and lib/component/layout.js pins win32 asset names for the Electron
+    # app, and src/component/layout.js pins win32 asset names for the Electron
     # runtime behind 独立窗口. A Linux job would report on a platform this
     # plugin does not install onto; add it here the day that changes.
     runs-on: windows-latest
@@ -29,9 +29,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # Two zero-dependency gates. lint.mjs parses every file under lib/,
+      # Two zero-dependency gates. lint.mjs parses every file under src/,
       # test/ and scripts/ and applies a few rules; check-docs.mjs fails when a
-      # document cites "lib/x.js:1234", a number that rots on the next insert.
+      # document cites "src/x.js:1234", a number that rots on the next insert.
       # Both are plain node scripts, so they run before the tests and a failure
       # names the file and line that needs attention.
       - run: node scripts/lint.mjs
@@ -42,7 +42,7 @@ jobs:
       # answer in. A half-translated table looks fine on screen until the first
       # label falls back to Chinese in a Japanese window.
       - run: node scripts/check-i18n.mjs
-      # lib/client.js is generated from lib/client-src/ and deliberately not
+      # lib/client.js is generated from src/client/ and deliberately not
       # tracked, so every job builds it before anything reads it. The build is a
       # concatenation with no dependencies and no cache to warm; the tests below
       # therefore always run against the sources in this commit.

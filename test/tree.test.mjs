@@ -25,8 +25,8 @@ import {
   sessionsOfNode,
   workspaceNodeId,
   workspaceIdOfNode,
-} from "../lib/domain/tree.js";
-import { FIXED_NODES } from "../lib/constants.js";
+} from "../src/domain/tree.js";
+import { FIXED_NODES } from "../src/constants.js";
 
 const registry = {
   workspaceIds: ["wa", "wb"],

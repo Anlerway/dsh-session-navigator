@@ -26,12 +26,12 @@ import {
   reconcileTrash,
   restoreSessions,
   trashSessions,
-} from "../lib/host/trash.js";
-import { ensureDataDir, dataPaths } from "../lib/paths.js";
-import { trashTargetDir } from "../lib/domain/trash.js";
-import { openDocuments } from "../lib/store/documents.js";
-import { createShortcut } from "../lib/domain/shortcuts.js";
-import { FIXED_NODES } from "../lib/constants.js";
+} from "../src/host/trash.js";
+import { ensureDataDir, dataPaths } from "../src/paths.js";
+import { trashTargetDir } from "../src/domain/trash.js";
+import { openDocuments } from "../src/store/documents.js";
+import { createShortcut } from "../src/domain/shortcuts.js";
+import { FIXED_NODES } from "../src/constants.js";
 
 /** A deterministic id source, so a test can name the row it is looking for. */
 function idFactory(seed) {

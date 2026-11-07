@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { shortcutSessionTargets } from "../lib/index.js";
+import { shortcutSessionTargets } from "../src/index.js";
 
 const tree = (nodes) => ({ nodes });
 

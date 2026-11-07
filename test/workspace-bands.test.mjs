@@ -17,8 +17,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildTree } from "../lib/domain/tree.js";
-import { FIXED_NODES } from "../lib/constants.js";
+import { buildTree } from "../src/domain/tree.js";
+import { FIXED_NODES } from "../src/constants.js";
 import { loadClientBundle } from "./support/client-bundle.mjs";
 
 const { test: api } = loadClientBundle({ expose: ["workspaceBands"] });

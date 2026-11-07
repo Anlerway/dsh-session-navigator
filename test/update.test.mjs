@@ -16,8 +16,8 @@ import {
   parseRelease,
   pluginVersion,
   resetUpdateCache,
-} from "../lib/host/update.js";
-import { REPO_URL } from "../lib/constants.js";
+} from "../src/host/update.js";
+import { REPO_URL } from "../src/constants.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8"));

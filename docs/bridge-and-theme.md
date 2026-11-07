@@ -6,7 +6,7 @@
 
 ## 1. 命令总线
 
-`lib/host/bridge.js` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
+`src/host/bridge.js` 的 `createBridge()` 是一个**进程内的环形缓冲**，不是消息队列：
 
 | 参数 | 值 | 理由 |
 |---|---|---|
@@ -17,12 +17,12 @@
 `since(cursor)` 返回 `seq > cursor` **且** 未过期的命令：游标太旧时返回的只是还留着的那些，
 补发一部分总比什么都不补发好。
 
-总线**故意是哑的**（`lib/host/bridge.js`）：它不校验 payload 的语义，只搬运。
+总线**故意是哑的**（`src/host/bridge.js`）：它不校验 payload 的语义，只搬运。
 认识某个 kind 的监听者自己处理，不认识的忽略。这样新面板可以对着旧窗口说话，不需要升 schema。
 
 ## 2. 允许的 kind，以及谁执行
 
-`WINDOW_COMMANDS`（`lib/host/bridge.js`）是窗口唯一被允许发的八种命令，其余一律 `bad-request`。
+`WINDOW_COMMANDS`（`src/host/bridge.js`）是窗口唯一被允许发的八种命令，其余一律 `bad-request`。
 另外两种由 **host 自己**发，用来通知页面窗口的生命周期。
 
 | kind | 谁发 | 谁执行 | 作用 |
@@ -72,7 +72,7 @@ payload 只接受三个字符串字段，各自截到 200 字符（`session-stat
 
 ### 写入广播（`changed`）
 
-写请求落地之后，host 自己往总线发一条 `changed`（`announceWrite()`，`lib/index.js`）：
+写请求落地之后，host 自己往总线发一条 `changed`（`announceWrite()`，`src/index.js`）：
 
 ```jsonc
 { "kind": "changed", "payload": { "path": "/folders", "method": "POST" } }
@@ -92,7 +92,7 @@ payload 只接受三个字符串字段，各自截到 200 字符（`session-stat
 
 ## 3. SSE 协议
 
-`GET /bridge/events?since=<cursor>`（`lib/index.js`）。帧序列固定：
+`GET /bridge/events?since=<cursor>`（`src/index.js`）。帧序列固定：
 
 ```
 event: ready
@@ -113,12 +113,12 @@ data: {"seq":43,"kind":"open-session","payload":{…},"createdAt":1730000000000}
 - `req.on("close" | "aborted")` 时清定时器、退订、`end()`。
 
 **重连不重放**：`EventSource` 断线后会自己重连同一个 URL，并带上 `Last-Event-ID`。服务端优先
-读这个头，读不到才回落到查询参数 `since`（`lib/index.js`）。没有这一步，重连会从
+读这个头，读不到才回落到查询参数 `since`（`src/index.js`）。没有这一步，重连会从
 首次连接的游标开始补发，`new-session` 就开两个窗口。
 
 **背压与上限**：`res.write()` 返回 `false` 表示套接字缓冲已满，此时直接结束这条流——面板会带
 `Last-Event-ID` 重连，从它真正收到的最后一帧继续，缓冲不会无限增长。同时订阅者上限 32
-（`MAX_LISTENERS`，`lib/host/bridge.js`），满了回 `503`：重连风暴不能把卡住的响应再叠一层。
+（`MAX_LISTENERS`，`src/host/bridge.js`），满了回 `503`：重连风暴不能把卡住的响应再叠一层。
 
 主路径是 SSE，因为它推而不问；但条流**可以静默死掉**：文档被隐藏久了会被节流、一端以为连接还在、
 或者宿主在整个插件底下重启了一次。那时两边都停在旧列表上，只有重启 DSH 才能救——这正是「删了会话另一边
@@ -153,9 +153,9 @@ GET /bridge/poll?since=<cursor>
 
 ### 解法
 
-面板把**它看到的**报给 host，窗口来问 host 要。`lib/host/theme.js` 是个极小的共享 store。
+面板把**它看到的**报给 host，窗口来问 host 要。`src/host/theme.js` 是个极小的共享 store。
 
-只接受样式表真正用到的 14 个 token（`THEME_TOKENS`，`lib/host/theme.js`）：
+只接受样式表真正用到的 14 个 token（`THEME_TOKENS`，`src/host/theme.js`）：
 
 ```
 --dsw-alias-bg-layer-1 / -2 / -3
@@ -166,7 +166,7 @@ GET /bridge/poll?since=<cursor>
 --dsw-alias-interactive-bg-hover
 ```
 
-**校验**（`isSafeTokenValue`，`lib/host/theme.js`）：值最终会进 CSS 自定义属性，所以无界的
+**校验**（`isSafeTokenValue`，`src/host/theme.js`）：值最终会进 CSS 自定义属性，所以无界的
 map 就是一条样式注入通道。规则是：
 
 - 必须是字符串，trim 后非空，长度 ≤ 160（`VALUE_MAX`，够放颜色和小的 color-mix 表达式）；
@@ -216,10 +216,10 @@ shim **会拦掉**窗口发出的 `POST /theme`（`assets/detached/shim.js`）�
 
 ## 5. 独立窗口
 
-`POST /detached/open` / `POST /detached/close`（`lib/index.js`）。窗口本体是 DSH 的
+`POST /detached/open` / `POST /detached/close`（`src/index.js`）。窗口本体是 DSH 的
 Electron 窗口，加载 `/session-navigator/api/ui`，需要Electron 组件就绪，否则 404 `component-not-installed`。
 
-窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js`），
+窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`src/index.js`），
 页面据此更新"默认打开方式"的状态和按钮文案。面板自己记 `detachedOpen` 这个状态：
 `window-open` 置真、`window-closed` 置假。它**不能**借 `componentReady`（「Electron 组件装好了」）
 来表达这件事——两者曾经是同一个 state，于是关掉窗口之后按钮会改口说组件没装。
@@ -314,7 +314,7 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 **问话救不了的就是时间上的这两个洞。** 问话要送到页面，而页面的 document 在后台时被浏览器节流，
 回答可能晚几分钟——窗口分不出「晚」和「没发」，徽章就停在旧档；反过来，总线里那条广播 30 秒后过期，
 而页面在快照没变时不会重播，于是更晚打开的窗口问到的是一根空总线。所以 host 记一格
-（`lib/host/status-board.js`），窗口不问也读得到：
+（`src/host/status-board.js`），窗口不问也读得到：
 
 | 载体 | 谁 → 谁 | 何时 |
 |---|---|---|
@@ -344,12 +344,12 @@ kind 先 `reader.invalidate()`（否则重读还在 1.5 秒的 header 缓存里�
 
 | 文件 | 职责 |
 |---|---|
-| `lib/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand`、`normalizeStatusRows` |
-| `lib/host/status-board.js` | 会话状态的最后一格缓存：`set` / `snapshot` / `clear`，带快照自己的时间戳 |
-| `lib/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
-| `lib/index.js` | `POST /bridge/commands` |
-| `lib/index.js` | `GET /bridge/events`（SSE 主路径，见 §3） |
-| `lib/index.js` | `GET /bridge/poll`（轮询兜底，同一根总线） |
+| `src/host/bridge.js` | 总线、`WINDOW_COMMANDS`、`normalizeCommand`、`normalizeStatusRows` |
+| `src/host/status-board.js` | 会话状态的最后一格缓存：`set` / `snapshot` / `clear`，带快照自己的时间戳 |
+| `src/host/theme.js` | `THEME_TOKENS`、`isSafeTokenValue`、theme store |
+| `src/index.js` | `POST /bridge/commands` |
+| `src/index.js` | `GET /bridge/events`（SSE 主路径，见 §3） |
+| `src/index.js` | `GET /bridge/poll`（轮询兜底，同一根总线） |
 | `lib/client.js` | `reportTheme()` + `resolveThemeValue()` + MutationObserver |
 | `lib/client.js` | `subscribeBridge()`：SSE + `/bridge/poll`、`seq` 去重、宿主重启检测 |
 | `lib/client.js` | `requestDshRefresh()`：能拉就拉，拉不动就走桥 |

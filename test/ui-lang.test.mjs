@@ -6,7 +6,7 @@
  * setting is a document field (`ui.lang`), not a browser preference: the panel
  * is drawn inside DSH, and DSH's own language is what "auto" means.
  *
- * Two halves are pinned here — the document (`lib/domain/settings.js`) that
+ * Two halves are pinned here — the document (`src/domain/settings.js`) that
  * stores the choice, and the resolution chain in the bundle that reads it:
  *
  *     saved 界面语言  >  DSH's translator  >  whatever the panel was drawing
@@ -18,13 +18,13 @@ import assert from "node:assert/strict";
 
 import { loadClientBundle } from "./support/client-bundle.mjs";
 import { byClass, collect, renderSettings, textOf } from "./support/settings-harness.mjs";
-import { LANGS } from "../lib/lang.js";
+import { LANGS } from "../src/lang.js";
 import {
   UI_LANGS,
   defaultSettings,
   mergeSettings,
   normalizeSettings,
-} from "../lib/domain/settings.js";
+} from "../src/domain/settings.js";
 
 const { test: surface } = loadClientBundle({ expose: ["applyUiLang", "uiLang", "aiLang", "T", "DICTS"] });
 const { applyUiLang, uiLang, aiLang, T, DICTS } = surface;

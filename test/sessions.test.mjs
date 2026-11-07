@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildSessionView, displayTitleOf } from "../lib/domain/sessions.js";
+import { buildSessionView, displayTitleOf } from "../src/domain/sessions.js";
 
 /** @param {object[]} headers */
 function viewOf(headers, options = {}) {
