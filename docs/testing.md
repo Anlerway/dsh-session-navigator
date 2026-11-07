@@ -58,7 +58,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/row-memo.test.mjs` | 200 | 行 memo 的比较器两个方向都钉住：同样的事实、全新的对象必须算同一行（列表每次渲染都换 dragSet / rename / 回调包装，浅比较永不命中），而会话对象、勾选、重命名中的字、剪切标记、拖动集合、搜索命中任何一处动了都必须重画——答"同"错了是静静地显示旧行，答"不同"错了只是多画一次 |
 | `test/list-containers.test.mjs` | 211 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来；「当前目录」时放宽整棵树这件事也不做 |
 | `test/list-density.test.mjs` | 93 | 拥挤的列表滚动而不压行：`.listbody` 是唯一滚动面（`overflow:auto`、没有自己的 `height`/`max-height`、`overscroll-behavior:contain`）、`.row` / `.trow` / `.grp` 都是 `flex:0 0 auto`（压力落在容器上，不落在行上）、链上两处 `min-height:0` 都不能掉——少一处滚动条就永远不出现 |
-| `test/content-index.test.mjs` | 517 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；**只索引用户与助手的文字**（真实日志形状：工具输出、注入上下文都不该被搜到）；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
+| `test/content-index.test.mjs` | 534 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段、单条正文上限 2 万字符但**开头与结尾都留**（中间才是能丢的那段）；**只索引用户与助手的文字**（真实日志形状：工具输出、注入上下文都不该被搜到）；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
 | `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
 | `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上，不钉在屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
 | `test/reorder.test.mjs` | 94 | 名次那条路由：workspace 的名次落在 `workspaceOrder`、快捷方式落在自己的 `order`；一个名字对不上任何节点的 id（例如多打一层 `w-`）回 `404 node-not-found`，不给没人画的行写名次；`order` 不是数字不进文档；过期 revision 仍由侧车挡 |
@@ -86,7 +86,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：英文表覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/lang-chain.test.mjs` | 93 | 一份语言清单四处一致：`assets/i18n/` 目录、`src/lang.js` 的 `LANGS`、helper 与 shim 各自抄的常量、产物从词典派生的清单；`LANGS.length` 为 10；`normalizeLang` 把区域码归到基语言、把没有词典的码归成空串；桥与 `/detached/open` 只放行这份清单 |
 | `test/reset.test.mjs` | 213 | 清除数据：一个字都没动之前先验 `DELETE`、五份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
-| `test/projcache.test.mjs` | 156 | 投影缓存的复用键（size + mtime）：没动过的文件不读第二遍，而**任何**改动都得被发现——最硬的一条是第二次写入等长内容并把旧 mtime 放回去，只信键的读取器仍会答出旧标题；另有 reader 单飞与清缓存 |
+| `test/projcache.test.mjs` | 178 | 投影缓存的复用键（size + mtime）：没动过的文件不读第二遍，而**任何**改动都得被发现——最硬的一条是第二次写入等长内容并把旧 mtime 放回去，只信键的读取器仍会答出旧标题；另有 reader 单飞与清缓存；40 条记录（超过一次读 8 条的窗口）两次读出来顺序一致、每条都穿着自己的事实 |
 | `test/workspace-bands.test.mjs` | 107 | 「所有会话」按工作区切带：行落到哪个工作区（子会话跟父会话）、带序按树 DFS（含拖进用户文件夹的工作区仍留在文件夹位置）、树不认识的工作区排在已知之后、没有工作区的沉底、标题取工作区名字而视图过期时回落到 id |
 | `test/routes-contract.test.mjs` | 581 | `ROUTES` 表的契约：表项与 `src/routes/` 的键一一对应、`statusFor` 的 52 条历史映射逐字未变、没映射的码一律 500、`session-not-found` 与 `session/not-found` 两种拼写同答、`messageFor` 分语言回退、所有 4xx 信封同形、每条写路由对不能用的 body 给 4xx、抛出的码都能在表里找到 |
 | `test/check-docs.test.mjs` | 68 | 计数门禁本身要能红：汉字与数字写法读成同一个数、过期计数在两种写法下都被抓到、与仓库一致的句子放行、子集计数（「九条路由不写信封」）不被误判、`--fix` 按原句的写法改写 |

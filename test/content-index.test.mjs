@@ -175,6 +175,23 @@ test("the snippet is one flat line, with the match inside it", async () => {
   assert.ok(hit.snippet.length < long.length, "the snippet is shorter than the text");
 });
 
+test("a conversation longer than the cap keeps its opening and its ending", async () => {
+  // The index holds every session's text — and its lowercased copy — in memory,
+  // so one enormous log must not decide what a home costs. The cut keeps the two
+  // ends: the opening names the subject, the ending is what the session settled
+  // on. The middle is what a bounded index gives up, and the seam is marked.
+  const body = "x".repeat(14_000) + " MIDDLE-needle " + "y".repeat(14_000);
+  const { index } = fixture({ "C:/logs/a.zstd": ["OPENING-needle", body, "ENDING-needle"] });
+  index.sync([session("a")]);
+  await index.work();
+  assert.equal(index.search("opening-needle").length, 1);
+  assert.equal(index.search("ending-needle").length, 1);
+  assert.deepEqual(index.search("middle-needle"), [], "the middle is what a cap gives up");
+  // The text is still one string, so a snippet near the seam must not read as
+  // two sentences that followed each other.
+  assert.ok(index.search("ending-needle")[0].snippet.includes("…"));
+});
+
 /** The same scripted filesystem, as the options an index takes. */
 function scripted(logs) {
   return {
@@ -213,8 +230,8 @@ test("an empty needle reports the index without spending it", async () => {
 
 test("a cold index answers partially and finishes on the next request", async () => {
   const logs = { "C:/logs/a.zstd": ["alpha"], "C:/logs/b.zstd": ["alpha too"] };
-  // budgetMs: 0 — every call spends exactly one log, which is what a 700 ms
-  // slice looks like from the outside when the logs are large.
+  // budgetMs: 0 — every call spends exactly one log, which is what one slice of
+  // the default 150 ms looks like from the outside when the logs are large.
   const api = {
     reader: { snapshot: async () => ({ sessions: [session("a"), session("b")] }) },
     content: createContentIndex({ ...scripted(logs), budgetMs: 0 }),

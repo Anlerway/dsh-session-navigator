@@ -107,7 +107,7 @@ src/
 │  ├─ logfacts.js     182  日志只回答一件事：这个会话有没有过一轮对话（空白会话），每条日志一份、按 size+mtime 校验的 LRU
 │  ├─ live.js         122  哪些会话真的在跑：只信 ctx.agents 的 status，绝不从 ctx.sessions 或日志推断
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
-│  ├─ content.js      389  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
+│  ├─ content.js      429  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘；每条正文留头 1.2 万 + 尾 8 千字符
 │  └─ reader.js       376  三源合并 + TTL 缓存策略（/bootstrap 的数据源）；base 读单飞、tree 首次读取才建
 │
 ├─ domain/                  纯规则，无 IO，可直接单测

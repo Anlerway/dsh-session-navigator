@@ -38,8 +38,16 @@ import { readArtifact } from "./artifact.js";
 import { turnsOf } from "../domain/export.js";
 import { writeAtomic } from "../store/sidecar.js";
 
-/** How much wall clock one request may spend building, before it answers. */
-const DEFAULT_BUDGET_MS = 700;
+/**
+ * How much wall clock one request may spend building, before it answers.
+ *
+ * A keystroke is waiting on this number. 700 ms — one large log — meant the
+ * first 会话内容 search after a restart looked like a hang; 150 ms is a couple of
+ * frames of the same work, and the client asks again while the index is cold, so
+ * the build continues either way. The trade is more round trips for a shorter
+ * wait, which is the right side of it for something a person is typing into.
+ */
+const DEFAULT_BUDGET_MS = 150;
 
 /** The longest needle the route will look for; a paragraph is not a search. */
 export const MAX_NEEDLE = 120;
@@ -56,6 +64,21 @@ const CACHE_VERSION = 2;
 
 /** The two voices a session search covers: what was asked, what was answered. */
 const SEARCHABLE_ROLES = new Set(["user", "assistant"]);
+
+/**
+ * The most text one session may contribute to the index.
+ *
+ * DSH compacts long conversations, but a resumed or heavily tool-assisted one
+ * still holds megabytes of user and assistant text, and the index keeps every
+ * session's text *and* its lowercased copy in memory. One session is not worth
+ * that: the panel shows one line of context per hit. 20,000 characters is about
+ * an hour of conversation, and it bounds a 5,000-session home at a size the
+ * cache file can still be rewritten in one go.
+ */
+const MAX_TEXT = 20000;
+
+/** Where the cut falls when a conversation is longer than that. */
+const TEXT_HEAD = 12000;
 
 /** Longest a running build may leave the file behind the memory it mirrors. */
 const FLUSH_AFTER_MS = 3000;
@@ -125,7 +148,24 @@ export function createContentIndex(options = {}) {
       if (!SEARCHABLE_ROLES.has(turn.role)) continue;
       if (turn.text) parts.push(turn.text);
     }
-    return parts.join("\n");
+    return clampText(parts.join("\n"));
+  }
+
+  /**
+   * Keep the beginning and the end of a long conversation, drop the middle.
+   *
+   * The opening names the subject and the ending is what the session settled on;
+   * the middle is the part a search can afford to miss, and the ellipsis is left
+   * in the text so a snippet that crosses the seam says so instead of reading as
+   * two sentences that followed each other.
+   *
+   * Entries restored from an older cache file keep the text they were built
+   * from — the version is not bumped for this, because a bump would make every
+   * user pay a full rebuild for a bound that only new logs need.
+   */
+  function clampText(text) {
+    if (text.length <= MAX_TEXT) return text;
+    return text.slice(0, TEXT_HEAD) + "\n…\n" + text.slice(TEXT_HEAD - MAX_TEXT);
   }
 
   /**
