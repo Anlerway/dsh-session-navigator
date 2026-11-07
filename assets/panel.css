@@ -991,3 +991,23 @@
    content, and over the panel, whose own menus are at 9000/9600 and which
    itself sits at 1050 in the overlay root. */
 .se-notes{z-index:9900}
+
+/* ── pointer feedback ──────────────────────────────────────────────────────────
+
+   A highlight has to land on the frame the pointer does. A 120 ms cross-fade on
+   a toolbar button is not "smooth", it reads as a button that reacts one beat
+   late, and the same goes for the checkbox, the pin and the pencil that fade in
+   when a row is hovered — those are what the user is aiming at next.
+
+   So the way in is instant: while :hover matches, the transition is none. The
+   fade still belongs to the way out, where these rules no longer apply and the
+   base rule's transition takes over again. Nothing that reports a state change
+   instead of answering the pointer is listed here: the switch knob, the progress
+   fill, the detail slide and the band tint keep their durations.
+   ────────────────────────────────────────────────────────────────────────────── */
+.se-hdrBtn:hover,
+.se-shell .fseg button:hover,
+.se-shell .trow:hover .cnt,
+.se-shell .trow:hover .pin,
+.se-shell .row:hover .chk,
+.se-shell .det-head:hover .det-title-edit{transition:none}
