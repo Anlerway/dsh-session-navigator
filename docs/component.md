@@ -111,6 +111,12 @@ staging 目录故意放在 `component/` **外面**（`<dataDir>/.component-stagi
 
 取消（`component-cancelled`）回到 `absent` 且不留错误；其它失败进 `error` 并把消息写进 state。
 
+界面上那条进度来自 `GET /component/status`，不是 `POST /component/install` 的响应——后者要等第 8 步
+才返回。`ComponentPanel` 因此从按下按钮那一刻就开始每 500 ms 轮询：`status()` 用 `.part` 的大小填
+`receivedBytes`（`state.js` 的进度写入节流 1 s，所以数字一秒一跳），总数未知时进度条走不确定动画，
+不会假装停在 0%。同一个 `ComponentPanel` 既画在设置页，也画在面板弹出的安装器里，两边看到的下载条
+是同一个。
+
 `source` 因此有两种取值：`reuse` 是步骤 1 复用自己的残留安装，`borrowed` 是借用别人的运行时
 （§8）。借用**不进上面任何一步**——不下载、不校验、不解压、不扫旧，只写一条记录。
 

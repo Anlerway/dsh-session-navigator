@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 
 import { loadClientBundle, recordingFetch } from "./support/client-bundle.mjs";
 
-const EXPOSE = ["launchExplorer", "dialogStore", "openComponentDialog", "ComponentPanel", "ComponentGroup", "ST"];
+const EXPOSE = ["launchExplorer", "dialogStore", "openComponentDialog", "ComponentPanel", "ComponentGroup", "ST", "componentPolling"];
 
 /** Walk a rendered tree, compiling nothing: only elements and text. */
 function texts(node, out = []) {
@@ -124,3 +124,75 @@ test("the settings page still draws the installer under its own caption", () => 
   assert.equal(group.children[0].props.className, "se-set-h");
 });
 
+
+/** The first element whose className contains `needle`. */
+function findByClass(node, needle) {
+  if (node === null || node === undefined) return null;
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = findByClass(child, needle);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (typeof node !== "object") return null;
+  if (String(node.props?.className ?? "").includes(needle)) return node;
+  return findByClass(node.children, needle);
+}
+
+test("the installer polls from the click, not from the first phase it sees", () => {
+  const { test: api } = loadClientBundle({ expose: EXPOSE });
+  // install() answers only once the runtime is on disk. Waiting for the status
+  // to say downloading before polling would mean never polling at all, which is
+  // exactly how the bar went missing.
+  assert.equal(api.componentPolling("absent", "install"), true);
+  assert.equal(api.componentPolling("absent", ""), false);
+  assert.equal(api.componentPolling("downloading", ""), true);
+  assert.equal(api.componentPolling("verifying", "cancel"), true);
+  assert.equal(api.componentPolling("ready", ""), false);
+});
+
+test("a download in flight draws a bar with its own percentage", () => {
+  const { test: api } = loadClientBundle({ expose: EXPOSE });
+  const tree = api.ComponentPanel({
+    t: api.ST,
+    component: {
+      phase: "downloading",
+      receivedBytes: 52_428_800,
+      totalBytes: 104_857_600,
+      approxDownloadBytes: 155_189_248,
+      approxDiskBytes: 327_155_712,
+    },
+  });
+  const bar = findByClass(tree, "se-set-progress");
+  assert.ok(bar, "the download row carries a bar");
+  assert.equal(bar.props.role, "progressbar");
+  assert.equal(bar.props["aria-valuenow"], 50);
+  const fill = findByClass(bar, "se-set-progress-fill");
+  assert.deepEqual(fill.props.style, { width: "50%" });
+  assert.match(texts(tree).join(" "), /50%/);
+});
+
+test("a download of unknown size sweeps instead of pretending to be at 0%", () => {
+  const { test: api } = loadClientBundle({ expose: EXPOSE });
+  const tree = api.ComponentPanel({
+    t: api.ST,
+    component: { phase: "downloading", receivedBytes: 4096, totalBytes: 0 },
+  });
+  const bar = findByClass(tree, "se-set-progress");
+  assert.ok(bar);
+  assert.match(String(bar.props.className), /indeterminate/);
+  assert.equal(bar.props["aria-valuenow"], undefined);
+  const fill = findByClass(bar, "se-set-progress-fill");
+  assert.equal(fill.props.style, null, "no width is invented");
+});
+
+test("a component that is simply missing offers the chips without a bar", () => {
+  const { test: api } = loadClientBundle({ expose: EXPOSE });
+  const tree = api.ComponentPanel({
+    t: api.ST,
+    component: { phase: "absent", approxDownloadBytes: 1, approxDiskBytes: 2 },
+  });
+  assert.equal(findByClass(tree, "se-set-progress"), null);
+  assert.ok(findButton(tree, api.ST("setCompDownload")));
+});

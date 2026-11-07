@@ -3,6 +3,21 @@
     // explicitly — the plugin itself is a few dozen KB and most users never
     // need a separate window — so the section leads with size and consequence
     // rather than a download button that appears out of nowhere.
+    /**
+     * Whether the panel has to keep asking /component/status.
+     *
+     * install() only answers once the runtime is on disk, so the status this
+     * component holds reads `absent` for the whole download. The host flushes
+     * `downloading` before the stream opens and rewrites the partial file's
+     * size once a second, so polling from the click is what turns that request
+     * into a bar. Polling also covers a download started before this panel
+     * existed — the first status read already says `downloading`.
+     */
+    function componentPolling(phase, busy) {
+      if (busy === "install") return true;
+      return phase === "downloading" || phase === "verifying" || phase === "extracting";
+    }
+
     function ComponentPanel({ t, component, onChanged, onOpened }) {
       const [status, setStatus] = useState(component ?? null);
       const [busy, setBusy] = useState("");
@@ -34,11 +49,12 @@
       // tab throttles it, so polling is the source of truth for the final state.
       const phase = status?.phase ?? "absent";
       const settling = phase === "downloading" || phase === "verifying" || phase === "extracting";
+      const polling = componentPolling(phase, busy);
       useEffect(() => {
-        if (!settling) return undefined;
+        if (!polling) return undefined;
         const timer = setInterval(() => { void load(); }, 500);
         return () => clearInterval(timer);
-      }, [settling, load]);
+      }, [polling, load]);
 
       const act = useCallback(async (kind) => {
         setBusy(kind);
@@ -168,15 +184,31 @@
                   ],
           ),
         ),
-        settling || phase === "error"
+        busy === "install" || settling || phase === "error"
           ? h(
               "div",
               { className: "se-set-row" },
               h(
                 "div",
                 { className: "se-set-main" },
-                phase === "downloading"
-                  ? h("progress", { className: "se-set-progress", max: 100, value: percent ?? undefined, "aria-valuenow": percent ?? undefined })
+                // The bar is drawn by hand: a native <progress> has no
+                // visible indeterminate run in this theme, and the first
+                // second of a download has no byte count yet.
+                phase === "downloading" || (busy === "install" && phase === "absent")
+                  ? h(
+                      "div",
+                      {
+                        className: "se-set-progress" + (percent === null ? " indeterminate" : ""),
+                        role: "progressbar",
+                        "aria-valuemin": 0,
+                        "aria-valuemax": 100,
+                        "aria-valuenow": percent ?? undefined,
+                      },
+                      h("span", {
+                        className: "se-set-progress-fill",
+                        style: percent === null ? null : { width: percent + "%" },
+                      }),
+                    )
                   : null,
                 h(
                   "div",
@@ -189,7 +221,9 @@
                       ? t("setCompVerifying")
                       : phase === "extracting"
                         ? t("setCompExtracting")
-                        : status?.error ?? "",
+                        : busy === "install"
+                          ? t("setCompWorking")
+                          : status?.error ?? "",
                 ),
               ),
             )
