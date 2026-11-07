@@ -13,7 +13,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile, appendFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -200,6 +200,47 @@ test("an empty log is blank rather than unreadable", async () => {
     await writeFile(path, Buffer.alloc(0));
     clearLogFacts();
     assert.deepEqual(await readLogFacts(path, 0, 1), { turnStart: false });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("facts survive a listing larger than the old 512-log window", async () => {
+  const dir = await tempDir();
+  try {
+    /** @type {Array<{ path: string, size: number }>} */
+    const logs = [];
+    for (let i = 0; i < 600; i += 1) {
+      const path = join(dir, `session-${i}.jsonl.zstd`);
+      const size = await writeLog(path, [[header, turnStart]]);
+      logs.push({ path, size });
+    }
+    clearLogFacts();
+    for (const log of logs) await readLogFacts(log.path, log.size, 1);
+
+    // A hit answers from memory; a miss would have to open the file, and the
+    // file is gone. The first entry is the one an eviction would have taken,
+    // so this is the difference between a 512-entry window and a window that
+    // covers the installation.
+    await rm(logs[0].path);
+    assert.deepEqual(await readLogFacts(logs[0].path, logs[0].size, 1), { turnStart: true });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a log that gains its first turn is re-read", async () => {
+  const dir = await tempDir();
+  try {
+    const path = join(dir, "session.v4.jsonl.zstd");
+    const blankSize = await writeLog(path, [[header]]);
+    clearLogFacts();
+    assert.deepEqual(await readLogFacts(path, blankSize, 1), { turnStart: false });
+
+    // DSH appends one frame per batch, so both the size and the mtime move.
+    await appendFile(path, zstdCompressSync(Buffer.from(`${turnStart}\n`, "utf8")));
+    const grown = (await stat(path)).size;
+    assert.deepEqual(await readLogFacts(path, grown, 2), { turnStart: true });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

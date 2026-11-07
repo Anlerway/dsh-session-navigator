@@ -39,7 +39,7 @@ const LOG_READ_CONCURRENCY = 8;
  * @typedef {object} Snapshot
  * @property {object[]} sessions merged, sorted session list
  * @property {object} view the merged view (for scoped queries)
- * @property {any} tree derived tree
+ * @property {any} tree derived tree, built on first read
  * @property {any} registry normalized registry
  * @property {object} stats counters (source mix, timings)
  * @property {number} scannedAt epoch ms of the header scan behind this snapshot
@@ -74,6 +74,13 @@ export function createReader(options) {
    * @type {{ home: string, run: Promise<Map<string, object>> } | null}
    */
   let projcacheInflight = null;
+  /**
+   * Single-flight for the session-world half of a snapshot (headers, projection
+   * cache, registry, log facts). See `baseData` for what is and is not shared.
+   *
+   * @type {{ home: string, run: Promise<{ headerMap: Map<string, object>, cacheMap: Map<string, object>, registry: any, logFacts: Map<string, any> }> } | null}
+   */
+  let baseInflight = null;
   /**
    * Bumped by `invalidate()`. A walk that started before the bump must not
    * publish its result: it read the tree before the change that invalidated it,
@@ -114,6 +121,50 @@ export function createReader(options) {
   }
 
   /**
+   * The session-world half of a snapshot: header scan, projection cache,
+   * registry, per-log facts.
+   *
+   * This is the expensive part and it does not depend on the sidecar overlay.
+   * When the panel opens, `/bootstrap`, `/summaries` and one summary lookup per
+   * running session arrive together, and each used to repeat the same walk; now
+   * they join one read.
+   *
+   * Only a read that is still running is shared, never a finished one. The
+   * overlay changes without `invalidate()` — a sidecar document write does not
+   * bump `epoch` — so handing a completed base to a later caller would answer it
+   * with the tree as it was before that write. Callers that overlap were going
+   * to see that state anyway; a caller that arrives later gets a fresh read.
+   *
+   * @param {string} home
+   * @param {boolean} refresh
+   */
+  async function baseData(home, refresh) {
+    if (baseInflight) {
+      if (baseInflight.home === home && !refresh) return baseInflight.run;
+      if (refresh) {
+        // A refresh must not slide under a read that began before the change it
+        // is refreshing for; let that read finish, then start its own.
+        await baseInflight.run.catch(() => {});
+      }
+    }
+    /** @type {{ home: string, run: Promise<any> | null }} */
+    const entry = { home, run: null };
+    entry.run = (async () => {
+      const [headerMap, cacheMap, registry] = await Promise.all([
+        headers(refresh),
+        projcacheOf(home),
+        readRegistry(),
+      ]);
+      const logFacts = await logFactsOf(headerMap);
+      return { headerMap, cacheMap, registry, logFacts };
+    })().finally(() => {
+      if (baseInflight === entry) baseInflight = null;
+    });
+    baseInflight = entry;
+    return entry.run;
+  }
+
+  /**
    * @param {object} [opts]
    * @param {boolean} [opts.refresh] bypass the header TTL
    * @returns {Promise<Snapshot>}
@@ -121,16 +172,14 @@ export function createReader(options) {
   async function snapshot(opts = {}) {
     const startedAt = performance.now();
     const home = options.dshHome();
-    const [headerMap, cacheMap, registry, overlay] = await Promise.all([
-      headers(opts.refresh === true),
-      projcacheOf(home),
-      readRegistry(),
-      safeOverlay(),
-    ]);
+    // Read the overlay per call, never joined: it is the one input that changes
+    // without a reader epoch bump, and reading it is cheap.
+    const overlayRead = safeOverlay();
+    const { headerMap, cacheMap, registry, logFacts } = await baseData(home, opts.refresh === true);
+    const overlay = await overlayRead;
 
     const running = safeRunning();
     const trashedIds = overlay.trashedIds;
-    const logFacts = await logFactsOf(headerMap);
     const view = buildSessionView({
       headers: headerMap,
       projcache: cacheMap,
@@ -154,21 +203,32 @@ export function createReader(options) {
     // node and must not be counted (or searched) as if they were still there.
     const live = view.sessions.filter((session) => !trashedIds.has(session.id));
     const trashed = view.sessions.filter((session) => trashedIds.has(session.id));
-    const tree = buildAutoTree({
-      registry,
-      sessions: view.sessions,
-      trashedIds,
-      userTree: overlay.userTree,
-      // Counts describe rows, and the rows are the ones the list renders: a
-      // session hidden by 过滤空会话 is not counted either.
-      listSettings: overlay.listSettings,
-    });
+    /** @type {any} */
+    let tree = null;
+    /**
+     * Built on first read. Only the bootstrap, folder and layout routes look at
+     * the tree; the summary poll and the per-session lookups take
+     * `sessions`/`view` and used to pay for it anyway — 1.5 ms and 134 KB of
+     * nodes per snapshot at 5 000 sessions.
+     */
+    const treeOf = () =>
+      (tree ??= buildAutoTree({
+        registry,
+        sessions: view.sessions,
+        trashedIds,
+        userTree: overlay.userTree,
+        // Counts describe rows, and the rows are the ones the list renders: a
+        // session hidden by 过滤空会话 is not counted either.
+        listSettings: overlay.listSettings,
+      }));
 
     return {
       sessions: live,
       trashed,
       view: { sessions: view.sessions, live, trashed },
-      tree,
+      get tree() {
+        return treeOf();
+      },
       registry,
       annotations: overlay.annotations,
       stats: {
@@ -305,6 +365,9 @@ export function createReader(options) {
     invalidate() {
       epoch += 1;
       headerCache = null;
+      // Nobody joins a read that began before this bump; the callers already
+      // waiting on it keep their (pre-bump) answer, as before.
+      baseInflight = null;
     },
     get headerCacheAge() {
       return headerCache ? Date.now() - headerCache.at : null;

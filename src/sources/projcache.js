@@ -166,6 +166,47 @@ export async function readProjcacheFile(filePath) {
 const fileCache = new Map();
 
 /**
+ * How many cache files are parsed at once.
+ *
+ * The whole set is needed on every `/bootstrap`, and 173 files read in one
+ * unbounded `Promise.all` is 173 open handles and a peak of parsed JSON nobody
+ * asked for — on a large home, hundreds of megabytes for a listing that keeps a
+ * dozen fields per session. Eight matches src/sources/heads.js and is enough to
+ * keep the disk busy.
+ */
+const MAP_CONCURRENCY = 8;
+
+/**
+ * Run `task` over `items` with at most `limit` in flight, answering in order.
+ *
+ * Order is kept so the map this builds is the same one a sequential read would
+ * build: callers below sort the rows themselves, but a listing that shuffles
+ * between two identical requests is a bug waiting to be blamed on something else.
+ *
+ * @template T, R
+ * @param {T[]} items
+ * @param {number} limit
+ * @param {(item: T) => Promise<R>} task
+ * @returns {Promise<R[]>}
+ */
+async function mapLimit(items, limit, task) {
+  /** @type {R[]} */
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const at = next;
+      // No await between the check and the increment: two workers cannot claim
+      // the same index.
+      next += 1;
+      out[at] = await task(items[at]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
  * Read every projection cache record in one directory.
  *
  * Missing directories are not an error: a fresh DSH home has no cache yet and
@@ -184,29 +225,28 @@ export async function readProjcache(dir) {
     return out;
   }
   const files = names.filter((name) => name.endsWith(".json"));
-  await Promise.all(
-    files.map(async (name) => {
-      const filePath = join(dir, name);
-      let info;
-      try {
-        info = await stat(filePath);
-      } catch {
-        // Removed between the readdir and the stat: DSH deleted the session.
-        fileCache.delete(filePath);
-        return;
-      }
-      const key = `${info.mtimeMs}:${info.size}`;
-      const cached = fileCache.get(filePath);
-      let entry;
-      if (cached && cached.key === key) {
-        entry = cached.entry;
-      } else {
-        entry = await readProjcacheFile(filePath);
-        fileCache.set(filePath, { key, entry });
-      }
-      if (entry) out.set(entry.sessionId, { version: entry.version, facts: entry.facts });
-    }),
-  );
+  const read = await mapLimit(files, MAP_CONCURRENCY, async (name) => {
+    const filePath = join(dir, name);
+    let info;
+    try {
+      info = await stat(filePath);
+    } catch {
+      // Removed between the readdir and the stat: DSH deleted the session.
+      fileCache.delete(filePath);
+      return null;
+    }
+    const key = `${info.mtimeMs}:${info.size}`;
+    const cached = fileCache.get(filePath);
+    let entry;
+    if (cached && cached.key === key) {
+      entry = cached.entry;
+    } else {
+      entry = await readProjcacheFile(filePath);
+      fileCache.set(filePath, { key, entry });
+    }
+    return entry ? [entry.sessionId, { version: entry.version, facts: entry.facts }] : null;
+  });
+  for (const row of read) if (row) out.set(row[0], row[1]);
   // Keep the map bounded by what is on disk: a session DSH deleted would
   // otherwise keep its facts in memory until the plugin restarts.
   const live = new Set(files.map((name) => join(dir, name)));

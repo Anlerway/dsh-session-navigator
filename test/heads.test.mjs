@@ -13,12 +13,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 
-import { discoverLogs, readAllHeaders } from "../src/sources/heads.js";
+import { clearHeaderCache, discoverLogs, readAllHeaders } from "../src/sources/heads.js";
 
 /**
  * Write a session log whose first frame is a header line.
@@ -88,6 +88,55 @@ test("a session directory without a log is not an entry", async () => {
     const logs = await discoverLogs(home);
     assert.equal(logs.length, 1);
     assert.deepEqual(await readAllHeaders(home).then((map) => [...map.keys()]), ["s-1"]);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("an unchanged log is decoded once, a rewritten one is decoded again", async () => {
+  const home = await mkdtemp(join(tmpdir(), "heads-"));
+  try {
+    const path = await writeSession(home, "proj", "s-1", { id: "s-1" });
+    clearHeaderCache();
+
+    const first = await readAllHeaders(home);
+    const again = await readAllHeaders(home);
+    // The same object, not merely an equal one: the second scan reused the
+    // decode instead of opening the log.
+    assert.equal(again.get("s-1"), first.get("s-1"));
+
+    // Another id of the same length at the same path: the bytes changed, so the
+    // version key changed and the header is read again.
+    await writeSession(home, "proj", "s-1", { id: "s-9" });
+    const rewritten = await readAllHeaders(home);
+    assert.deepEqual([...rewritten.keys()], ["s-9"]);
+    assert.equal(rewritten.get("s-9").logPath, path);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a rewrite that keeps the file's size and mtime is still a rewrite", async () => {
+  const home = await mkdtemp(join(tmpdir(), "heads-"));
+  try {
+    const fixed = new Date(1_700_000_000_000);
+    const path = await writeSession(home, "proj", "s-1", { id: "s-9" });
+    await utimes(path, fixed, fixed);
+    clearHeaderCache();
+    assert.deepEqual([...(await readAllHeaders(home)).keys()], ["s-9"]);
+    const before = await stat(path);
+
+    // Same length, and the mtime is put back to the very same instant: the
+    // inode change time is the only version signal left, which is why the cache
+    // key carries it.
+    await writeSession(home, "proj", "s-1", { id: "s-1" });
+    await utimes(path, fixed, fixed);
+    const after = await stat(path);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeMs, fixed.getTime());
+
+    const headers = await readAllHeaders(home);
+    assert.deepEqual([...headers.keys()], ["s-1"]);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

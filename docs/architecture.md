@@ -101,14 +101,14 @@ src/
 ├─ fs.js               52  存在与列举：宿主与组件安装共用的两个判断
 │
 ├─ sources/                 读 DSH 的数据（只读，除 move 的受控重写）
-│  ├─ heads.js        233  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）
+│  ├─ heads.js        322  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）；header 按 size+mtime+ctime 缓存，没再动过的日志不解第二遍
 │  ├─ projcache.js    228  L1：storages/session_projcache 的每会话小 JSON
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
-│  ├─ logfacts.js     154  日志只回答一件事：这个会话有没有过一轮对话（空白会话），按 path|size|mtime 有界缓存
+│  ├─ logfacts.js     182  日志只回答一件事：这个会话有没有过一轮对话（空白会话），每条日志一份、按 size+mtime 校验的 LRU
 │  ├─ live.js         122  哪些会话真的在跑：只信 ctx.agents 的 status，绝不从 ctx.sessions 或日志推断
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
 │  ├─ content.js      389  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘
-│  └─ reader.js       313  三源合并 + TTL 缓存策略（/bootstrap 的数据源）
+│  └─ reader.js       376  三源合并 + TTL 缓存策略（/bootstrap 的数据源）；base 读单飞、tree 首次读取才建
 │
 ├─ domain/                  纯规则，无 IO，可直接单测
 │  ├─ sessions.js     310  合并三源 → 扁平会话列表（header 定身份，cache 只填空）

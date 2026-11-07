@@ -142,6 +142,28 @@ test("a deleted record leaves the listing and the memory", async () => {
   }
 });
 
+test("a listing wider than the read window keeps its order and loses nothing", async () => {
+  const dir = await tempDir();
+  try {
+    clearProjcacheCache();
+    const count = 40;
+    for (let at = 0; at < count; at += 1) {
+      const n = String(at).padStart(2, "0");
+      await writeRecord(join(dir, "s-" + n + ".json"), "t-" + n);
+    }
+    const first = await readProjcache(dir);
+    assert.equal(first.size, count);
+    // The reads run a few at a time, so a worker that overwrites the wrong slot
+    // would show up here as one row wearing another row's facts.
+    for (const id of first.keys()) assert.equal(first.get(id).facts.title, "t-" + id.slice(2), id);
+    clearProjcacheCache();
+    const second = await readProjcache(dir);
+    assert.deepEqual([...second.keys()], [...first.keys()], "two reads of one directory list it the same way");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a future-schema or broken file degrades to no facts", async () => {
   const dir = await tempDir();
   try {

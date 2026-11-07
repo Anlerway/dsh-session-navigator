@@ -22,8 +22,9 @@
  * never appears in the first batches is reported as "unknown" rather than
  * "blank": hiding a real conversation is worse than showing a short one.
  *
- * Everything is cached by `path|size|mtime`, because a listing re-runs on every
- * keystroke while a log only changes while its turn is running.
+ * Every answer is kept per log and tagged with the log's version (size + mtime
+ * from the header scan), because a listing re-runs on every keystroke while a
+ * log only changes while its turn is running.
  */
 
 import { open, readFile, stat } from "node:fs/promises";
@@ -39,13 +40,28 @@ const SMALL_BYTES = 256 * 1024;
 /** Frames decompressed from the head of a large log to look for a first turn. */
 const HEAD_FRAMES = 3;
 
-/** How many logs' facts stay cached. */
-const CACHE_LIMIT = 512;
+/**
+ * How many logs' facts stay cached.
+ *
+ * One entry per log, and one log per session. The old 512-entry FIFO was
+ * smaller than the session count of a real installation, so it evicted exactly
+ * the logs the next listing asked for and every refresh reopened every log —
+ * 5 000 opens per snapshot at 5 000 sessions. The map holds a few hundred
+ * kilobytes at that size, which is nothing next to the walks it saves.
+ */
+const CACHE_LIMIT = 20000;
 
 /** `turn/start` in a JSONL event line, without parsing it. */
 const TURN_START = /"type"\s*:\s*"turn\/start"/;
 
-/** @type {Map<string, { turnStart: boolean | null }>} */
+/**
+ * logPath → the facts plus the file version they describe.
+ *
+ * Keyed by path rather than by `path|size|mtime` so a rewritten log replaces
+ * its own entry instead of leaving the stale one to age out.
+ *
+ * @type {Map<string, { size: number | null, mtime: number | null, facts: { turnStart: boolean | null } }>}
+ */
 const cache = new Map();
 
 /**
@@ -68,28 +84,40 @@ export function clearLogFacts() {
  */
 export async function readLogFacts(logPath, sizeBytes, mtimeMs) {
   if (typeof logPath !== "string" || logPath === "") return null;
-  const key = `${logPath}\u0000${sizeBytes ?? ""}\u0000${mtimeMs ?? ""}`;
-  const cached = cache.get(key);
-  if (cached) return cached;
+  const size = Number.isFinite(sizeBytes) ? Number(sizeBytes) : null;
+  const mtime = Number.isFinite(mtimeMs) ? Number(mtimeMs) : null;
+  const cached = cache.get(logPath);
+  // The version comes from the header scan, which stat'ed the log a moment
+  // ago; a log appended to between the two reads misses here and is re-read on
+  // the next snapshot. When the scan could not stat the file both fields are
+  // null and the entry is reused as it was.
+  if (cached !== undefined && cached.size === size && cached.mtime === mtime) {
+    cache.delete(logPath);
+    cache.set(logPath, cached);
+    return cached.facts;
+  }
 
   let facts = null;
   try {
-    facts = await scanLog(logPath, sizeBytes);
+    facts = await scanLog(logPath, size);
   } catch {
     // A log being rewritten, a permission problem, an exotic frame: a listing
     // must not fail because one row could not be classified.
     facts = null;
   }
-  if (facts) remember(key, facts);
+  if (facts) remember(logPath, size, mtime, facts);
   return facts;
 }
 
 /**
- * @param {string} key
- * @param {{ turnStart: boolean | null }} value
+ * @param {string} logPath
+ * @param {number | null} size
+ * @param {number | null} mtime
+ * @param {{ turnStart: boolean | null }} facts
  */
-function remember(key, value) {
-  cache.set(key, value);
+function remember(logPath, size, mtime, facts) {
+  cache.delete(logPath);
+  cache.set(logPath, { size, mtime, facts });
   while (cache.size > CACHE_LIMIT) {
     const oldest = cache.keys().next().value;
     if (oldest === undefined) break;
