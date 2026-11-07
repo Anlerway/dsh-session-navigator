@@ -602,9 +602,6 @@
     "特殊文件夹": "Dossier spécial",
     "状态": "État",
     "独立弹窗打不开，已改用浮窗：": "La fenêtre séparée n'a pas pu s'ouvrir, le panneau flottant est utilisé à la place: ",
-    "独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件": "La fenêtre séparée nécessite le composant Electron, le panneau flottant est utilisé à la place: Paramètres → Navigateur de sessions → Composant Electron",
-    "独立窗口需要先下载Electron 组件（设置 → 会话资源管理器）": "La fenêtre séparée nécessite le composant Electron (Paramètres → Navigateur de sessions)",
-    "独立窗口需要先下载Electron 组件：设置 → 会话资源管理器 → Electron 组件": "La fenêtre séparée nécessite le composant Electron: Paramètres → Navigateur de sessions → Composant Electron",
     "目录": "Dossiers",
     "目录不支持复制粘贴；请用拖拽移动": "Les dossiers ne se copient ni ne se collent; déplacez-les par glisser-déposer",
     "确定": "OK",
@@ -691,6 +688,7 @@
     "首字": "Premier token",
     "默认预设": "Préréglage par défaut",
     "（点按切换）": "(cliquez pour changer)",
-    "，以及 ": ", et "
+    "，以及 ": ", et ",
+    "打开独立窗口（需要先下载 Electron 组件）": "Ouvrir dans une fenêtre séparée (composant Electron requis)"
   }
 }

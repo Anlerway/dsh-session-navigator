@@ -602,9 +602,6 @@
     "特殊文件夹": "Special folder",
     "状态": "Status",
     "独立弹窗打不开，已改用浮窗：": "The separate window would not open, so the panel is used instead: ",
-    "独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件": "The separate window needs the Electron component, so the panel is used instead: Settings → Session Navigator → Electron component",
-    "独立窗口需要先下载Electron 组件（设置 → 会话资源管理器）": "The separate window needs the Electron component (Settings → Session Navigator)",
-    "独立窗口需要先下载Electron 组件：设置 → 会话资源管理器 → Electron 组件": "The separate window needs the Electron component: Settings → Session Navigator → Electron component",
     "目录": "Folders",
     "目录不支持复制粘贴；请用拖拽移动": "Folders cannot be copied or pasted; drag them instead",
     "确定": "OK",
@@ -691,6 +688,7 @@
     "首字": "First token",
     "默认预设": "Default preset",
     "（点按切换）": "(click to switch)",
-    "，以及 ": ", and "
+    "，以及 ": ", and ",
+    "打开独立窗口（需要先下载 Electron 组件）": "Open in a separate window (needs the Electron component)"
   }
 }

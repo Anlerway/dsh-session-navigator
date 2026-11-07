@@ -409,3 +409,32 @@
       return text;
     }
 
+    /**
+     * The settings dictionary, asked from a surface that is not the settings page.
+     *
+     * The panel draws one thing the settings page owns: the Electron installer.
+     * Its copy already exists in all ten languages under named keys (setComp*),
+     * so the installer dialog reuses that table instead of growing a second
+     * translation of "download the component" in the panel dictionary. The table
+     * is chosen the same way T chooses one — the plugin's own language override,
+     * then DSH's, then the panel's — so the dialog and the settings window never
+     * disagree about the language they are speaking.
+     *
+     * @param {string} key a settings key, e.g. "setCompDownload"
+     * @param {Record<string, unknown>} [params] `{name}` replacements
+     * @returns {string}
+     */
+    function ST(key, params) {
+      const lang = uiLang();
+      const own = DICTS[lang]?.settings;
+      const english = lang === "zh" ? null : EN;
+      let text = (own && own[key]) ?? (english && english[key]) ?? ZH?.[key] ?? key;
+      if (params) {
+        text = text.replace(/\{(\w+)\}/g, (whole, name) => {
+          const value = params[name];
+          return value === undefined || value === null ? whole : String(value);
+        });
+      }
+      return text;
+    }
+

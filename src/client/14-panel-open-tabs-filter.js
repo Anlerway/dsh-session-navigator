@@ -159,7 +159,17 @@
         // focus, and the panel below must not treat it as a reason to close.
         if (windowHost()) return;
         if (!componentReady) {
-          setHint(T("独立窗口需要先下载Electron 组件：设置 → 会话资源管理器 → Electron 组件"));
+          // The click buys the installer, not a sentence pointing three clicks
+          // into 设置. Installing and opening both happen here, and 打开独立窗口
+          // inside the dialog lands in the same two facts the success path
+          // records: a window is up, and the in-app panel steps aside.
+          openComponentDialog({
+            onChanged: (next) => setComponentReady(next?.phase === "ready"),
+            onOpened: () => {
+              setDetachedOpen(true);
+              panelStore.set(false);
+            },
+          });
           return;
         }
         try {

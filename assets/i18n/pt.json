@@ -602,9 +602,6 @@
     "特殊文件夹": "Pasta especial",
     "状态": "Status",
     "独立弹窗打不开，已改用浮窗：": "A janela separada não abriu, então usamos o painel: ",
-    "独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件": "A janela separada precisa do componente Electron, então usamos o painel: Configurações → Navegador de sessões → Componente Electron",
-    "独立窗口需要先下载Electron 组件（设置 → 会话资源管理器）": "A janela separada precisa do componente Electron (Configurações → Navegador de sessões)",
-    "独立窗口需要先下载Electron 组件：设置 → 会话资源管理器 → Electron 组件": "A janela separada precisa do componente Electron: Configurações → Navegador de sessões → Componente Electron",
     "目录": "Pastas",
     "目录不支持复制粘贴；请用拖拽移动": "Pastas não aceitam copiar e colar; arraste-as",
     "确定": "OK",
@@ -691,6 +688,7 @@
     "首字": "Primeiro token",
     "默认预设": "Predefinição padrão",
     "（点按切换）": "(clique para alternar)",
-    "，以及 ": ", e "
+    "，以及 ": ", e ",
+    "打开独立窗口（需要先下载 Electron 组件）": "Abrir em uma janela separada (precisa do componente Electron)"
   }
 }

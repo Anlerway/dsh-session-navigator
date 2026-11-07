@@ -45,6 +45,7 @@ const EXPOSE = [
   "bridgeActions",
   "FooterAction",
   "flushBridgeBursts",
+  "dialogStore",
 ];
 
 /**
@@ -167,7 +168,7 @@ test("默认打开方式 独立弹窗: the launch asks the host for the window a
   assert.equal(api.peekLaunchHint(), "");
 });
 
-test("a 独立弹窗 that cannot open falls back to 浮窗 and says why", async () => {
+test("a 独立弹窗 that cannot open falls back to 浮窗 with the installer", async () => {
   const { bundle, api } = await launch("detached", {
     detachedAnswer: {
       ok: false,
@@ -177,10 +178,10 @@ test("a 独立弹窗 that cannot open falls back to 浮窗 and says why", async 
   });
   // Falling back is the point: the user pressed one button and one surface opened.
   assert.equal(bundle.panelStore.getSnapshot(), true);
-  assert.match(api.peekLaunchHint(), /Electron 组件/);
-  // The hint is read once, so the next launch is not carrying it.
-  api.clearLaunchHint();
-  assert.equal(api.peekLaunchHint(), "");
+  // A sentence used to send the user to 设置 → 会话资源管理器 → Electron 组件; the
+  // panel can open that same installer itself, so the answer is the installer.
+  assert.equal(api.dialogStore.getSnapshot()?.kind, "panel", "the launch opens the component installer");
+  assert.equal(api.peekLaunchHint(), "", "the hint slot is no longer needed");
 });
 
 test("the launch re-reads 默认打开方式 instead of trusting the first answer", async () => {

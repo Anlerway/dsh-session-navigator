@@ -390,10 +390,15 @@
         } catch (error) {
           // The one failure worth naming: the component is a download, not a
           // bug, and the settings page is where it comes from.
-          launchHint =
-            error?.code === "component-not-installed"
-              ? T("独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件")
-              : T("独立弹窗打不开，已改用浮窗：") + String(error?.message ?? error ?? T("未知原因"));
+          if (error?.code === "component-not-installed") {
+            // 默认打开方式 asked for a window that needs a download first: hand
+            // over the installer instead of a sentence, and keep the panel
+            // underneath it — the dialog is on top of the panel, so the mode's
+            // fallback still holds once the dialog is closed.
+            openComponentDialog({ onOpened: () => panelStore.set(false) });
+          } else {
+            launchHint = T("独立弹窗打不开，已改用浮窗：") + String(error?.message ?? error ?? T("未知原因"));
+          }
         }
       }
       panelStore.set(true);

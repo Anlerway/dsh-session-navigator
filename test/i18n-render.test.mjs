@@ -333,9 +333,18 @@ test("a translated panel leaves no Chinese sentence behind", () => {
     if (code === "zh") continue;
     const { text } = mountPanel(code);
     const translated = Object.values(DICTS[code].panel ?? {});
+    // The tab title and the footer label are the host's names for the plugin:
+    // the panel asks the translator it was handed (t("title"), t("navLabel")),
+    // so those three strings come from this language's settings table rather
+    // than the panel table. They are translated, just not by the panel file.
+    const hostNames = ["title", "footerLabel", "navLabel"]
+      .map((key) => DICTS[code].settings?.[key])
+      .filter((value) => typeof value === "string" && value.length > 0);
     // A run is accounted for only when it is part of a translation in this
     // language's table — a Chinese key is not, because no translation quotes it.
-    const leaked = hanRuns(text, 4).filter((run) => !translated.some((value) => value.includes(run)));
+    const leaked = hanRuns(text, 4).filter(
+      (run) => !translated.some((value) => value.includes(run)) && !hostNames.includes(run),
+    );
     assert.deepEqual(leaked, [], code + ": Chinese text left in the panel: " + JSON.stringify(leaked));
   }
 });

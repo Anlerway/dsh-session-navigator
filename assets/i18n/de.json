@@ -602,9 +602,6 @@
     "特殊文件夹": "Spezialordner",
     "状态": "Status",
     "独立弹窗打不开，已改用浮窗：": "Das separate Fenster ließ sich nicht öffnen, daher jetzt das Panel: ",
-    "独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件": "Das separate Fenster braucht die Electron-Komponente, daher jetzt das Panel: Einstellungen → Session Navigator → Electron-Komponente",
-    "独立窗口需要先下载Electron 组件（设置 → 会话资源管理器）": "Das separate Fenster braucht die Electron-Komponente (Einstellungen → Session Navigator)",
-    "独立窗口需要先下载Electron 组件：设置 → 会话资源管理器 → Electron 组件": "Das separate Fenster braucht die Electron-Komponente: Einstellungen → Session Navigator → Electron-Komponente",
     "目录": "Ordner",
     "目录不支持复制粘贴；请用拖拽移动": "Ordner lassen sich nicht kopieren oder einfügen; zieh sie stattdessen",
     "确定": "OK",
@@ -691,6 +688,7 @@
     "首字": "Erstes Token",
     "默认预设": "Standard-Preset",
     "（点按切换）": "(Klick zum Wechseln)",
-    "，以及 ": ", und "
+    "，以及 ": ", und ",
+    "打开独立窗口（需要先下载 Electron 组件）": "In separatem Fenster öffnen (Electron-Komponente erforderlich)"
   }
 }

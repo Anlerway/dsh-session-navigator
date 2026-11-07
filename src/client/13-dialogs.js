@@ -204,7 +204,7 @@
         },
         h(
           "div",
-          { className: "fdlg" },
+          { className: dialog.wide ? "fdlg wide" : "fdlg" },
           h(
             "div",
             { className: "fhead" },
@@ -216,6 +216,9 @@
             "div",
             { className: "fbody" },
             dialog.message ? h("p", { className: "se-dlg-msg" }, dialog.message) : null,
+            // A panel brings its own body: closing is the only verb this layer
+            // still owns, and the body keeps its own buttons and state.
+            dialog.kind === "panel" ? h("div", { className: "se-dlg-body" }, dialog.render?.()) : null,
             dialog.kind === "prompt"
               ? h("input", {
                   ref: promptRef,
@@ -255,17 +258,22 @@
             "div",
             { className: "ffoot" },
             h("span", { className: "spacer" }),
-            h("button", { type: "button", className: "act", onClick: close }, dialog.cancelLabel),
-            h(
-              "button",
-              {
-                type: "button",
-                className: "act" + (dialog.danger ? " danger-solid" : " primary"),
-                disabled: dialog.acknowledge ? !acknowledged : false,
-                onClick: submit,
-              },
-              dialog.confirmLabel,
-            ),
+            dialog.kind === "panel"
+              ? h("button", { type: "button", className: "act", onClick: close }, dialog.closeLabel ?? T("关闭"))
+              : [
+                  h("button", { key: "cancel", type: "button", className: "act", onClick: close }, dialog.cancelLabel),
+                  h(
+                    "button",
+                    {
+                      key: "confirm",
+                      type: "button",
+                      className: "act" + (dialog.danger ? " danger-solid" : " primary"),
+                      disabled: dialog.acknowledge ? !acknowledged : false,
+                      onClick: submit,
+                    },
+                    dialog.confirmLabel,
+                  ),
+                ],
           ),
         ),
       );

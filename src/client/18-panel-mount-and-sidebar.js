@@ -125,12 +125,13 @@
                       key: "detach",
                       type: "button",
                       className: "wbtn wide",
+                      // Not disabled when the component is missing: the click
+                      // opens the installer, which is the useful answer.
                       title: !componentReady
-                        ? T("独立窗口需要先下载Electron 组件（设置 → 会话资源管理器）")
+                        ? T("打开独立窗口（需要先下载 Electron 组件）")
                         : detachedOpen
                           ? T("独立窗口已打开，点击聚焦（Ctrl+Shift+D）")
                           : T("在独立窗口中打开（Ctrl+Shift+D）"),
-                      "aria-disabled": !componentReady,
                       onClick: openDetachedWindow,
                     },
                     h(Icon, { name: "external", size: 12 }),

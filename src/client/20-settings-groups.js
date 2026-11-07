@@ -3,7 +3,7 @@
     // explicitly — the plugin itself is a few dozen KB and most users never
     // need a separate window — so the section leads with size and consequence
     // rather than a download button that appears out of nowhere.
-    function ComponentGroup({ t, component, onChanged }) {
+    function ComponentPanel({ t, component, onChanged, onOpened }) {
       const [status, setStatus] = useState(component ?? null);
       const [busy, setBusy] = useState("");
       const [note, setNote] = useState("");
@@ -72,12 +72,16 @@
         try {
           await apiSend("POST", "/detached/open", { lang: uiLang() });
           setNote(t("setCompOpened"));
+          // A caller that is not the settings page has something to do next —
+          // close this dialog, step the in-app panel aside. The settings window
+          // passes nothing and stays exactly where it was.
+          onOpened?.();
         } catch (failure) {
           setError(String(failure?.message ?? failure));
         } finally {
           setBusy("");
         }
-      }, [t]);
+      }, [t, onOpened]);
 
       // Finding an Electron another plugin already installed is the whole point
       // of the scan: 150 MB is a lot to ask for twice on one machine.
@@ -121,14 +125,8 @@
       const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : null;
 
       return h(
-        "div",
-        { className: "se-set-grp" },
-        h(
-          "div",
-          { className: "se-set-h" },
-          t("setGroupComponent"),
-          h("span", { className: "se-set-note", style: { marginLeft: "8px", fontWeight: 400 } }, t("setComponentFor")),
-        ),
+        React.Fragment,
+        null,
         h(
           "div",
           { className: "se-set-row" },
@@ -222,6 +220,61 @@
         note ? h("div", { className: "se-set-row" }, h("div", { className: "se-set-note" }, note)) : null,
         error ? h("div", { className: "se-set-row" }, h("div", { className: "se-set-err" }, error)) : null,
       );
+    }
+
+    /** The settings page's card: the installer under its own caption. */
+    function ComponentGroup({ t, component, onChanged }) {
+      return h(
+        "div",
+        { className: "se-set-grp" },
+        h(
+          "div",
+          { className: "se-set-h" },
+          t("setGroupComponent"),
+          h("span", { className: "se-set-note", style: { marginLeft: "8px", fontWeight: 400 } }, t("setComponentFor")),
+        ),
+        h(ComponentPanel, { t, component, onChanged }),
+      );
+    }
+
+    /**
+     * The installer, asked for from where it is needed.
+     *
+     * 独立窗口 is one click away, and the answer to that click used to be a
+     * sentence pointing at 设置 → 会话资源管理器 → Electron 组件 — three steps for
+     * something the panel can hand over inline. The dialog draws the same
+     * ComponentPanel the settings page draws, against the same endpoints and the
+     * same copy, so there is one installer, not a second one that drifts.
+     *
+     * `onOpened` is what the caller does when 打开独立窗口 inside the panel
+     * succeeds: the window is the thing the user asked for, and the dialog plus
+     * the in-app panel have both been answered by it.
+     *
+     * @param {{ onChanged?: (status: any) => void, onOpened?: () => void }} [options]
+     */
+    function openComponentDialog(options) {
+      dialogStore.open({
+        kind: "panel",
+        title: ST("setGroupComponent"),
+        wide: true,
+        closeLabel: T("关闭"),
+        render: () =>
+          h(
+            "div",
+            { className: "se-set-grp" },
+            h(ComponentPanel, {
+              t: ST,
+              onChanged: options?.onChanged,
+              // The window is open: the dialog has been answered, and leaving it
+              // on top of a panel that is about to step aside would be a second
+              // copy of a question the user already finished.
+              onOpened: () => {
+                dialogStore.settle(false);
+                options?.onOpened?.();
+              },
+            }),
+          ),
+      });
     }
 
     /**

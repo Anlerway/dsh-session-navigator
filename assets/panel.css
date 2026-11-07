@@ -380,6 +380,10 @@
 .se-shell .fmodal{position:fixed;inset:0;z-index:9600;display:none;place-items:center; background:color-mix(in oklab,#000 26%,transparent); backdrop-filter:blur(3px) brightness(.96);}
 .se-shell .fmodal.open{display:grid}
 .se-shell .fdlg{width:min(480px,92vw);max-height:min(640px,88vh);display:flex;flex-direction:column; border-radius:10px;border:1px solid var(--sm-border); background:color-mix(in oklab, var(--sm-tint) 96%, transparent); box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden;}
+/* A panel dialog carries a settings group — rows, chips, a progress bar — so it
+   needs the width of the settings card rather than the width of a question. */
+.se-shell .fdlg.wide{width:min(600px,94vw)}
+.se-shell .se-dlg-body{display:flex;flex-direction:column;min-width:0}
 .se-shell .fhead{display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 14px;border-bottom:1px solid var(--sm-border-soft)}
 .se-shell .fhead .ftitle{font-size:13px;font-weight:600;color:var(--sm-text)}
 .se-shell .fbody{padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
