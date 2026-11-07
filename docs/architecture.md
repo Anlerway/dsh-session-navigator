@@ -271,9 +271,9 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 **导出**：`apply` / `inject` / `panelStore` / `SettingsSection`。
 
-浮窗本体是 `Panel`（`lib/client.js`，单函数约 5500 行，内部按功能分段），
+浮窗本体是 `Panel`（`src/client/14-panel-open-tabs-filter.js`，1,142 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
-（`lib/client.js` 的注释）。
+（同一段的注释）。状态与副作用已经拆进八个 `use*` hook，见 `src/client/13e` 到 `13h`。
 
 ### 5.1 面板与独立窗口的多语言：两套机制，一条链路
 

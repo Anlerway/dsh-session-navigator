@@ -196,7 +196,7 @@ dsh plugin --profile desktop remove dsh-session-navigator
 ## 开发与测试
 
 ```powershell
-node --test "test/*.test.mjs"   # 573 个用例
+node --test "test/*.test.mjs"   # 全部用例，条数以输出为准
 node test/render-smoke.mjs      # 渲染冒烟
 ```
 ## issue

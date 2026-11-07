@@ -105,7 +105,7 @@ export function errorCodeOf(err) {
 }
 
 /** errno codes that mean "the filesystem said no", not "the request was wrong". */
-export const FS_ERROR_CODES = new Set([
+const FS_ERROR_CODES = new Set([
   "EACCES",
   "EBUSY",
   "EEXIST",

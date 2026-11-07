@@ -11,7 +11,7 @@ import { codedError } from "../store/sidecar.js";
  * on an older runtime. Both are only ever used to read files, never compared.
  */
 const HERE = import.meta.dirname ?? new URL(".", import.meta.url).pathname;
-export const PLUGIN_ROOT = join(HERE, "..");
+const PLUGIN_ROOT = join(HERE, "..");
 
 /**
  * The detached window's files.

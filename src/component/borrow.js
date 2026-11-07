@@ -41,7 +41,7 @@ import { binaryPath } from "./layout.js";
  *
  * @type {number}
  */
-export const BORROW_SCAN_DEPTH = 3;
+const BORROW_SCAN_DEPTH = 3;
 
 /**
  * Directory names never worth walking.

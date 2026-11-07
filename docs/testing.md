@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 七十五个测试文件，各自钉住什么
+## 1. 七十六个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -81,11 +81,12 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/notes.test.mjs` | 156 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算，以及两者必须逐字一致——不一致说明发版会带上旧说明 |
 | `test/locale-parity.test.mjs` | 88 | `zh` 与 `en` 两份 `settings` 的键集合一致、占位符一致、英文标签放得下（另外六种语言由 `check-i18n.mjs` 校验）；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：英文表覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
-| `test/lang-chain.test.mjs` | 93 | 一份语言清单四处一致：`assets/i18n/` 目录、`src/lang.js` 的 `LANGS`、helper 与 shim 各自抄的常量、产物从词典派生的清单；`LANGS.length` 为 8；`normalizeLang` 把区域码归到基语言、把没有词典的码归成空串；桥与 `/detached/open` 只放行这份清单 |
+| `test/lang-chain.test.mjs` | 93 | 一份语言清单四处一致：`assets/i18n/` 目录、`src/lang.js` 的 `LANGS`、helper 与 shim 各自抄的常量、产物从词典派生的清单；`LANGS.length` 为 10；`normalizeLang` 把区域码归到基语言、把没有词典的码归成空串；桥与 `/detached/open` 只放行这份清单 |
 | `test/reset.test.mjs` | 213 | 清除数据：一个字都没动之前先验 `DELETE`、五份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
 | `test/projcache.test.mjs` | 156 | 投影缓存的复用键（size + mtime）：没动过的文件不读第二遍，而**任何**改动都得被发现——最硬的一条是第二次写入等长内容并把旧 mtime 放回去，只信键的读取器仍会答出旧标题；另有 reader 单飞与清缓存 |
 | `test/workspace-bands.test.mjs` | 107 | 「所有会话」按工作区切带：行落到哪个工作区（子会话跟父会话）、带序按树 DFS（含拖进用户文件夹的工作区仍留在文件夹位置）、树不认识的工作区排在已知之后、没有工作区的沉底、标题取工作区名字而视图过期时回落到 id |
 | `test/routes-contract.test.mjs` | 581 | `ROUTES` 表的契约：表项与 `src/routes/` 的键一一对应、`statusFor` 的 52 条历史映射逐字未变、没映射的码一律 500、`session-not-found` 与 `session/not-found` 两种拼写同答、`messageFor` 分语言回退、所有 4xx 信封同形、每条写路由对不能用的 body 给 4xx、抛出的码都能在表里找到 |
+| `test/check-docs.test.mjs` | 68 | 计数门禁本身要能红：汉字与数字写法读成同一个数、过期计数在两种写法下都被抓到、与仓库一致的句子放行、子集计数（「九条路由不写信封」）不被误判、`--fix` 按原句的写法改写 |
 | `test/client-bundle-drift.test.mjs` | 61 | 磁盘上的 `lib/client.js` 能从 `src/client/` 逐字节重建（改了分片忘了重建就会红）；产物仍以 `window.__ModuleLoader__.load({ id: "dsh-session-navigator"` 开头并导出 `apply`/`inject`；清单列出的分片与目录内文件一一对应；**没有分片超过 2 000 行** |
 | `test/i18n-render.test.mjs` | 350 | 十种语言各挂载一次面板：`DICTS` 键集等于 `LANGS`、`assets/i18n` 文件名同集合、每张表 `langCode` 自等且只有中文两份 `aiLang: "zh"`、十张 settings 键集相同、十张 panel 键集等于 en（zh 的值逐条等于键）、占位符多重集不丢、**每种语言的固定标签都换成自己的译文**、反向查非 zh 窗口不残留成串汉字（繁中与简体同形的 36 条豁免）、`normalizeLang` 的 `zh-CN`/`en_GB`/`pt-BR`/`zh-TW` 边界 |
 | `test/ui-lang.test.mjs` | 149 | 插件自己的界面语言：`ui.lang` 默认 `auto`、`UI_LANGS` 等于 `auto` + `LANGS`、合并与归一化只收画得出的码、`applyUiLang()` 的返回值、`T()` 与 `uiLang()`/`aiLang()` 是否跟着走、繁中归到 `zh-hant` 且 `aiLang` 为 `zh`、十种语言自称互不相同；设置页真实渲染出下拉（`跟随 DSH` + 十个自名）、选中即发 `PUT /settings { ui: { lang } }`、存过的码回显为选中项 |

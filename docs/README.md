@@ -1,7 +1,8 @@
 # 开发文档
 
 这套文档是**照代码写的**，不是照设计稿写的。每一条规则都指到具体的文件与符号（函数名、常量名、
-路由键），不写行号——行号一次插入就会错，`scripts/check-docs.mjs` 会在 CI 上拦下来。
+路由键）。行号一次插入就会错，所以不写行号；计数会随代码漂，所以「七十六个测试文件」「83 条路由」
+这类数字也由 `scripts/check-docs.mjs` 现算现比，对不上就红。
 
 ## 读的顺序
 
@@ -14,7 +15,7 @@
 | [bridge-and-theme.md](bridge-and-theme.md) | 面板 ↔ 窗口的命令总线、SSE、主题同步 | 改独立窗口或配色 |
 | [component.md](component.md) | Electron 组件：状态机、镜像、校验、发布、清扫 | 改安装流程 |
 | [i18n.md](i18n.md) | 十种语言的词典、清单的几份副本、`uiLang()` 与 `aiLang()`、插件自己的界面语言（`ui.lang`）、加一门语言的步骤 | 改界面文案或加语言 |
-| [testing.md](testing.md) | 七十二个测试文件各钉住什么、怎么跑 | 提交之前 |
+| [testing.md](testing.md) | 七十六个测试文件各钉住什么、怎么跑 | 提交之前 |
 
 ## 三条最容易被违反的约定
 
@@ -62,7 +63,7 @@ assets/detached/      独立窗口的页面：index.html、window.css、shim.js�
 assets/panel.css      面板样式（构建期内联）
 assets/i18n/          每种语言一份词典（构建期内联）
 assets/vendor/        自带 React 18.3.1 UMD 构建（无构建步骤的前提）
-test/                 72 个测试文件 + render-smoke
+test/                 76 个测试文件 + render-smoke
 ```
 
 `client.js` 是**刻意的**单文件产物：DSH 只给一个 `window.__ModuleLoader__.load({ id, factory })` 入口，

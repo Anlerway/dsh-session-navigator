@@ -26,7 +26,7 @@
 import { open, readFile } from "node:fs/promises";
 
 /** Little-endian frame magic, as a 32-bit unsigned integer. */
-export const ZSTD_MAGIC = 0xfd2fb528;
+const ZSTD_MAGIC = 0xfd2fb528;
 
 /** Default number of bytes read to locate/decompress the first frame. */
 const HEAD_BYTES = 256 * 1024;

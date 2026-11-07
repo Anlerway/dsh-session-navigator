@@ -14,19 +14,153 @@
  * what it can do mechanically — it never invents a symbol name, so a reference
  * that only makes sense with its line number still needs a human sentence.
  *
+ * A number in prose drifts the same way. "七十二个测试文件" outlives the
+ * seventy-sixth test, and nobody re-reads the sentence when they add one. The
+ * quantities below are read out of the repository itself — the test directory,
+ * the fragment manifest, ROUTES, ERROR_CODES, LANGS — so a sentence and the
+ * tree cannot disagree; --fix rewrites the number in the style it was written
+ * (digits stay digits, 汉字 stays 汉字).
+ *
  * Usage: node scripts/check-docs.mjs [--fix]
  */
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Repository root — scripts/ is always one level below it. */
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** Files checked in every repository, plus every docs/*.md found on disk. */
 const ROOT_FILES = ["README.md", "README.en.md", "CHANGELOG.md"];
+
+/**
+ * The counts a document is allowed to cite, each read from the thing it counts.
+ * Importing the modules rather than grepping them keeps the gate honest when a
+ * table grows: the number in the sentence follows the table, not the other way.
+ */
+const { ROUTES } = await import(pathToFileURL(join(ROOT, "src", "index.js")).href);
+const { ERROR_CODES } = await import(pathToFileURL(join(ROOT, "src", "errors.js")).href);
+
+/** @returns {number} fragments the client bundle is built from. */
+const fragmentCount = () =>
+  JSON.parse(readFileSync(join(ROOT, "src", "client", "manifest.json"), "utf8")).length;
+
+/** @returns {number} node:test files the suite runs. */
+const testFileCount = () =>
+  readdirSync(join(ROOT, "test")).filter((name) => name.endsWith(".test.mjs")).length;
+
+/**
+ * One sentence shape plus the number it must carry. The first capture group is
+ * the numeral and nothing else, so the fixer can swap it and keep the words
+ * around it exactly as the author wrote them.
+ */
+const QUANTITIES = [
+  {
+    pattern: /(\d+|[零一二三四五六七八九十百]+)(\s*个\s*)测试文件/g,
+    count: testFileCount,
+    name: "test files",
+  },
+  {
+    pattern: /(\d+|[零一二三四五六七八九十百]+)(\s*个\s*)分片/g,
+    count: fragmentCount,
+    name: "fragments",
+  },
+  {
+    // "83 条 HTTP 路由"; bare "九条路由不写信封" counts a subset and stays out.
+    pattern: /(\d+|[零一二三四五六七八九十百]+)(\s*条\s*HTTP\s*)路由/g,
+    count: () => Object.keys(ROUTES).length,
+    name: "routes",
+  },
+  {
+    // "83 条路由的键" writes the same total the other way round.
+    pattern: /(\d+|[零一二三四五六七八九十百]+)(\s*条\s*)路由的键/g,
+    count: () => Object.keys(ROUTES).length,
+    name: "routes",
+  },
+  {
+    pattern: /(\d+|[零一二三四五六七八九十百]+)(\s*个\s*)错误码/g,
+    count: () => Object.keys(ERROR_CODES).length,
+    name: "error codes",
+  },
+];
+
+/** Digits and place values of the numerals that turn up in prose. */
+const HAN_DIGITS = { 零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+const HAN_UNITS = { 百: 100, 十: 10 };
+
+/**
+ * Read a numeral: "83" and "八十三" are the same claim.
+ *
+ * @param {string} text the numeral as written
+ * @returns {number} its value, or NaN when the text is not a numeral
+ */
+function numeralValue(text) {
+  if (/^\d+$/.test(text)) return Number(text);
+  let total = 0;
+  let pending = 0;
+  for (const char of text) {
+    if (char in HAN_DIGITS) pending = HAN_DIGITS[char];
+    else if (char in HAN_UNITS) {
+      total += (pending || 1) * HAN_UNITS[char];
+      pending = 0;
+    } else return Number.NaN;
+  }
+  return total + pending;
+}
+
+/**
+ * Write a numeral the way the sentence already writes them.
+ *
+ * @param {number} value the true count
+ * @param {string} like the numeral being replaced
+ * @returns {string} digits for a digit numeral, 汉字 for a 汉字 one
+ */
+function numeralText(value, like) {
+  if (/^\d+$/.test(like) || value >= 100) return String(value);
+  const digits = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+  if (value < 10) return digits[value];
+  if (value < 20) return "十" + (value === 10 ? "" : digits[value - 10]);
+  const tens = digits[Math.floor(value / 10)] + "十";
+  return value % 10 === 0 ? tens : tens + digits[value % 10];
+}
+
+/**
+ * Collect every drifted quantity on one line.
+ *
+ * @param {string} line source line
+ * @param {{name: string, written: string, actual: number}[]} found receiver
+ * @returns {void}
+ */
+function quantityHits(line, found) {
+  for (const rule of QUANTITIES) {
+    for (const match of line.matchAll(rule.pattern)) {
+      const actual = rule.count();
+      if (numeralValue(match[1]) !== actual) {
+        found.push({ name: rule.name, written: match[0].replace(/\s+/g, " "), actual });
+      }
+    }
+  }
+}
+
+/**
+ * Rewrite every drifted quantity on one line.
+ *
+ * @param {string} line source line
+ * @returns {string} the corrected line, or the same string when it was right
+ */
+function fixQuantities(line) {
+  let fixed = line;
+  for (const rule of QUANTITIES) {
+    fixed = fixed.replace(rule.pattern, (whole, numeral) => {
+      const actual = rule.count();
+      if (numeralValue(numeral) === actual) return whole;
+      return numeralText(actual, numeral) + whole.slice(numeral.length);
+    });
+  }
+  return fixed;
+}
 
 /** Source extensions a path reference may point at. */
 const EXTENSIONS = "js|mjs|cjs|ts|tsx|jsx|json|css|scss|md|ya?ml|html|sh";
@@ -140,9 +274,10 @@ function main() {
   }
   if (args.includes("--help") || args.includes("-h")) {
     process.stdout.write(
-      "node scripts/check-docs.mjs — fail when docs cite a line number.\n\n" +
-        "  --fix   remove line numbers mechanically before reporting\n\n" +
-        "Exit code: 0 clean, 1 references remain, 2 bad invocation.\n",
+      "node scripts/check-docs.mjs — fail when a doc cites a line number or a\n" +
+        "count that no longer matches the repository.\n\n" +
+        "  --fix   remove line numbers and correct counts before reporting\n\n" +
+        "Exit code: 0 clean, 1 problems remain, 2 bad invocation.\n",
     );
     return 0;
   }
@@ -152,6 +287,7 @@ function main() {
   let fixedCount = 0;
   let fixedFiles = 0;
   const hits = [];
+  const quantities = [];
 
   for (const file of files) {
     const text = readFileSync(file, "utf8");
@@ -167,20 +303,33 @@ function main() {
         }
       }
     }
-    if (touched > 0) {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (!fix) continue;
+      const corrected = fixQuantities(lines[index]);
+      if (corrected !== lines[index]) {
+        lines[index] = corrected;
+        touched += 1;
+      }
+    }
+    if (touched > 0 && fix) {
       writeFileSync(file, lines.join("\n"), "utf8");
       fixedCount += touched;
       fixedFiles += 1;
     }
-    for (let index = 0; index < lines.length; index += 1) {
-      if (!hasReference(lines[index])) continue;
-      hits.push({ file, line: index + 1, text: lines[index] });
+    const reread = fix ? lines : text.split("\n");
+    for (let index = 0; index < reread.length; index += 1) {
+      if (hasReference(reread[index])) hits.push({ file, line: index + 1, text: reread[index] });
+    }
+    for (let index = 0; index < reread.length; index += 1) {
+      const drifted = [];
+      quantityHits(reread[index], drifted);
+      for (const claim of drifted) quantities.push({ file, line: index + 1, ...claim });
     }
   }
 
   if (fix) {
     process.stdout.write(
-      "check-docs: removed line numbers from " + fixedCount + " line(s) in " + fixedFiles + " file(s)\n",
+      "check-docs: rewrote " + fixedCount + " line(s) in " + fixedFiles + " file(s)\n",
     );
   }
 
@@ -188,13 +337,43 @@ function main() {
     const rel = relative(ROOT, hit.file).replaceAll("\\", "/");
     process.stdout.write(rel + ":" + hit.line + ": line number — " + excerpt(hit.text) + "\n");
   }
+  for (const claim of quantities) {
+    const rel = relative(ROOT, claim.file).replaceAll("\\", "/");
+    process.stdout.write(
+      rel + ":" + claim.line + ": " + claim.name + " — " + claim.written + " claimed, repository has " + claim.actual + "\n",
+    );
+  }
 
   if (hits.length > 0) {
     process.stderr.write("check-docs: " + hits.length + " reference(s) still cite line numbers\n");
-    return 1;
   }
-  process.stdout.write("check-docs: " + files.length + " document(s), no line-number references\n");
+  if (quantities.length > 0) {
+    process.stderr.write("check-docs: " + quantities.length + " count(s) drifted from the repository\n");
+  }
+  if (hits.length > 0 || quantities.length > 0) return 1;
+  process.stdout.write("check-docs: " + files.length + " document(s), no line numbers, no drifted counts\n");
   return 0;
 }
 
-process.exitCode = main();
+export { fixQuantities, numeralText, numeralValue, quantityHits };
+
+/**
+ * Counts the gate compares against, for a caller that wants to build a line
+ * that is right today. Nothing in the gate depends on this shape.
+ *
+ * @returns {{testFiles: number, fragments: number, routes: number, codes: number}}
+ */
+export function counts() {
+  return {
+    testFiles: testFileCount(),
+    fragments: fragmentCount(),
+    routes: Object.keys(ROUTES).length,
+    codes: Object.keys(ERROR_CODES).length,
+  };
+}
+
+// Only a direct `node scripts/check-docs.mjs` runs the gate: a test imports
+// the helpers above and must not have the repository checked under it.
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  process.exitCode = main();
+}

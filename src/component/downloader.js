@@ -77,7 +77,7 @@ function curlFlags(url = "") {
  * @param {string} file
  * @returns {Promise<{ url?: string, etag?: string, received?: number, totalBytes?: number } | null>}
  */
-export async function readPartMeta(file) {
+async function readPartMeta(file) {
   try {
     const parsed = JSON.parse(await readFile(file, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : null;
@@ -90,7 +90,7 @@ export async function readPartMeta(file) {
  * @param {string} file
  * @param {object} meta
  */
-export async function writePartMeta(file, meta) {
+async function writePartMeta(file, meta) {
   await mkdir(dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.tmp`;
   await writeFile(temp, `${JSON.stringify(meta, null, 2)}\n`, "utf8");

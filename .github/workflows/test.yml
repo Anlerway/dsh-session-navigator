@@ -31,7 +31,8 @@ jobs:
           node-version: ${{ matrix.node }}
       # Two zero-dependency gates. lint.mjs parses every file under src/,
       # test/ and scripts/ and applies a few rules; check-docs.mjs fails when a
-      # document cites "src/x.js:1234", a number that rots on the next insert.
+      # document cites "src/x.js:1234" (rots on the next insert) or states a
+      # count the repository no longer has (test files, fragments, routes).
       # Both are plain node scripts, so they run before the tests and a failure
       # names the file and line that needs attention.
       - run: node scripts/lint.mjs
