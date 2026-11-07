@@ -252,16 +252,16 @@ test("a new change restarts the quiet window", async () => {
       dshHome: () => home,
       manifestPath: () => manifestPath,
       manifestTmpDir: () => tmpDir,
-      manifestQuietMs: 400,
+      manifestQuietMs: 1_200,
       manifestMaxDelayMs: 60_000,
     });
     await reader.snapshot();
-    await delay(280);
+    await delay(600);
     // A second session lands before the first window closes. If the timer were
-    // left alone it would fire 120 ms from now, mid-work.
+    // left alone it would fire 600 ms from now, mid-work.
     await writeSession(home, "s-2");
     await reader.snapshot({ refresh: true });
-    await delay(300);
+    await delay(700);
     assert.equal(await exists(manifestPath), false, "the first change must not drag the second one out");
     await delay(600);
     assert.equal(await exists(manifestPath), true, "the write lands once the new window closes");
