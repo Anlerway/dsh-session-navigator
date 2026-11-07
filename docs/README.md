@@ -12,7 +12,7 @@
 | [data-directory.md](data-directory.md) | 数据目录布局、四份侧车、原子写、回收站、迁移 | 改存储、调试"数据不见了" |
 | [tree-and-placement.md](tree-and-placement.md) | 节点种类、R1–R5、计数、虚拟放置、快捷方式、置顶与快速访问、批量动作 | 改左侧树或拖拽 |
 | [bridge-and-theme.md](bridge-and-theme.md) | 面板 ↔ 窗口的命令总线、SSE、主题同步 | 改独立窗口或配色 |
-| [component.md](component.md) | 浏览器组件：状态机、镜像、校验、发布、清扫 | 改安装流程 |
+| [component.md](component.md) | Electron 组件：状态机、镜像、校验、发布、清扫 | 改安装流程 |
 | [i18n.md](i18n.md) | 十种语言的词典、清单的几份副本、`uiLang()` 与 `aiLang()`、插件自己的界面语言（`ui.lang`）、加一门语言的步骤 | 改界面文案或加语言 |
 | [testing.md](testing.md) | 七十二个测试文件各钉住什么、怎么跑 | 提交之前 |
 
@@ -52,7 +52,7 @@ lib/
   host/               actions、trash、move、datadir、bridge、theme、
                       update（更新检查）、open-link（链接白名单）、maintenance（缓存清理）、
                       reset（清除数据，唯一不可逆的操作）
-  component/          浏览器组件：layout、state、downloader、install、manager
+  component/          Electron 组件：layout、state、downloader、install、manager
   detached/           Electron helper：launcher、main.cjs、preload.cjs
 lib/client-src/       面板源码的分片与 manifest.json（构建输入，不是产物）
 scripts/              零依赖闸门：build-client（拼接与 --check）、lint、check-docs、

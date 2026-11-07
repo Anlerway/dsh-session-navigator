@@ -274,7 +274,7 @@ payload 已经到位 → 升级为 ready；payload 从未离开 → 删掉这条
 活的），后者是设置页「危险操作」里那一个按钮：四份侧车文档（含虚拟树 `tree.v1.json`）、`trash/` 里剩下的全部 payload、
 `quarantine/` 与 `.tmp/` 一起清空（目录本身留下），删完 `invalidateMemory()` 抖掉面板的
 memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再过一遍 `isUsableDataDir()`；
-浏览器组件不在其中——那是安装，不是用户数据。详见 `docs/api.md` §4.12。
+Electron 组件不在其中——那是安装，不是用户数据。详见 `docs/api.md` §4.12。
 
 ## 6. 迁移
 

@@ -766,14 +766,28 @@
   .se-hdrLabel{display:none}
   .se-hdrBtn{padding:0 7px}
 }
+/* A row of the host's own session menu, copied off the primitive it is drawn
+   with (ui-primitives Menu.module.css, .item): 14px glyph, 6px gap, 8px inline
+   padding, 34px row, 13px type on a 20px line. Our rows are injected into that
+   same card, so writing the host's numbers here is what makes the two halves
+   share a grid instead of merely sitting near each other. */
 .se-menuItem{
-  display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;
-  border:0;background:transparent;color:inherit;
-  font:inherit;font-size:12.5px;text-align:left;cursor:pointer;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;width:100%;min-height:34px;padding:6px 8px;
+  border:0;border-radius:var(--dsw-radius-md, 6px);
+  background:transparent;color:var(--dsw-alias-label-primary, inherit);
+  font:inherit;font-size:13px;line-height:20px;text-align:left;cursor:pointer;white-space:nowrap;
 }
 .se-menuItem:hover{
   background:var(--dsw-alias-interactive-bg-hover, rgba(255,255,255,.08));
 }
+/* The glyph sits in its own 14px cell, the host's .itemIcon, so the labels of
+   both rows start on the same x whether or not a row has an icon — and in the
+   host's own icon color rather than an opacity we invented. */
+.se-menuItemIcon{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:14px;height:14px;color:var(--dsw-alias-menu-icon, inherit);
+}
+.se-menuItemIcon svg{width:14px;height:14px}
 .se-menuItem-sep{border-top:1px solid var(--dsw-alias-border-l1, rgba(255,255,255,.12))}
 /* 删除 is destructive in the row menu too, so it carries the same red as the
    header button instead of blending in with 查看. */

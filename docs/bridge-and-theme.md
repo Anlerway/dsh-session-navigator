@@ -217,11 +217,11 @@ shim **会拦掉**窗口发出的 `POST /theme`（`assets/detached/shim.js`）�
 ## 5. 独立窗口
 
 `POST /detached/open` / `POST /detached/close`（`lib/index.js`）。窗口本体是 DSH 的
-Electron 窗口，加载 `/session-navigator/api/ui`，需要浏览器组件就绪，否则 404 `component-not-installed`。
+Electron 窗口，加载 `/session-navigator/api/ui`，需要Electron 组件就绪，否则 404 `component-not-installed`。
 
 窗口打开/关闭时 host 往总线发 `window-open` / `window-closed`（`lib/index.js`），
 页面据此更新"默认打开方式"的状态和按钮文案。面板自己记 `detachedOpen` 这个状态：
-`window-open` 置真、`window-closed` 置假。它**不能**借 `componentReady`（「浏览器组件装好了」）
+`window-open` 置真、`window-closed` 置假。它**不能**借 `componentReady`（「Electron 组件装好了」）
 来表达这件事——两者曾经是同一个 state，于是关掉窗口之后按钮会改口说组件没装。
 
 窗口的几何（`shell.window.bounds` / `alwaysOnTop`）存在设置里：`bounds` 为 `null` 表示"还没放过"，

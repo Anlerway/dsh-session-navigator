@@ -67,7 +67,7 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 | `subagent-unsupported` | 400 | 子智能体会话不能单独操作：它跟随父会话（见 §3.2） |
 | `session/not-found` / `workspace/not-found` / `trash-not-found` | 404 | 目标不存在 |
 | `session-not-found` / `workspace-not-found` / `node-not-found` / `trash-not-found` | 404 | 同上，连字符拼写；树、注解、放置这些插件自己的路由用这一套 |
-| `component-not-installed` | 404 | 浏览器组件未就绪 |
+| `component-not-installed` | 404 | Electron 组件未就绪 |
 | `target-exists` / `session-active` / `session-corrupt` | 409 | 目标已存在 / 会话在跑 / 日志损坏 |
 | `workspace/session-active` | 409 | workspace 里还有在跑的会话 |
 | `revision-conflict` | 409 | 乐观锁失败 |
@@ -469,7 +469,7 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 `POST /datadir/migrate` 的 body 只带 `target`：`mode` 以预检算出来的计划为准，请求改不动它。
 详见 [data-directory.md](data-directory.md)。
 
-### 4.8 浏览器组件
+### 4.8 Electron 组件
 
 | 路由 | body | 返回 |
 |---|---|---|
@@ -706,7 +706,7 @@ host 做。仓库地址只在 `lib/constants.js` 的 `REPO_URL` 写一次，API 
 
 - 数据目录本身和它的三个子目录——清空而不删除，否则插件下次没地方写；
 - DSH 自己的会话库：插件只搬过它们，没造过它们；
-- 浏览器组件（`component/`、`.component-staging/`）：那是一次安装，不是用户数据。
+- Electron 组件（`component/`、`.component-staging/`）：那是一次安装，不是用户数据。
   要清它按 `POST /cache/clear`（§4.11）。
 
 迁移过的安装（`settings.dataDir.current` 有记录）会在删之前先记下这个路径，删完立刻用一份

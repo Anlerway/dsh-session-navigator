@@ -1,4 +1,4 @@
-# 浏览器组件
+# Electron 组件
 
 独立弹窗需要一份 DSH 不会给的运行时：DSH 的桌面主进程禁掉了 `window.open`，也不把
 `BrowserWindow` 暴露给插件。所以本插件自带一份**可选**的 Electron 运行时，由用户显式获取。

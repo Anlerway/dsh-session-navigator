@@ -109,7 +109,7 @@
   },
   {
     "file": "20-settings-groups.js",
-    "note": "`浏览器组件`, `更新说明`, `关于`, `清除数据`: the borrowed-component group, release notes, about, and the danger zone."
+    "note": "`Electron 组件`, `更新说明`, `关于`, `清除数据`: the borrowed-component group, release notes, about, and the danger zone."
   },
   {
     "file": "21-search-index.js",

@@ -1,5 +1,5 @@
 /**
- * Tests for the browser component.
+ * Tests for the Electron component.
  *
  *   node --test test/component.test.mjs
  *

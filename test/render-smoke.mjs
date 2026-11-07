@@ -1541,6 +1541,16 @@ if (menuRows[1].props.className.includes("se-menuItem-sep")) {
 if (!String(menuRows[1].props.className).includes("se-menuItem-danger")) {
   throw new Error("the row menu's 删除 must carry the danger class");
 }
+// Both rows lead with a glyph, the way DSH's own rows do: a label-only row sat
+// a few pixels off the grid next to them. The icon cell is separate from the
+// label so the two labels still start on the same x.
+const menuIcons = findAll(menuItems, hasClass("se-menuItemIcon"));
+if (menuIcons.length !== 2) throw new Error("both row-menu entries must carry an icon cell, got " + menuIcons.length);
+for (const [index, cell] of menuIcons.entries()) {
+  const glyph = (cell.children ?? []).find((child) => child && child.type === "svg");
+  if (!glyph) throw new Error("row " + index + " must draw an svg inside its icon cell");
+  if (glyph.props.width !== 14) throw new Error("row " + index + " must use the 14px glyph the host's menu rows use");
+}
 const beforeMenuAsk = fetchCalls.length;
 menuRows[1].props.onClick();
 await flush();

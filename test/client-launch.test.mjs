@@ -171,13 +171,13 @@ test("a 独立弹窗 that cannot open falls back to 浮窗 and says why", async 
   const { bundle, api } = await launch("detached", {
     detachedAnswer: {
       ok: false,
-      error: "download the browser component before opening a detached window",
+      error: "download the Electron component before opening a detached window",
       code: "component-not-installed",
     },
   });
   // Falling back is the point: the user pressed one button and one surface opened.
   assert.equal(bundle.panelStore.getSnapshot(), true);
-  assert.match(api.peekLaunchHint(), /浏览器组件/);
+  assert.match(api.peekLaunchHint(), /Electron 组件/);
   // The hint is read once, so the next launch is not carrying it.
   api.clearLaunchHint();
   assert.equal(api.peekLaunchHint(), "");

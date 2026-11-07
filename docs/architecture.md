@@ -42,7 +42,7 @@ package.json
 2. **开数据目录**：`resolveDataDir()` → `dataPaths()` → `openDocuments()`。
    `openAt(dir)` 让迁移完成后能在**不重启**的情况下切到新目录。
 3. **四个可选件**：
-   - `component`：浏览器组件状态机（Electron 运行时）；
+   - `component`：Electron 组件状态机（Electron 运行时）；
    - `detached`：独立窗口 helper 进程控制器（懒创建）；
    - `bridge`：浮窗 ↔ 独立窗口的命令总线（内存）；
    - `theme`：浮窗上报、窗口读取的调色板。
@@ -236,7 +236,7 @@ DSH 自己的 `storages/session_projcache` 一律不碰；组件正在下载/校
 - 字面上的 `DELETE`（去掉首尾空白）是**第一件**检查的事，不是删到一半才检查；
 - `api.dataDir` 必须过 `isUsableDataDir()`——越是要清空一个目录，越要先确认那是它自己的；
 - 它清空的三个目录（`trash/` / `quarantine/` / `.tmp/`）保留目录本身：插件下次还得往里写；
-- 浏览器组件不在其中：那是安装，不是用户数据，它的按钮是清理缓存；
+- Electron 组件不在其中：那是安装，不是用户数据，它的按钮是清理缓存；
 - 删完立刻 `invalidateMemory(api)`：面板每张列表都是 memo 过的，不抖掉的话，被删掉的文件夹
   会一直答到进程重启。
 
@@ -256,7 +256,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 | 插槽 | id | order | 组件 | 作用 |
 |---|---|---|---|---|
 | `sidebar.footer.action` | `session-navigator-footer` | 40 | `FooterAction` | 侧栏底部入口，开/关浮窗 |
-| `settings.section` | `session-navigator` | 510 | `SettingsSection` | 设置页分组（label 是 thunk，跟随语言）；组序 打开方式 → 列表 → 会话界面 → 浮窗 → 浏览器组件 → 数据目录 → 关于 → 危险操作 |
+| `settings.section` | `session-navigator` | 510 | `SettingsSection` | 设置页分组（label 是 thunk，跟随语言）；组序 打开方式 → 列表 → 会话界面 → 浮窗 → Electron 组件 → 数据目录 → 关于 → 危险操作 |
 | `settings.onboarding` | `session-navigator-opener` | 900 | 匿名 | 只为拿到 `openSection` 后立即 `complete()`，不留 UI |
 | `conversation.session.header.actions` | `session-navigator-header` | 60 | `SessionHeaderActions` | 会话标题栏五个按钮（样式跟随设置 `shell.header.style`） |
 | `sidebar.workspaces.session.menu.item` | `session-navigator-rows` | 500 | `SessionMenuItems` | 会话行 "…" 菜单两条 |
@@ -474,7 +474,7 @@ effect（面板挂着）与 `apply()` 里对 `uiSession.sessionStatus` 的订阅
 | [data-directory.md](data-directory.md) | 数据目录解析、侧车文件、原子写、七步迁移 |
 | [tree-and-placement.md](tree-and-placement.md) | 树结构、R1–R5、节点 id、快捷方式、虚拟放置 |
 | [bridge-and-theme.md](bridge-and-theme.md) | 浮窗 ↔ 独立窗口的命令总线与调色板同步 |
-| [component.md](component.md) | 浏览器组件：下载或借用运行时、校验、安装、独立窗口进程 |
+| [component.md](component.md) | Electron 组件：下载或借用运行时、校验、安装、独立窗口进程 |
 | [testing.md](testing.md) | 测试矩阵与怎么跑 |
 
 历史文档（已移出仓库、未随仓库保留：`交接文档.md`、

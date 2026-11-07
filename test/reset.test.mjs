@@ -8,7 +8,7 @@
  * behind it, a quarantine file and a tmp leftover.
  *
  * The two things this must never do are pinned as hard as the ones it must:
- * emptying the directory it lives in, and taking the browser component with it.
+ * emptying the directory it lives in, and taking the Electron component with it.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,7 +21,7 @@ import { openDocuments } from "../lib/store/documents.js";
 import { resetData, RESET_CONFIRMATION } from "../lib/host/reset.js";
 
 /** A migrated install: five documents with content, a bin with a session in it,
- *  a quarantined parse failure, a tmp leftover, and the browser component. */
+ *  a quarantined parse failure, a tmp leftover, and the Electron component. */
 async function makeInstall() {
   const dir = mkdtempSync(join(tmpdir(), "se-reset-"));
   const paths = dataPaths(dir);
@@ -142,11 +142,11 @@ test("the directory itself survives, so the plugin still has somewhere to write"
   }
 });
 
-test("the browser component is left alone — it is an install, not user data", async () => {
+test("the Electron component is left alone — it is an install, not user data", async () => {
   const { dir, api } = await makeInstall();
   await resetData(api, { confirm: "DELETE" });
 
-  // 清理缓存 owns these bytes; 清除数据 must not take a working browser with it.
+  // 清理缓存 owns these bytes; 清除数据 must not take a working Electron install with it.
   assert.ok(existsSync(join(dir, "component", "download", "electron.zip.part")));
   assert.ok(existsSync(join(dir, ".component-staging", "runtime", "chrome.exe")));
 });
