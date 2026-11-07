@@ -1,3 +1,52 @@
+    // ── 总结进度 ───────────────────────────────────────────────────────────
+    /**
+     * The AI 总结 run, as one progress bar.
+     *
+     * It subscribes on its own instead of being fed by `Panel`. A running batch
+     * emits once per finished session — about once a second — and a panel that
+     * held the subscription repainted every row, the whole tree and the detail
+     * pane at that rate, for a bar that is 156px wide. Here the emit reaches a
+     * component whose output is one bar, so the cost of the batch is the batch.
+     *
+     * `useSummaries` is also what keeps the poller alive while the panel is open,
+     * which is why the progress survives closing and reopening the panel mid-run.
+     */
+    function SummaryRunProgress({ onError }) {
+      const summaryState = useSummaries();
+      if (summaryState.state?.running !== true) return null;
+      const state = summaryState.state ?? {};
+      const done = Math.max(0, Number(state.done) || 0);
+      const total = Math.max(0, Number(state.total) || 0);
+      // A batch whose size is still unknown walks an indeterminate bar rather
+      // than pretending to know how far it got.
+      const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
+      const progress = T("正在生成 {0}/{1}", [formatCount(done), formatCount(total)]);
+      const detail = state.current?.title ? T("{0} · {1}", [progress, state.current.title]) : progress;
+      return h(
+        "div",
+        {
+          className:
+            "s-progress" + (percent === null ? " indeterminate" : "") + (Number(state.failed) > 0 ? " failed" : ""),
+          role: "progressbar",
+          "aria-label": detail,
+          "aria-valuemin": 0,
+          "aria-valuemax": percent === null ? undefined : total,
+          "aria-valuenow": percent === null ? undefined : done,
+          title: detail + " · " + T("点击停止总结"),
+          onClick: () => {
+            summaryStore.cancel().catch((failure) => onError?.(String(failure?.message ?? failure)));
+          },
+        },
+        h("span", { className: "s-progress-label" }, T("AI 总结")),
+        h(
+          "span",
+          { className: "s-progress-track" },
+          h("span", { className: "s-progress-fill", style: percent === null ? null : { width: percent + "%" } }),
+        ),
+        h("span", { className: "s-progress-num" }, done + "/" + total),
+      );
+    }
+
     // ── Panel ──────────────────────────────────────────────────────────────
     function Panel({ t }) {
       // Every T() below reads this. A saved 界面语言 outranks DSH's translator;
@@ -1009,17 +1058,6 @@
         Boolean(contentState) &&
         contentState.ready !== true &&
         contentState.error !== true;
-
-      // 总结 runs on the host and can outlive the menu that started it, so the
-      // footer subscribes here too: the progress line and the 停下 affordance
-      // have to be reachable without going back into 设置. `useSummaries` also
-      // keeps the poller alive while the panel is open.
-      const summaryState = useSummaries();
-      const summarizing = summaryState.state?.running === true;
-      const summaryProgress = T("正在生成 {0}/{1}", [
-        formatCount(summaryState.state?.done ?? 0),
-        formatCount(summaryState.state?.total ?? 0),
-      ]);
 
       const crumbs = useMemo(() => crumbsFor(tree, scope), [tree, scope]);
 

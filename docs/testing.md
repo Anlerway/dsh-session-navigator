@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 七十七个测试文件，各自钉住什么
+## 1. 七十九个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -35,7 +35,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/live-state.test.mjs` | 124 | 「进行中」只在核说自己拿着的时候才亮：假「进行中」比漏标更糟（它锁住一行、挡住归档与删除），所以出处看核给的持有序，`ctx.sessions` 不算 |
-| `test/session-sync.test.mjs` | 282 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历；**没有订阅者也照发**（轮询读同一根总线，静默等于让兜底也聋掉） |
+| `test/session-sync.test.mjs` | 317 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历；**没有订阅者也照发**（轮询读同一根总线，静默等于让兜底也聋掉）；三档代价分开——structural 才重扫文件系统、content 读缓存但会重画、cosmetic 只改运行集所以客户端连画都不重 |
 | `test/storage-watch.test.mjs` | 214 | 存储目录的轮询：第一次读只是基线不是通知、`storages/workspace.json` 被改写只报一次（带 `refresh`、`structural`、在跑的会话 id）、没变就继续安静、**没有订阅者也照样发布**（否则 `/bridge/poll` 永远问不到东西）；`sessions/` 下多一个或少一个会话目录也算结构变化（`reason: "sessions"`、`structural: true`），而在会话目录里追加日志不算 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
 | `test/trash.test.mjs` | 585 | 回收站：删除、恢复阶梯、清空、对账，以及 DSH 工作区登记——删除即解绑（拒绝解绑就搬回并撤销条目）、恢复即绑回（绑不回去不算失败）、没有 registry 的宿主照常工作，以及启动时把旧版本留下的幽灵条目从登记里清掉 |
@@ -54,6 +54,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，别行的编辑器不算 |
 | `test/row-rail.test.mjs` | 169 | 子会话引导线的几何：必须落在上面那个折叠箭头的中心（深度 0 与非 0 是两条式子） |
+| `test/live-refresh.test.mjs` | 101 | 一次 push 的代价（Host 与 Client 之间的那道接口）：cosmetic 连画都不重（运行集已经就地补上）、老 Host 用 `refresh: false` 说的是同一件事、content 重画但**不买**文件系统遍历、structural 才走日志 |
+| `test/row-memo.test.mjs` | 200 | 行 memo 的比较器两个方向都钉住：同样的事实、全新的对象必须算同一行（列表每次渲染都换 dragSet / rename / 回调包装，浅比较永不命中），而会话对象、勾选、重命名中的字、剪切标记、拖动集合、搜索命中任何一处动了都必须重画——答"同"错了是静静地显示旧行，答"不同"错了只是多画一次 |
 | `test/list-containers.test.mjs` | 211 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来；「当前目录」时放宽整棵树这件事也不做 |
 | `test/list-density.test.mjs` | 93 | 拥挤的列表滚动而不压行：`.listbody` 是唯一滚动面（`overflow:auto`、没有自己的 `height`/`max-height`、`overscroll-behavior:contain`）、`.row` / `.trow` / `.grp` 都是 `flex:0 0 auto`（压力落在容器上，不落在行上）、链上两处 `min-height:0` 都不能掉——少一处滚动条就永远不出现 |
 | `test/content-index.test.mjs` | 517 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段；**只索引用户与助手的文字**（真实日志形状：工具输出、注入上下文都不该被搜到）；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |

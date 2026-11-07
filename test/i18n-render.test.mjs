@@ -69,6 +69,7 @@ const React = {
     hookCalls += 1;
     return fn;
   },
+  memo: (type) => type,
   useSyncExternalStore: (_subscribe, getSnapshot) => {
     hookCalls += 1;
     return getSnapshot();

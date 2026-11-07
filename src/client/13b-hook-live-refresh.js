@@ -6,6 +6,30 @@
     // relative timestamps read from.
 
     /**
+     * What one pushed `sessions-changed` payload costs this window.
+     *
+     * The Host grades its own news, and the grade is the whole point of the
+     * split: a badge flip (`cosmetic`) is already applied in place from the
+     * payload and must not reload anything; a finished turn or a new title
+     * (`refresh: false`) reloads, but through the size+mtime caches rather than
+     * walking the logs; a created or disposed session (`refresh: true`) buys the
+     * walk. A Host from before the split sent no `cosmetic` field and used
+     * `refresh: false` for exactly the badge flips, so it is read the same way.
+     *
+     * Pure and separate from the hook because the decision is the interface
+     * between Host and Client — the part that has to stay pinned.
+     *
+     * @param {any} payload
+     * @returns {{ reload: boolean, refresh: boolean }}
+     */
+    function liveAnswer(payload) {
+      if (!payload) return { reload: false, refresh: false };
+      const cosmetic = payload.cosmetic === true || (payload.cosmetic === undefined && payload.refresh === false);
+      if (cosmetic) return { reload: false, refresh: false };
+      return { reload: true, refresh: payload.refresh === true };
+    }
+
+    /**
      * The panel's data feed.
      *
      * `revisions`, `openMode` and the update streams are factory-scope, so the
@@ -45,17 +69,30 @@
       // created in DSH's own sidebar, a title the model wrote a moment later, a
       // turn that started and then ended. The Host turns those into
       // `sessions-changed`; a badge flip is patched in place from the payload,
-      // and anything that moves the derived list costs exactly one reload —
-      // debounced, because one turn arrives as several events and every reload
-      // is a walk over the session logs.
-      const liveReload = useRef(0);
-      const reloadFromLive = useCallback(() => {
-        if (liveReload.current) return;
-        liveReload.current = setTimeout(() => {
-          liveReload.current = 0;
-          void load(true);
-        }, 300);
-      }, [load]);
+      // and anything else costs exactly one reload — debounced, because one turn
+      // arrives as several events.
+      //
+      // The reload carries the Host's own verdict on how expensive it may be. A
+      // structural change (?refresh=1) walks the logs; a finished turn does not,
+      // because headers, projection cache and log facts all invalidate by
+      // size+mtime and the walk would answer the same numbers. The flag is sticky
+      // in one direction: if any event inside the debounce window asked for the
+      // walk, the one reload that answers them all takes it.
+      const liveReload = useRef({ timer: 0, refresh: false });
+      const reloadFromLive = useCallback(
+        (refresh = true) => {
+          const pending = liveReload.current;
+          pending.refresh = pending.refresh || refresh === true;
+          if (pending.timer) return;
+          pending.timer = setTimeout(() => {
+            const forced = pending.refresh;
+            pending.timer = 0;
+            pending.refresh = false;
+            void load(forced);
+          }, 300);
+        },
+        [load],
+      );
       useEffect(() => {
         const unsubscribe = subscribeLiveUpdates((payload) => {
           if (!payload) return;
@@ -63,10 +100,12 @@
             const running = new Set(payload.running.map(String));
             setBoot((previous) => (previous?.data ? { ...previous, data: withRunning(previous.data, running) } : previous));
           }
-          // `refresh: false` means the event only moved the running set, which
-          // the lines above already applied — a walk would be spent on rows that
+          // `cosmetic` means the event only moved the running set, which the
+          // lines above already applied — a reload would be spent on rows that
           // are otherwise unchanged.
-          if (payload.refresh !== false) reloadFromLive();
+          const answer = liveAnswer(payload);
+          if (!answer.reload) return;
+          reloadFromLive(answer.refresh);
         });
         // A panel that was hidden while DSH changed (a second window, a
         // minimised app) has to be right the moment it is looked at again, not
@@ -95,9 +134,9 @@
           } catch {
             /* nothing was added */
           }
-          if (liveReload.current) {
-            clearTimeout(liveReload.current);
-            liveReload.current = 0;
+          if (liveReload.current.timer) {
+            clearTimeout(liveReload.current.timer);
+            liveReload.current = { timer: 0, refresh: false };
           }
         };
       }, [reloadFromLive]);

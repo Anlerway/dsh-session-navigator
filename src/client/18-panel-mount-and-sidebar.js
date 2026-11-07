@@ -400,47 +400,10 @@
               { className: "status-right" },
               // 总结 runs on the host and outlives the menu that started it, so the
               // bar rides just left of the view switch: the corner that is always
-              // on screen, and next to the controls rather than past them. A click
-              // still stops the batch; the title rides along in the tooltip.
-              summarizing
-                ? (() => {
-                    const state = summaryState.state ?? {};
-                    const done = Math.max(0, Number(state.done) || 0);
-                    const total = Math.max(0, Number(state.total) || 0);
-                    const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : null;
-                    const detail = state.current?.title
-                      ? T("{0} · {1}", [summaryProgress, state.current.title])
-                      : summaryProgress;
-                    return h(
-                      "div",
-                      {
-                        className:
-                          "s-progress" +
-                          (percent === null ? " indeterminate" : "") +
-                          (Number(state.failed) > 0 ? " failed" : ""),
-                        role: "progressbar",
-                        "aria-label": detail,
-                        "aria-valuemin": 0,
-                        "aria-valuemax": percent === null ? undefined : total,
-                        "aria-valuenow": percent === null ? undefined : done,
-                        title: detail + " · " + T("点击停止总结"),
-                        onClick: () => {
-                          summaryStore.cancel().catch((failure) => setErrorText(String(failure?.message ?? failure)));
-                        },
-                      },
-                      h("span", { className: "s-progress-label" }, T("AI 总结")),
-                      h(
-                        "span",
-                        { className: "s-progress-track" },
-                        h("span", {
-                          className: "s-progress-fill",
-                          style: percent === null ? null : { width: percent + "%" },
-                        }),
-                      ),
-                      h("span", { className: "s-progress-num" }, done + "/" + total),
-                    );
-                  })()
-                : null,
+              // on screen, and next to the controls rather than past them. The
+              // component subscribes by itself — a running batch repaints this bar
+              // and nothing else in the panel.
+              h(SummaryRunProgress, { onError: setErrorText }),
               h(
                 "div",
                 { className: "viewswitch" },

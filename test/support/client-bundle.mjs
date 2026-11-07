@@ -22,6 +22,7 @@ const React = {
   Fragment: Symbol("Fragment"),
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   createPortal: (node) => node,
+  memo: (type) => type,
   useRef: (initial) => ({ current: initial }),
   useState: (initial) => [typeof initial === "function" ? initial() : initial, () => {}],
   useEffect: () => {},

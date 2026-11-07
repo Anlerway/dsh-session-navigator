@@ -51,6 +51,7 @@ export function makeReact() {
       return { type, props: merged, children };
     },
     createPortal: (node) => node,
+    memo: (type) => type,
     useRef: (initial) => hook(readIndex(), () => ({ current: initial })),
     useState: (initial) => {
       const cell = hook(readIndex(), () => ({ value: typeof initial === "function" ? initial() : initial }));

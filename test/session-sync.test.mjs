@@ -5,8 +5,9 @@
  *
  * What matters is not that an event is heard but what it costs and what it
  * carries: one reply must not become four repaints, a badge flip must not become
- * a filesystem walk, and an event nobody is listening for must not be queued for
- * a panel that will read the whole state anyway.
+ * a reload at all, a settled turn must not become a filesystem walk, and an
+ * event nobody is listening for must not be queued for a panel that will read
+ * the whole state anyway.
  */
 
 import test from "node:test";
@@ -152,31 +153,36 @@ test("a new session is structural: the header cache is dropped and the panel rel
         reasons: ["created"],
         refresh: true,
         structural: true,
+        cosmetic: false,
         running: ["session-live"],
       },
     },
   ]);
 });
 
-test("a status flip is cosmetic: the running set travels, the cache is kept", () => {
+test("a status flip is cosmetic: the running set travels, nothing is read", () => {
   const { ctx, bridge, reader, sync } = start();
   ctx.emit("agent/status", { status: "running" });
   const result = sync.flush();
   assert.equal(result.reason, "running");
-  assert.equal(result.refresh, false, "a badge flip must not trigger a walk");
+  assert.equal(result.cosmetic, true, "a badge flip must not trigger a reload");
+  assert.equal(result.refresh, false);
   assert.equal(result.structural, false);
   assert.equal(reader.invalidations, 0);
   assert.deepEqual(bridge.published[0].payload.running, ["session-live"]);
 });
 
-test("an agent going idle is named idle, and the settled log is re-read", () => {
+test("an agent going idle is named idle: content, but through the cache", () => {
   const { ctx, reader, sync } = start();
   ctx.emit("agent/status", { status: "idle" });
   const result = sync.flush();
   assert.equal(result.reason, "idle");
   // 最后活动时间 / 统计 come from the log, which only settles once the turn is
-  // over — the badge patch alone cannot tell them apart.
-  assert.equal(result.refresh, true);
+  // over — the badge patch alone cannot tell them apart. The numbers themselves
+  // live in the projection cache and the log facts, both keyed by size+mtime, so
+  // the reload needs no filesystem walk of its own.
+  assert.equal(result.cosmetic, false, "the row's facts changed");
+  assert.equal(result.refresh, false, "a cached reload is enough");
   assert.equal(result.structural, false, "the session set did not change");
   assert.equal(reader.invalidations, 0);
 });
@@ -191,7 +197,8 @@ test("one turn is one reply: several events collapse into a single batch", () =>
   assert.equal(bridge.published.length, 1, "four events, one publish");
   assert.equal(result.reason, "message", "the batch is named by the event that started it");
   assert.deepEqual(result.reasons, ["message", "turn", "running"]);
-  assert.equal(result.refresh, true, "turn/end is worth a reload");
+  assert.equal(result.cosmetic, false, "turn/end inside the batch needs the reload");
+  assert.equal(result.refresh, false, "but not a walk: the caches invalidate themselves");
   assert.equal(bridge.published.length, 1);
   assert.equal(sync.flush(), null, "nothing was recorded twice");
 });
@@ -199,19 +206,47 @@ test("one turn is one reply: several events collapse into a single batch", () =>
 test("turn/start alone is not worth a reload, turn/end alone is", () => {
   const first = start();
   first.ctx.emit("session/event", {}, { type: "turn/start" });
-  assert.equal(first.sync.flush().refresh, false);
+  const started = first.sync.flush();
+  assert.equal(started.cosmetic, true);
+  assert.equal(started.refresh, false);
 
   const second = start();
   second.ctx.emit("session/event", {}, { type: "turn/end" });
-  assert.equal(second.sync.flush().refresh, true);
+  const settled = second.sync.flush();
+  assert.equal(settled.cosmetic, false);
+  assert.equal(settled.refresh, false, "the log settled; the caches follow it");
 });
 
-test("a title is refreshed but changes no session set", () => {
+test("a badge flip folded into a settled turn is not cosmetic", () => {
+  // The running set and the log both moved inside one debounce window. Answering
+  // that with a badge patch alone would leave the finished turn unpainted.
+  const { ctx, sync } = start();
+  ctx.emit("agent/status", { status: "running" });
+  ctx.emit("session/event", {}, { type: "turn/end" });
+  const result = sync.flush();
+  assert.equal(result.reasons.includes("running"), true);
+  assert.equal(result.cosmetic, false);
+});
+
+test("a structural batch always asks for the walk, whatever else is in it", () => {
+  const { ctx, reader, sync } = start();
+  ctx.emit("agent/status", { status: "running" });
+  ctx.emit("session/created", { id: "session-new" });
+  const result = sync.flush();
+  assert.equal(result.refresh, true);
+  assert.equal(result.structural, true);
+  assert.equal(result.cosmetic, false);
+  assert.equal(reader.invalidations, 1);
+});
+
+test("a title is reloaded but changes no session set", () => {
   const { ctx, reader, sync } = start();
   ctx.emit("session/event", {}, { type: "session/title" });
   const result = sync.flush();
   assert.equal(result.reason, "title");
-  assert.equal(result.refresh, true);
+  // The title lives in the projection cache, keyed by the file's size+mtime.
+  assert.equal(result.cosmetic, false);
+  assert.equal(result.refresh, false);
   assert.equal(result.structural, false);
   assert.equal(reader.invalidations, 0);
 });

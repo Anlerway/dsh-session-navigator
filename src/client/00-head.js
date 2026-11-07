@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 
     const React = require("react");
-    const { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React;
+    const { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } = React;
 
     const h = (type, props, ...children) => React.createElement(type, props, ...children);
 

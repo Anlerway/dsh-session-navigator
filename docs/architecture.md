@@ -102,7 +102,7 @@ src/
 │
 ├─ sources/                 读 DSH 的数据（只读，除 move 的受控重写）
 │  ├─ heads.js        322  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）；header 按 size+mtime+ctime 缓存，没再动过的日志不解第二遍
-│  ├─ projcache.js    228  L1：storages/session_projcache 的每会话小 JSON
+│  ├─ projcache.js    268  L1：storages/session_projcache 的每会话小 JSON；一次只开 8 个，结果仍按目录顺序回填
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     182  日志只回答一件事：这个会话有没有过一轮对话（空白会话），每条日志一份、按 size+mtime 校验的 LRU
 │  ├─ live.js         122  哪些会话真的在跑：只信 ctx.agents 的 status，绝不从 ctx.sessions 或日志推断
@@ -136,7 +136,7 @@ src/
 │  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时由启动收尾，不留孤儿
 │  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标
-│  ├─ session-sync.js 238  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新
+│  ├─ session-sync.js 256  跟 DSH 保持同步：订阅 session/* 与 agent/* 事件，合并成一次刷新；发的是三档代价（structural / content / cosmetic），只有 structural 才值得重扫文件系统
 │  ├─ storage-watch.js 224  盯两个签名：`storages/workspace.json` 的改动与 `sessions/` 下各会话目录的 mtime——DSH 侧栏删掉一条没在跑的会话时不会发 `session/disposed`，只能靠目录消失被看见
 │  ├─ status-board.js  70  会话状态的最后一格缓存：窗口每秒经 `GET /bridge/status` 读它，挂载与回到前台时用 `status-request` 问同一份（推送在后台文档里会被节流，只靠推会一直停在旧状态）
 │  ├─ pending-drafts.js 271 文件夹里新建会话的意图：DSH 的 `startSession` 只认工作区、会话 id 也由它给，所以草稿出现后由 host 补一条 placement（基线 + 3 秒容差，120 秒作废）
@@ -271,7 +271,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 **导出**：`apply` / `inject` / `panelStore` / `SettingsSection`。
 
-浮窗本体是 `Panel`（`src/client/14-panel-open-tabs-filter.js`，1,142 行，内部按功能分段），
+浮窗本体是 `Panel`（`src/client/14-panel-open-tabs-filter.js`，1,180 行，内部按功能分段），
 它被 portal 到 `<body>` 上的固定层——侧栏有 `overflow: hidden`，原地渲染会被裁掉
 （同一段的注释）。状态与副作用已经拆进八个 `use*` hook，见 `src/client/13e` 到 `13h`。
 

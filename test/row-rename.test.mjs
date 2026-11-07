@@ -47,6 +47,7 @@ const React = {
   useEffect: () => {},
   useMemo: (compute) => compute(),
   useCallback: (fn) => fn,
+  memo: (type) => type,
   useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
 };
 

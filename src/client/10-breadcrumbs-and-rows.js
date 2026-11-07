@@ -372,7 +372,7 @@
       return hit;
     }
 
-    function SessionRow({ session, selected, now, onSelect, checked, onCheck, depth = 0, childCount = 0, collapsed = false, onToggleChildren, rename, onBeginRename, onRowContextMenu, onOpenSession, clipboard, dragSet, contentHit }) {
+    function SessionRowView({ session, selected, now, onSelect, checked, onCheck, depth = 0, childCount = 0, collapsed = false, onToggleChildren, rename, onBeginRename, onRowContextMenu, onOpenSession, clipboard, dragSet, contentHit }) {
       const status = statusOf(session);
       const isChild = Boolean(session.isSubagent);
       return h(
@@ -561,6 +561,72 @@
         h("div", { className: "cell col-fill" }),
       );
     }
+
+    /** Two id lists of the same length, holding the same ids in the same order. */
+    function sameIds(a, b) {
+      if (a === b) return true;
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+      for (let at = 0; at < a.length; at += 1) if (a[at] !== b[at]) return false;
+      return true;
+    }
+
+    /** The rename state the row draws: the editor's text, and which name space it belongs to. */
+    function sameRename(a, b) {
+      if (!a || !b) return !a && !b;
+      return a.kind === b.kind && a.id === b.id && a.surface === b.surface && a.value === b.value;
+    }
+
+    /** Whether the clipboard marks this row as cut — the only clipboard bit it draws. */
+    function rowIsCut(props) {
+      return props.clipboard?.mode === "cut" && props.clipboard.ids?.includes(props.session.id) === true;
+    }
+
+    /**
+     * Would this row draw the same thing again?
+     *
+     * The panel rerenders on every committed keystroke in the search box, every
+     * checkbox, every menu, every tab switch — and, until 总结 got its own
+     * subscriber, about once a second while a batch ran. One row is ~29 elements:
+     * at a few thousand sessions, rebuilding all of them for a change that touched
+     * one is the difference between a repaint and a hitch.
+     *
+     * React's shallow comparison is not enough, because the list hands every row
+     * fresh objects on each render (`dragSet` comes from splitDragIds, `rename`
+     * from the editor state, the callback wrappers close over the session id). So
+     * this compares what the row actually reads:
+     *
+     *   session      by reference — a reload replaces it, and that is the signal
+     *                that its facts moved;
+     *   the row's own selected / checked / now / depth / childCount / collapsed;
+     *   rename — the one row being renamed keeps following the typing (and its
+     *                kind / id / surface, since the editor commits through it);
+     *   the clipboard's effect on *this* row, not the clipboard itself;
+     *   dragSet's three id lists, element by element;
+     *   contentHit's count and snippet.
+     *
+     * Callbacks are compared by presence only. They are created per render and
+     * close over the session id, so an identity check would never match, and the
+     * panel callbacks behind them are stable — a row that keeps the previous
+     * wrapper still calls the same function with the same id.
+     */
+    function sameRowProps(a, b) {
+      if (a.session !== b.session) return false;
+      if (a.selected !== b.selected || a.checked !== b.checked || a.now !== b.now) return false;
+      if (a.depth !== b.depth || a.childCount !== b.childCount || a.collapsed !== b.collapsed) return false;
+      if (Boolean(a.onBeginRename) !== Boolean(b.onBeginRename)) return false;
+      if (Boolean(a.onRowContextMenu) !== Boolean(b.onRowContextMenu)) return false;
+      if (!sameRename(a.rename, b.rename)) return false;
+      if (rowIsCut(a) !== rowIsCut(b)) return false;
+      if (!sameIds(a.dragSet?.ids, b.dragSet?.ids)) return false;
+      if (!sameIds(a.dragSet?.sessions, b.dragSet?.sessions)) return false;
+      if (!sameIds(a.dragSet?.nodes, b.dragSet?.nodes)) return false;
+      if (Boolean(a.contentHit) !== Boolean(b.contentHit)) return false;
+      if (a.contentHit && (a.contentHit.count !== b.contentHit.count || a.contentHit.snippet !== b.contentHit.snippet)) return false;
+      return true;
+    }
+
+    /** One session row, skipped when none of its inputs moved. */
+    const SessionRow = memo(SessionRowView, sameRowProps);
 
     /**
      * A container row in the list: a workspace, a user folder, or one of the

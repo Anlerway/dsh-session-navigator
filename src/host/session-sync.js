@@ -30,16 +30,20 @@
  * `{ global: true }` anyway, because a registration that is silently filtered
  * would reproduce exactly the staleness this module exists to remove.
  *
- * What each event costs matters, so the reaction is split in two:
+ * What each event costs matters, so the reaction is split in three:
  *
  *   structural  the set of sessions changed → drop the header cache and repaint
  *               from a fresh walk;
- *   cosmetic    a row's state changed → hand the caller the live running set;
- *               the panel patches the badge in place, without a walk.
+ *   content     a row's facts changed → reload, but through the caches: headers,
+ *               projection cache and log facts are all keyed by size+mtime, so
+ *               the reload costs one stat per log and no decompression;
+ *   cosmetic    only the running set changed → hand the caller the live set and
+ *               let the panel patch the badge in place; nothing is read.
  *
  * A turn emits several events in a row (`user/message` → `turn/start` →
  * `assistant/message` → `turn/end`), so batches are coalesced over a short
- * window: one reply, one snapshot, not four.
+ * window: one reply, one snapshot, not four. A batch is cosmetic only when every
+ * event in it is: one settled turn next to a badge flip still needs the reload.
  */
 
 /** How long events are collected before the Host answers them once. */
@@ -48,17 +52,25 @@ const DEBOUNCE_MS = 300;
 /**
  * The session events this module listens to, and what each one implies.
  *
- * `turn/start` is deliberately cosmetic: the running set already says the agent
- * is busy, and the log tail has not settled yet — a walk there would be spent on
- * a row that is about to change again.
+ * Everything here is content unless it says otherwise: the log or the projection
+ * cache has moved on, the panel should read the row again, and `refresh: false`
+ * says "through the cache" rather than "walk the filesystem". That is what makes
+ * a finished reply nearly free — `HEADER_TTL_MS` in src/sources/reader.js caps
+ * how stale a header can be at 1.5 s, and the fields a row actually draws (title,
+ * counts, tokens, 最后活动时间) come from the projection cache and the log facts,
+ * which invalidate themselves by size+mtime.
  *
- * @type {Readonly<Record<string, { reason: string, refresh: boolean }>>}
+ * `turn/start` is deliberately cosmetic: the running set already says the agent
+ * is busy, and the log tail has not settled yet — a reload there would be spent
+ * on a row that is about to change again.
+ *
+ * @type {Readonly<Record<string, { reason: string, cosmetic?: boolean }>>}
  */
 const SESSION_EVENT_RULES = Object.freeze({
-  "session/title": { reason: "title", refresh: true },
-  "turn/start": { reason: "turn", refresh: false },
-  "turn/end": { reason: "turn", refresh: true },
-  "user/message": { reason: "message", refresh: true },
+  "session/title": { reason: "title" },
+  "turn/start": { reason: "turn", cosmetic: true },
+  "turn/end": { reason: "turn" },
+  "user/message": { reason: "message" },
 });
 
 /**
@@ -80,7 +92,7 @@ export function createSessionSync(options = {}) {
   const disposers = [];
   /** @type {NodeJS.Timeout | number | null} */
   let timer = null;
-  /** @type {{ reason: string, reasons: Set<string>, refresh: boolean, structural: boolean } | null} */
+  /** @type {{ reason: string, reasons: Set<string>, refresh: boolean, structural: boolean, cosmetic: boolean } | null} */
   let pending = null;
   let disposed = false;
 
@@ -89,14 +101,16 @@ export function createSessionSync(options = {}) {
    * event the user actually caused.
    *
    * @param {string} reason
-   * @param {{ refresh?: boolean, structural?: boolean }} [effect]
+   * @param {{ refresh?: boolean, structural?: boolean, cosmetic?: boolean }} [effect]
    */
   function mark(reason, effect = {}) {
     if (disposed) return;
-    if (!pending) pending = { reason, reasons: new Set(), refresh: false, structural: false };
+    if (!pending) pending = { reason, reasons: new Set(), refresh: false, structural: false, cosmetic: true };
     pending.reasons.add(reason);
     pending.refresh = pending.refresh || effect.refresh === true;
     pending.structural = pending.structural || effect.structural === true;
+    // One content event in the batch makes the whole batch worth reading.
+    pending.cosmetic = pending.cosmetic && effect.cosmetic === true;
     if (timer) return;
     try {
       timer = setTimeout(flush, debounceMs);
@@ -110,7 +124,7 @@ export function createSessionSync(options = {}) {
   /**
    * Answer everything recorded so far, once.
    *
-   * @returns {{ reason: string, reasons: string[], refresh: boolean, structural: boolean, running: string[], published: boolean } | null}
+   * @returns {{ reason: string, reasons: string[], refresh: boolean, structural: boolean, cosmetic: boolean, running: string[], published: boolean } | null}
    */
   function flush() {
     if (timer) {
@@ -121,9 +135,9 @@ export function createSessionSync(options = {}) {
     pending = null;
     if (!batch || disposed) return null;
 
-    // Only a changed session set invalidates the header walk: a title or a
-    // finished turn lives in the log and in the projection cache, both of which
-    // are keyed by size+mtime and re-read on their own.
+    // Only a changed session set drops the header cache: a title or a finished
+    // turn lives in the log and in the projection cache, both of which are keyed
+    // by size+mtime and re-read on their own, so the cached walk is still right.
     if (batch.structural) {
       try {
         reader?.invalidate?.();
@@ -138,6 +152,7 @@ export function createSessionSync(options = {}) {
       reasons: [...batch.reasons],
       refresh: batch.refresh,
       structural: batch.structural,
+      cosmetic: batch.cosmetic,
       running,
     };
 
@@ -193,20 +208,22 @@ export function createSessionSync(options = {}) {
   on("session/disposed", () => mark("disposed", { refresh: true, structural: true }));
   // An agent appearing or going away moves the session in or out of the running
   // set only; the row itself is already in the listing.
-  on("agent/created", () => mark("agent", { refresh: false }));
-  on("agent/disposed", () => mark("agent", { refresh: false }));
+  on("agent/created", () => mark("agent", { cosmetic: true }));
+  on("agent/disposed", () => mark("agent", { cosmetic: true }));
   on("agent/status", (payload) => {
     const status = payload?.status;
     // Starting is cosmetic: the payload already carries the running set, so the
-    // badge flips without a walk. Finishing is not: the log has just settled,
-    // and 空白会话 / 最后活动时间 / 统计 are read from it. A turn emits both this
-    // and `turn/end`, and the debounce folds them into one walk.
-    mark(status === "running" ? "running" : "idle", { refresh: status !== "running" });
+    // badge flips without reading anything. Finishing is content: the log has
+    // just settled, and 空白会话 / 最后活动时间 / 统计 are read from it — through
+    // the caches, since both are keyed by the signal that just moved. A turn
+    // emits both this and `turn/end`, and the debounce folds them into one
+    // reload.
+    mark(status === "running" ? "running" : "idle", status === "running" ? { cosmetic: true } : {});
   });
   on("session/event", (session, event) => {
     const rule = SESSION_EVENT_RULES[event?.type];
     if (!rule) return;
-    mark(rule.reason, { refresh: rule.refresh });
+    mark(rule.reason, { refresh: rule.refresh, cosmetic: rule.cosmetic });
   });
 
   return {
