@@ -14,7 +14,7 @@
 
 import { FIXED_NODES } from "../constants.js";
 import { FOLDER_NODE_PREFIX, isFolderNodeId } from "./tree.js";
-import { SHORTCUT_NODE_PREFIX, isShortcutNodeId } from "./shortcuts.js";
+import { isShortcutNodeId } from "./shortcuts.js";
 import { codedError } from "../store/sidecar.js";
 
 /** Longest accepted folder name. */

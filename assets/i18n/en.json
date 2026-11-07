@@ -427,7 +427,6 @@
     "已分叉出一个新会话": "Forked into a new session",
     "已创建快捷方式（原位置不变）": "Shortcut created (it stays where it is)",
     "已删除": "Deleted",
-    "已删除 {0} 个会话": "Deleted {0} sessions",
     "已删除 {0} 个文件夹": "Deleted {0} folders",
     "已删除 {0} 个工作区": "Deleted {0} workspaces",
     "已移入回收站 {0} 个会话": "Moved {0} sessions to the bin",

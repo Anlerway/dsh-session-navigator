@@ -12,7 +12,7 @@
  * second click ignored, not executed later.
  */
 
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { codedError } from "../store/sidecar.js";
@@ -41,7 +41,7 @@ import {
   writeHelperApp,
 } from "./install.js";
 import { borrowedPaths, inspectBorrowed, scanBorrowedRuntimes } from "./borrow.js";
-import { createProgressWriter, emptyState, normalizeState, readState, writeState } from "./state.js";
+import { createProgressWriter, emptyState, readState, writeState } from "./state.js";
 
 /** One hour is far longer than a 110 MB download over any usable link. */
 const INSTALL_TIMEOUT_MS = 60 * 60 * 1000;

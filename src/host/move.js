@@ -28,7 +28,7 @@
  * reason a move does.
  */
 
-import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { getService } from "../capabilities.js";

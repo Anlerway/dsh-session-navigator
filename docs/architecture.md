@@ -72,7 +72,7 @@ compileRoute 匹配表               // src/index.js 段数相等 + :param 解�
 迁移守卫                          // 非 GET/HEAD 且非 /datadir* → migration-in-progress
 assertSameOrigin(req)            // 非 GET/HEAD：跨站 / 非 JSON → 403 / 415
 readJsonBody(req)                // 非 GET/HEAD，上限 8 MiB（src/http.js）
-handler(api, req, res, query, params)
+handler(api, req, res, query)     // 路径参数已写进 req.params
   ↓ 正常 → ok(res, result)        // { ok: true, result }
   ↓ 抛错 → statusFor(code)        // src/index.js 错误码 → HTTP 状态
            fail(res, status, code, message)

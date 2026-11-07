@@ -379,7 +379,7 @@ function acceptsSessions(nodeId, node, tree) {
  * @param {{ nodes: Record<string, any> }} tree
  * @returns {{ session: boolean, folder: boolean, workspace: boolean, shortcut: boolean }}
  */
-export function acceptsOf(nodeId, tree) {
+function acceptsOf(nodeId, tree) {
   const node = tree.nodes?.[nodeId];
   const folder = holdsDirectories(node);
   return {

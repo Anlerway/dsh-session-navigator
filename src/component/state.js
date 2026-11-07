@@ -24,7 +24,7 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import { COMPONENT_VERSION } from "./layout.js";
 
 /** Every phase the state machine may be in. */
-export const PHASES = Object.freeze([
+const PHASES = Object.freeze([
   "absent",
   "downloading",
   "verifying",

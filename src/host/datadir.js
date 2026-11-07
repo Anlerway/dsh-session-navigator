@@ -23,7 +23,7 @@
  */
 
 import { constants as fsConstants } from "node:fs";
-import { access, cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
+import { access, cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, parse, resolve } from "node:path";
 

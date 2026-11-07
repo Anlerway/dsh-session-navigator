@@ -68,24 +68,20 @@ const HUMAN_SOURCE = "user";
 /** `data.source.kind` values that carry DSH's condensation of earlier turns. */
 const CHECKPOINT_SOURCES = new Set(["compact-checkpoint"]);
 
-/** Surface operations that hide what they name. */
-const MASKING_OPS = new Set(["replace", "hide", "mask", "delete"]);
-
 /**
  * Which seqs are still visible after every surface operation.
  *
- * Two shapes are accepted because both exist in the wild:
- *
- *   `{op: "replace", startSeq, endSeq}` — what DSH v4 logs write. An inclusive
- *   range, usually one seq: the system prompt replacing its previous version.
- *   `{kind: "replace" | "hide", ranges: [{from, to}], seqs: [...]}` — the shape
- *   older code and its tests assume, kept so a log written by either build is
- *   read the same way.
+ * DSH v4 logs write exactly one shape: `{op: "replace", startSeq, endSeq}`, an
+ * inclusive range that is usually a single seq — the system prompt replacing its
+ * previous version. Across 130 real logs (268,208 events) `replace` is the only
+ * op that ever appears, which is why `hide` / `mask` / `delete` and the
+ * `{kind, ranges, seqs}` spelling this function also accepted are gone: nothing
+ * that exists writes them.
  *
  * A later op can mask an earlier one, so the result is simply the union. The
- * ranges are not trusted: `to` is capped, because a log that says
- * `{"from": 1, "to": 1000000000}` would iterate a billion times on the request
- * thread and build a billion-entry Set.
+ * ranges are not trusted: `endSeq` is capped, because a log that says
+ * `{startSeq: 1, endSeq: 1000000000}` would iterate a billion times on the
+ * request thread and build a billion-entry Set.
  *
  * @param {any[]} events
  * @returns {Set<number>} seqs a later replace-style op overwrote
@@ -105,27 +101,13 @@ export function maskedSeqs(events) {
     for (let seq = start; seq <= end; seq += 1) masked.add(seq);
   };
 
-  const addSeqs = (seqs) => {
-    if (!Array.isArray(seqs)) return;
-    for (const seq of seqs) {
-      const value = Number(seq);
-      if (Number.isFinite(value)) masked.add(value);
-    }
-  };
-
   for (const event of events) {
     if (!event || typeof event !== "object") continue;
     const op = event.surfaceOp;
-    // A string op (`"append"`) is not a mask. Only objects are read.
-    if (op && typeof op === "object") {
-      const kind = op.kind ?? op.type ?? op.op;
-      if (MASKING_OPS.has(kind)) {
-        if (op.startSeq !== undefined || op.endSeq !== undefined) addRange(op.startSeq, op.endSeq);
-        if (Array.isArray(op.ranges)) {
-          for (const range of op.ranges) addRange(range?.from ?? range?.start ?? range?.startSeq, range?.to ?? range?.end ?? range?.endSeq);
-        }
-        addSeqs(op.seqs);
-      }
+    // The other 65,990 surface ops in those logs are the string "append", which
+    // appends and therefore masks nothing. Only `replace` objects hide a span.
+    if (op && typeof op === "object" && op.op === "replace") {
+      addRange(op.startSeq, op.endSeq);
     }
   }
   return masked;
@@ -154,8 +136,9 @@ function prunedSeqs(events) {
     }
     const range = data.shadowedRange;
     if (range && typeof range === "object") {
-      const from = Number(range.startSeq ?? range.from ?? range.start ?? NaN);
-      const to = Number(range.endSeq ?? range.to ?? range.end ?? NaN);
+      // `{start, end}` is what the 61 real `compaction/prune` records carry.
+      const from = Number(range.start ?? NaN);
+      const to = Number(range.end ?? NaN);
       if (Number.isFinite(from) && Number.isFinite(to) && to >= from) {
         for (let seq = from; seq <= Math.min(to, from + MAX_MASKED_RANGE - 1); seq += 1) pruned.add(seq);
       }
@@ -177,44 +160,51 @@ export function blocksOf(content) {
   const tools = [];
   for (const block of parts) {
     if (!block || typeof block !== "object") continue;
-    const type = block.type ?? block.kind ?? "";
-    if (type === "text" || type === "output_text") text += String(block.text ?? "");
-    else if (type === "reasoning" || type === "thinking") reasoning += String(block.text ?? block.reasoning ?? "");
-    else if (type === "tool-call" || type === "tool_use" || type === "tool") tools.push(block);
+    const type = block.type ?? "";
+    if (type === "text") text += String(block.text ?? "");
+    else if (type === "reasoning") reasoning += String(block.text ?? "");
+    else if (type === "tool-call") tools.push(block);
     // Dropping everything else makes a message whose only blocks are images, tool
     // results or a type this build does not know vanish from both formats entirely.
     // Whatever the block can say in words is kept, and an image leaves a marker so
     // the turn is still visibly there.
     else if (typeof block.text === "string") text += block.text;
-    else if (type === "image" || type === "input_image") text += "![图片]";
+    else if (type === "image") text += "![图片]";
   }
   return { text, reasoning, tools };
 }
 
 /**
- * The content blocks of one message event, whichever field this build wrote.
+ * The content blocks of one message event.
+ *
+ * Two carriers, split by who wrote the event: the model's own messages keep
+ * their blocks in `data.message.content` (`assistant/message`, `tool/result`,
+ * `system/message`), while events DSH constructs — `user/message` and
+ * `tool/ptc-dispatch` — put them straight on `data.content`.
  *
  * @param {any} data
  * @returns {any[]}
  */
 function contentBlocksOf(data) {
-  const content = data?.message?.content ?? data?.content ?? data?.text ?? null;
+  const content = data?.message?.content ?? data?.content ?? null;
   if (Array.isArray(content)) return content;
   if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
   return [];
 }
 
 /**
- * The wall-clock stamp of one event.
+ * The wall-clock stamp of one event, in milliseconds.
  *
- * Real logs use `time`; the tests use `at`. Both are milliseconds.
+ * Every one of 268,208 real events stamps itself with `time`. The `at` fallback
+ * this function used to carry was read by nothing but its own fixtures; the 120
+ * events without a stamp are `session` headers, which never reach a turn.
  *
  * @param {any} event
  * @returns {number | null}
  */
 function atOf(event) {
-  for (const candidate of [event?.time, event?.at]) if (Number.isFinite(candidate)) return Number(candidate);
-  return null;
+  const time = event?.time;
+  return Number.isFinite(time) ? Number(time) : null;
 }
 
 /**
@@ -331,13 +321,15 @@ export function collectTurns(events) {
     turn.parts.push({ kind: "text", text: value });
   };
   const addTool = (turn, source) => {
-    const callId = source?.callId ?? source?.id ?? source?.toolCallId ?? null;
+    // A `tool/call` event names the call `callId`; the same call as a block
+    // inside an assistant message names it `id`. No log uses a third spelling.
+    const callId = source?.callId ?? source?.id ?? null;
     if (typeof callId === "string" && callId !== "" && byCallId.has(callId)) return byCallId.get(callId);
-    const args = argumentsOf(source?.arguments ?? source?.input ?? null);
+    const args = argumentsOf(source?.arguments ?? null);
     const entry = {
       kind: "tool",
       callId: typeof callId === "string" && callId !== "" ? callId : null,
-      name: String(source?.name ?? source?.toolName ?? "tool"),
+      name: String(source?.name ?? "tool"),
       raw: args.raw,
       args: args.value,
       result: null,
@@ -400,7 +392,7 @@ export function collectTurns(events) {
       const blocks = contentBlocksOf(data);
       const turn = blankTurn("user", at, seq);
       const { text } = blocksOf(blocks);
-      for (const block of blocks) if (block && typeof block === "object" && (block.type === "image" || block.type === "input_image")) turn.images += 1;
+      for (const block of blocks) if (block && typeof block === "object" && block.type === "image") turn.images += 1;
       if (text.trim() !== "") turn.parts.push({ kind: "text", text });
       turns.push(turn);
       current = null;
@@ -411,12 +403,12 @@ export function collectTurns(events) {
       const turn = assistantTurn(at, seq);
       for (const block of contentBlocksOf(data)) {
         if (!block || typeof block !== "object") continue;
-        const kind = block.type ?? block.kind ?? "";
-        if (kind === "text" || kind === "output_text") addText(turn, String(block.text ?? ""));
-        else if (kind === "reasoning" || kind === "thinking") turn.reasoning += String(block.text ?? block.reasoning ?? "");
-        else if (kind === "tool-call" || kind === "tool_use" || kind === "tool") addTool(turn, block);
+        const kind = block.type ?? "";
+        if (kind === "text") addText(turn, String(block.text ?? ""));
+        else if (kind === "reasoning") turn.reasoning += String(block.text ?? "");
+        else if (kind === "tool-call") addTool(turn, block);
         else if (typeof block.text === "string") addText(turn, block.text);
-        else if (kind === "image" || kind === "input_image") turn.images += 1;
+        else if (kind === "image") turn.images += 1;
       }
       continue;
     }
@@ -429,12 +421,13 @@ export function collectTurns(events) {
     }
 
     if (type === "tool/result") {
-      const callId = data.toolCallId ?? data.callId ?? data.message?.toolCallId ?? null;
+      // The result carries its call id on the message, not on the event.
+      const callId = data.message?.toolCallId ?? null;
       const entry = typeof callId === "string" ? byCallId.get(callId) : null;
       const result = blocksOf(contentBlocksOf(data)).text;
       if (entry) {
         entry.result = result;
-        entry.isError = data.message?.isError === true || data.isError === true;
+        entry.isError = data.message?.isError === true;
       } else if (result.trim() !== "") {
         // A result whose call was pruned away or written by another build: keep
         // the output on a turn of its own rather than dropping real content.

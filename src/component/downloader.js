@@ -24,7 +24,6 @@
  */
 
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 

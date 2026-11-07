@@ -156,8 +156,10 @@ test("a compaction is reported, never applied", () => {
   assert.ok(markdown.includes("被压缩摘要替换的片段：4 个事件"));
 });
 
-test("a hide op names the seqs it masks, and the note is written once per span", () => {
-  const events = [...log().events, { seq: 9, time: T0, type: "surface/hide", surfaceOp: { kind: "hide", seqs: [2, 3] } }];
+test("a replace op names the seqs it masked, and the note is written once per span", () => {
+  // The only op a real log writes: an inclusive seq range. Here it covers the
+  // question and the model's answer, so the note opens one span, not two.
+  const events = [...log().events, { seq: 9, time: T0, type: "surface/replace", surfaceOp: { op: "replace", startSeq: 2, endSeq: 3 } }];
   const { turns, replaced } = collectTurns(events);
   assert.equal(replaced, 2);
   assert.equal(turns.filter((turn) => turn.role === "note").length, 1, "one note, not one per event");
@@ -271,25 +273,26 @@ test("a title is truncated by code point, not by UTF-16 unit", () => {
   assert.equal(name, "a".repeat(79) + "🎉.md", "the emoji is whole");
 });
 
-test("maskedSeqs reads the real op and the legacy one", () => {
-  // Real: an object with op/startSeq/endSeq, endpoints included.
+test("maskedSeqs reads a replace op and nothing else", () => {
+  // The real shape: an object with op/startSeq/endSeq, endpoints included.
   assert.deepEqual([...maskedSeqs([{ seq: 5, surfaceOp: { op: "replace", startSeq: 2, endSeq: 4 } }])], [2, 3, 4]);
-  // Legacy: the invented shape, still read so an old file does not regress.
-  assert.deepEqual([...maskedSeqs([{ seq: 9, surfaceOp: { kind: "replace", ranges: [{ from: 1, to: 2 }] } }])], [1, 2]);
-  // A string surfaceOp is an append, not a mask: 18,000 of them say "append".
+  // The shape this function used to accept is gone with the code that wrote it:
+  // 107 objects across 130 real logs carry op/startSeq/endSeq and no others.
+  assert.equal(maskedSeqs([{ seq: 9, surfaceOp: { kind: "replace", ranges: [{ from: 1, to: 2 }] } }]).size, 0);
+  // A string surfaceOp is an append, not a mask: 65,990 of them say "append".
   assert.equal(maskedSeqs([{ seq: 3, surfaceOp: "append" }]).size, 0);
 });
 
 test("a mask range with one end hides what it names", () => {
   const events = [
     { seq: 1, type: "user/message", data: { content: "one" } },
-    { seq: 2, type: "user/message", data: { content: "two" }, surfaceOp: { kind: "replace", ranges: [{ from: 2 }] } },
+    { seq: 2, type: "user/message", data: { content: "two" }, surfaceOp: { op: "replace", startSeq: 2 } },
   ];
   assert.deepEqual([...maskedSeqs(events)], [2], "a start-only range hides its own seq");
 });
 
 test("an absurd mask range does not run away", () => {
-  const events = [{ seq: 1, surfaceOp: { kind: "replace", ranges: [{ from: 1, to: 1_000_000_000 }] } }];
+  const events = [{ seq: 1, surfaceOp: { op: "replace", startSeq: 1, endSeq: 1_000_000_000 } }];
   const hidden = maskedSeqs(events);
   assert.equal(hidden.size, 100_000, "the range is capped, not iterated a billion times");
   assert.ok(hidden.has(1));

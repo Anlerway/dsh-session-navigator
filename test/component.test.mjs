@@ -27,6 +27,7 @@ import { ELECTRON_VERSION, componentPaths, runtimePaths } from "../src/component
 import { downloadAsset } from "../src/component/downloader.js";
 import {
   directorySize,
+  extractAttempts,
   extractZip,
   installHelperApp,
   sameDigest,
@@ -352,6 +353,33 @@ test("directorySize never stats an asar bundle", async () => {
   } finally {
     await box.cleanup();
   }
+});
+
+test("Windows tries tar.exe before PowerShell, and both skip nothing by luck", () => {
+  const attempts = extractAttempts({ platform: "win32", env: { SystemRoot: "D:\\Win" }, zip: "C:\\runtime.zip", dest: "C:\\out" });
+  assert.equal(attempts.length, 2, "two extractors, in that order");
+  // Absolute, because `tar` on PATH is usually Git's bsdtar, which cannot read zip.
+  assert.equal(attempts[0].command, join("D:\\Win", "System32", "tar.exe"));
+  assert.deepEqual(attempts[0].args, ["-xf", "C:\\runtime.zip", "-C", "C:\\out", "--exclude", "resources/default_app.asar"]);
+  // The fallback the machine with a real tar.exe never reaches.
+  assert.equal(attempts[1].command, "powershell.exe");
+  assert.match(attempts[1].args.at(-1), /^Expand-Archive -LiteralPath 'C:\\runtime\.zip' -DestinationPath 'C:\\out' -Force$/);
+
+  // A stripped environment still finds the OS directory instead of guessing "".
+  assert.equal(extractAttempts({ platform: "win32", env: {}, zip: "a.zip", dest: "out" })[0].command, join("C:\\Windows", "System32", "tar.exe"));
+});
+
+test("PowerShell quoting doubles the only escape it has", () => {
+  const command = extractAttempts({ platform: "win32", env: { SystemRoot: "C:\\Windows" }, zip: "C:\\it's.zip", dest: "C:\\o'ut" }).at(-1).args.at(-1);
+  assert.ok(command.includes("'C:\\it''s.zip'"), "a quote in the path cannot end the string early");
+  assert.ok(command.includes("'C:\\o''ut'"));
+});
+
+test("POSIX uses unzip, darwin by absolute path", () => {
+  const linux = extractAttempts({ platform: "linux", env: {}, zip: "/tmp/a.zip", dest: "/tmp/out" });
+  assert.deepEqual(linux, [{ command: "unzip", args: ["-q", "-o", "/tmp/a.zip", "-d", "/tmp/out", "-x", "resources/default_app.asar"] }]);
+  const mac = extractAttempts({ platform: "darwin", env: {}, zip: "/tmp/a.zip", dest: "/tmp/out" });
+  assert.equal(mac[0].command, "/usr/bin/unzip", "PATH on macOS need not carry unzip");
 });
 
 test("extractZip leaves Electron's default app behind", { skip: process.platform !== "win32" }, async () => {

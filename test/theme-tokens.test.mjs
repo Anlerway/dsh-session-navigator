@@ -33,11 +33,17 @@ test("every --sm-* variable the stylesheet reads is one it defines", () => {
 test("the option list of a select is painted from the theme, not a dark literal", () => {
   const rules = [...SOURCE.matchAll(/(^|\n)(\.[^{]*option[^{]*)\{([^}]*)\}/g)]
     .map((match) => ({ selector: match[2].trim(), body: match[3] }));
-  assert.ok(rules.length >= 2, "expected the select option rules to exist");
+  assert.ok(rules.length >= 1, "expected the select option rule to exist");
   for (const rule of rules) {
     assert.match(rule.body, /background:\s*var\(--sm-surface\)/, rule.selector + " paints its background from --sm-surface");
     assert.match(rule.body, /color:\s*var\(--sm-text\)/, rule.selector + " paints its text from --sm-text");
   }
+  // The settings page is the only place that renders a <select>; its option
+  // list is the one the platform paints, so the rule has to stay attached to it.
+  assert.ok(
+    rules.some((rule) => rule.selector.includes(".se-set-select option")),
+    "the settings select keeps a painted option list",
+  );
 });
 
 test("the token bridges derive a raised surface from the theme", () => {

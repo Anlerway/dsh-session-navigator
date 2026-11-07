@@ -127,15 +127,6 @@
 .se-shell .tab .t-ic{display:grid;place-items:center}
 .se-shell .tab-add{width:28px;height:28px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2);margin-bottom:1px;flex:0 0 28px;background:transparent;border:0;padding:0;cursor:pointer}
 .se-shell .tab-add:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
-.se-shell .tab.dragging{opacity:.4}
-/* A tab remembers its own scope, so the title has to shrink before the close
-   button does: the button is the smaller, more precise target. */
-.se-shell .tab .t-x{opacity:.45;display:grid;place-items:center;width:16px;height:16px;border-radius:3px;flex:0 0 16px}
-.se-shell .tab .t-x:hover{background:color-mix(in oklab, var(--sm-text) 12%, transparent);opacity:1}
-.se-shell .tab:not(.active) .t-x{opacity:0}
-.se-shell .tab:not(.active):hover .t-x{opacity:.6}
-.se-shell .tab.dropbefore{box-shadow:inset 2px 0 0 var(--sm-accent)}
-.se-shell .tab.dropafter{box-shadow:inset -2px 0 0 var(--sm-accent)}
 .se-shell .titlebar{flex:0 0 40px;height:40px;display:flex;align-items:flex-end;gap:8px;padding:0 6px 0 8px; user-select:none;border-bottom:1px solid var(--sm-border-soft);}
 .se-shell .titlebar .tabs{flex:1;min-width:0;height:38px;align-items:flex-end}
 .se-shell .titlebar .wbtns{flex:0 0 auto;margin-bottom:2px}
@@ -146,7 +137,6 @@
 .se-shell .wbtn{width:34px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2); background:transparent;border:0;cursor:pointer;}
 .se-shell .wbtn:hover{background:color-mix(in oklab, var(--sm-text) 9%, transparent);color:var(--sm-text)}
 .se-shell .wbtn.close:hover{background:#c42b1c;color:#fff}
-.se-shell .wbtn.min,.se-shell .wbtn.max{display:none}
 .se-shell .cmdbar{flex:0 0 48px;height:48px;display:flex;align-items:center;gap:4px;padding:0 10px; border-top:1px solid var(--sm-border-soft); border-bottom:1px solid var(--sm-border-soft); background:color-mix(in oklab, var(--sm-text) 3%, transparent); overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
 .se-shell .cmdbar::-webkit-scrollbar{display:none}
 .se-shell .cmdbar .spacer{flex:1;min-width:8px}
@@ -169,8 +159,6 @@
    primary action" on the one button that is not. */
 .se-shell .cmd.danger .accent{stroke:currentColor}
 .se-shell .cmd.danger .ic{color:var(--sm-danger)}
-.se-shell .sep{width:1px;height:18px;background:var(--sm-border);margin:0 6px;flex:0 0 1px}
-.se-shell .cmd-right{margin-left:auto;display:flex;align-items:center;gap:2px}
 .se-shell .navbar{flex:0 0 40px;height:40px;display:flex;align-items:center;gap:2px;padding:0 10px; border-bottom:1px solid var(--sm-border-soft);}
 .se-shell .nbtn{width:30px;height:30px;display:grid;place-items:center;border-radius:4px;color:var(--sm-text-2);background:transparent;border:0;cursor:pointer}
 .se-shell .nbtn:hover{background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text)}
@@ -191,7 +179,6 @@
 .se-shell .pane-detail{flex:0 0 320px;width:320px;display:flex;flex-direction:column;overflow:auto; border-left:1px solid var(--sm-border-soft); background:color-mix(in oklab, var(--sm-text) 2.5%, transparent);}
 .se-shell .rsz{flex:0 0 4px;width:4px;cursor:col-resize;background:transparent;position:relative;z-index:3}
 .se-shell .rsz:hover{background:color-mix(in oklab, var(--sm-accent) 45%, transparent)}
-.se-shell .tsec{padding:9px 10px 3px;font-size:10.5px;color:var(--sm-text-3);letter-spacing:.3px;font-weight:600}
 .se-shell .tsep{height:1px;margin:5px 10px;background:var(--sm-border-soft)}
 .se-shell .tcap{font-size:10.5px;color:var(--sm-text-3);padding:4px 12px 2px;letter-spacing:.02em;user-select:none}
 /* flex:0 0 auto on every fixed-height row (tree rows, group headers, list
@@ -206,9 +193,6 @@
    payload greys out and shows a 🚫 cursor instead of accepting and failing. */
 .se-shell .row[data-drop="bad"]{opacity:.45;outline:1px dashed var(--sm-danger);outline-offset:-2px}
 .se-shell .row[data-drop="1"]{background:color-mix(in oklab, var(--sm-accent) 18%, transparent);outline:1px dashed var(--sm-accent);outline-offset:-2px}
-.se-shell .trow.drag{opacity:.5}
-.se-shell .trow.flash-hl{animation:hl 1.4s ease-out}
-@keyframes hl{0%,40%{background:color-mix(in oklab, var(--sm-accent) 40%, transparent)} 100%{background:transparent}}
 .se-shell .trow .ic{flex:0 0 16px;color:var(--sm-text-2)}
 .se-shell .trow.ws .ic{color:var(--sm-accent)}
 /* Workspace entries in the tree follow the same rule as workspace rows in the
@@ -224,7 +208,6 @@
 .se-shell .trow .pin:hover{background:color-mix(in oklab, var(--sm-text) 14%, transparent)}
 .se-shell .trow .caret{width:14px;height:14px;display:grid;place-items:center;color:var(--sm-text-3);flex:0 0 14px}
 .se-shell .trow .caret.hidden{visibility:hidden}
-.se-shell .tsub{display:none}
 /* The detached page has a native frame, so it draws no window controls of its
    own — the OS already owns minimise / maximise / close. */
 
@@ -322,15 +305,12 @@
 .se-shell .dot.done{background:#3ecf8e;box-shadow:0 0 0 3px rgba(62,207,142,.16)}
 .se-shell .row.frow .col-date,.se-shell .row.frow .col-status{display:none}
 .se-shell .frow .fl-ic{display:inline-flex;color:var(--sm-accent)}
-.se-shell .pinbadge{display:inline-grid;place-items:center;width:14px;height:14px;flex:0 0 14px;color:var(--sm-text-3)}
-.se-shell .pinbadge .ic{width:10px;height:10px}
 .se-shell .wstag{font-size:10px;padding:0 5px;border-radius:3px;background:color-mix(in oklab, var(--sm-accent) 18%, transparent);color:var(--sm-accent);line-height:15px}
 .se-shell .row.wsrow .nm{font-weight:600}
 .se-shell .row.arch .cell,.se-shell .row.arch .namecell .ic,.se-shell .row.arch .tag{opacity:.45}
 .se-shell .row.arch:hover .cell,.se-shell .row.arch:hover .namecell .ic{opacity:.72}
 .se-shell .row.arch .arcbadge{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:3px;margin-left:2px; border:1px solid var(--sm-text-3);color:var(--sm-text-3);flex:0 0 14px;}
 .se-shell .row.arch .arcbadge .ic{width:9px;height:9px}
-.se-shell .trow.archrow .lbl{opacity:.45}
 .se-shell .row.pinned-row .nm::after{content:"";}
 .se-shell .row.cut{opacity:.45}
 .se-shell .row.cut .nm{text-decoration:line-through;text-decoration-thickness:1px}
@@ -387,20 +367,9 @@
 .se-shell .tagopt svg{width:11px;height:11px}
 .se-shell .row.frow .nm{font-weight:500}
 .se-shell .row.frow{cursor:default}
-.se-shell .row.krow .nm{font-style:italic}
-.se-shell .row.krow .arcbadge{opacity:.55}
-.se-shell .row.krow{cursor:pointer}
-.se-shell .row.droptarget{outline:2px dashed var(--sm-accent);outline-offset:-2px;background:color-mix(in oklab, var(--sm-accent) 14%, transparent)}
-.se-shell .msel{font:inherit;font-size:11.5px;padding:3px 6px;border-radius:4px;cursor:pointer; background:color-mix(in oklab, var(--sm-text) 7%, transparent); border:1px solid var(--sm-border);color:var(--sm-text);}
-.se-shell .msel option{background:var(--sm-surface);color:var(--sm-text)}
-.se-shell .mdesc{font-size:10.5px;color:var(--sm-text-3);line-height:1.35}
 .se-shell .fmodal{position:fixed;inset:0;z-index:9600;display:none;place-items:center; background:color-mix(in oklab,#000 26%,transparent); backdrop-filter:blur(3px) brightness(.96);}
 .se-shell .fmodal.open{display:grid}
 .se-shell .fdlg{width:min(480px,92vw);max-height:min(640px,88vh);display:flex;flex-direction:column; border-radius:10px;border:1px solid var(--sm-border); background:color-mix(in oklab, var(--sm-tint) 96%, transparent); box-shadow:0 24px 64px rgba(0,0,0,.5);overflow:hidden;}
-/* The settings dialog is a page, not a prompt: it gets the height the filter
-   dialog does not need, and its body owns the scroll. */
-.se-shell .fdlg.se-setdlg{width:min(560px,94vw);max-height:min(760px,90vh)}
-.se-shell .se-setdlg .fbody{padding:0}
 .se-shell .fhead{display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 14px;border-bottom:1px solid var(--sm-border-soft)}
 .se-shell .fhead .ftitle{font-size:13px;font-weight:600;color:var(--sm-text)}
 .se-shell .fbody{padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
@@ -477,7 +446,6 @@
 .se-shell .mi.disabled{opacity:.45;cursor:default}
 .se-shell .mi.disabled:hover{background:transparent}
 .se-shell .misep{height:1px;margin:4px 6px;background:var(--sm-border-soft)}
-.se-shell .ctxmenu.sub{min-width:180px}
 .se-shell .mi.has-sub .k{display:grid;place-items:center;width:14px;height:14px;margin-left:auto;color:var(--sm-text-3)}
 .se-shell .mi.has-sub .k .ic{width:11px;height:11px}
 /* 发送到: a nested menu is a flyout, not a second overlay. Hovering the parent
@@ -607,7 +575,6 @@
 .se-shell .row.sub-row .namecell .ic{opacity:.72}
 .se-shell .row.sub-row .col-name{padding-left:0}
 .se-shell .subtag{font-size:10px;line-height:1;padding:1px 4px;border-radius:3px;background:color-mix(in oklab,var(--sm-accent) 18%,transparent);color:var(--sm-accent);margin-left:5px;flex:0 0 auto}
-.se-shell .row.child-hidden{display:none}
 .se-shell .row .twist{width:14px;height:14px;flex:0 0 14px;margin-left:-4px;opacity:.55;cursor:pointer}
 .se-shell .row .twist:hover{opacity:1}
 .se-shell .detail-parent{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer}

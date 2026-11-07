@@ -23,7 +23,7 @@
 
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
 
 import { codedError } from "../store/sidecar.js";

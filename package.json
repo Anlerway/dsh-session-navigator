@@ -17,6 +17,8 @@
     "check:prose": "node scripts/check-prose.mjs",
     "check:size": "node scripts/check-file-size.mjs",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:errors": "node scripts/check-errors.mjs",
+    "check:deadcode": "node scripts/check-deadcode.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check:client": "node scripts/build-client.mjs --check",
     "prepack": "node scripts/build-client.mjs && node scripts/sync-notes.mjs"

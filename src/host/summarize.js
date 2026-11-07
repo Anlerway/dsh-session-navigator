@@ -703,7 +703,7 @@ export function createSummarizer(options) {
    */
   async function metaOf(id) {
     const lookup = options.session;
-    if (typeof lookup !== "function") throw codedError("internal", "summarizer has no session lookup");
+    if (typeof lookup !== "function") throw new Error("summarizer has no session lookup");
     return lookup(id);
   }
 

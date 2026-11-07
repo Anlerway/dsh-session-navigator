@@ -11,7 +11,7 @@ import { codedError } from "../store/sidecar.js";
  * and the summariser (all three are polled while they run), the migration (the
  * page reloads on its own) and the routes that only report state.
  */
-export const QUIET_WRITE_PREFIXES = [
+const QUIET_WRITE_PREFIXES = [
   "/bridge/",
   "/component/",
   "/detached/",

@@ -64,7 +64,9 @@ export function capabilities(ctx, extra = {}) {
     // capability off the registry is what the move path itself requires.
     move: typeof workspaces?.list === "function" && typeof workspaces?.enqueueOperation === "function",
     sessions: Boolean(sessions),
-    sessionPersistence: typeof persistence?.locate === "function" || Boolean(persistence),
+    // Either API shape is enough; the older one has no `locate`. A registry of
+    // any kind already implies the service resolved.
+    sessionPersistence: Boolean(persistence),
     agents: Boolean(agents),
     dataDir: extra.dataDir ?? null,
     platform: process.platform,

@@ -401,11 +401,6 @@ export const ERROR_CODES = {
     zh: "DSH 没有返回复制出来的会话",
     en: "DSH did not return the forked session",
   },
-  internal: {
-    status: 500,
-    zh: "插件内部状态不一致，操作没有完成",
-    en: "The plugin\u2019s internal state is inconsistent; the operation did not complete",
-  },
   "io-error": {
     status: 500,
     zh: "读写数据文件失败，请检查磁盘和权限",

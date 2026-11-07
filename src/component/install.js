@@ -168,6 +168,42 @@ export async function verifyZip(zip, expected) {
 }
 
 /**
+ * The extractors to try, in order.
+ *
+ * Pulled out of {@link extractZip} so both Windows branches can be asserted: on
+ * a machine that ships `tar.exe` the PowerShell fallback is never reached, and
+ * a fallback no test ever enters is a fallback nobody knows still works.
+ *
+ * @param {{ platform?: string, env?: NodeJS.ProcessEnv, zip: string, dest: string }} options
+ * @returns {Array<{ command: string, args: string[] }>}
+ */
+export function extractAttempts({ platform = process.platform, env = process.env, zip, dest }) {
+  if (platform !== "win32") {
+    return [{ command: platform === "darwin" ? "/usr/bin/unzip" : "unzip", args: ["-q", "-o", zip, "-d", dest, "-x", DEFAULT_APP_ENTRY] }];
+  }
+  // `SystemRoot` is set by the OS itself; `C:\Windows` covers an env stripped
+  // down to nothing, which is the only way the variable can be missing.
+  const systemRoot = env?.SystemRoot || "C:\\Windows";
+  return [
+    {
+      command: join(systemRoot, "System32", "tar.exe"),
+      // `default_app.asar` is never extracted at all: it is Electron's fallback
+      // app (this plugin starts from `resources/app`), and on Windows it is the
+      // one file DSH can never delete once anything has looked at it. Sub-second
+      // to skip here, and it removes the lock before it can happen.
+      args: ["-xf", zip, "-C", dest, "--exclude", DEFAULT_APP_ENTRY],
+    },
+    {
+      command: "powershell.exe",
+      // `Expand-Archive` has no exclude switch, so this branch unpacks the file
+      // and `dropExcluded` deletes it afterwards. Single quotes are doubled
+      // because that is PowerShell's only escape inside a quoted string.
+      args: ["-NoProfile", "-NonInteractive", "-Command", `Expand-Archive -LiteralPath '${zip.replaceAll("'", "''")}' -DestinationPath '${dest.replaceAll("'", "''")}' -Force`],
+    },
+  ];
+}
+
+/**
  * Extract a zip into `dest`.
  *
  * Windows ships bsdtar as \`%SystemRoot%\\System32\\tar.exe\`, which reads zip
@@ -192,33 +228,7 @@ export async function extractZip(zip, dest, onProgress, options = {}) {
   const signal = options.signal;
   if (signal?.aborted) throw abortError();
   await mkdir(dest, { recursive: true });
-  /** @type {Array<{ command: string, args: string[] }>} */
-  const attempts = [];
-  if (process.platform === "win32") {
-    const systemRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
-    attempts.push({
-      command: join(systemRoot, "System32", "tar.exe"),
-      // `default_app.asar` is never extracted at all: it is Electron's fallback
-      // app (this plugin starts from `resources/app`), and on Windows it is the
-      // one file DSH can never delete once anything has looked at it. Sub-second
-      // to skip here, and it removes the lock before it can happen.
-      args: ["-xf", zip, "-C", dest, "--exclude", DEFAULT_APP_ENTRY],
-    });
-    attempts.push({
-      command: "powershell.exe",
-      args: [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        `Expand-Archive -LiteralPath '${zip.replaceAll("'", "''")}' -DestinationPath '${dest.replaceAll("'", "''")}' -Force`,
-      ],
-    });
-  } else {
-    attempts.push({
-      command: process.platform === "darwin" ? "/usr/bin/unzip" : "unzip",
-      args: ["-q", "-o", zip, "-d", dest, "-x", DEFAULT_APP_ENTRY],
-    });
-  }
+  const attempts = extractAttempts({ zip, dest });
 
   /** @type {Error | null} */
   let lastError = null;

@@ -131,7 +131,7 @@ export function isUsableDataDir(dir, env = process.env) {
  * @returns {string} Absolute path to the data directory (never a filesystem root).
  */
 function pluginDataDir(env = process.env) {
-  const fallback = join(homedir(), DATA_DIR_NAME);
+  const fallback = join(homeOf(env), DATA_DIR_NAME);
   const raw = env?.[DATA_DIR_ENV];
   if (typeof raw !== "string" || raw.trim() === "") return fallback;
   const abs = resolve(raw.trim());
@@ -223,7 +223,7 @@ export const LOCATION_FILE = ".location";
  * @returns {string}
  */
 export function defaultDataDir(env = process.env) {
-  const home = env?.HOME || env?.USERPROFILE || homedir();
+  const home = homeOf(env);
   const current = join(home, DATA_DIR_NAME);
   const legacy = join(home, LEGACY_DATA_DIR_NAME);
   if (!existsSync(current) && existsSync(legacy)) {

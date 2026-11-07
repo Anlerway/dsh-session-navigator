@@ -67,7 +67,11 @@ export const name = "dsh-session-navigator";
 export const inject = ["webServer"];
 
 /**
- * @typedef {(api: PluginApi, req: any, res: any, url: URLSearchParams, params: Record<string, string>) => Promise<any> | any} RouteHandler
+ * `:name` segments are decoded into `req.params` before the handler runs, so
+ * path parameters reach a handler through the request and never as an extra
+ * argument.
+ *
+ * @typedef {(api: PluginApi, req: any, res: any, url: URLSearchParams) => Promise<any> | any} RouteHandler
  */
 
 /**
@@ -632,7 +636,7 @@ async function handle(api, req, res) {
       /** @type {any} */ (req).body = await readJsonBody(req);
     }
     /** @type {any} */ (req).params = params;
-    const result = await matched.handler(api, req, res, route.query, params);
+    const result = await matched.handler(api, req, res, route.query);
     // A streaming route (SSE) has already taken over the response: writing an
     // envelope after its headers would corrupt the event stream.
     if (res.writableEnded || res.headersSent) return;
