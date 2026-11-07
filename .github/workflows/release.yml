@@ -1,0 +1,37 @@
+name: release
+
+# 打 tag 时才跑：CI 在这里构建一次，把构建出来的 tgz 挂到 GitHub Release 上。
+# 这是「GitHub 上构建的产物」唯一持久的位置——普通 push 的 runner 是临时的，
+# 构建完连同磁盘一起销毁，只有上传到 Release 才算留在 GitHub 上。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  # 上传 Release 资产需要写权限；其余一律只读。
+  contents: write
+
+jobs:
+  package:
+    name: package the tag
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # tag 名与 package.json 的版本必须一致，否则 Release 会挂着一个对不上的包。
+      - name: the tag names the version it packages
+        run: node -e "const v=require('./package.json').version; if (process.env.GITHUB_REF_NAME !== 'v'+v) { console.error('tag ' + process.env.GITHUB_REF_NAME + ' != v' + v); process.exit(1); }"
+      # 产物不进仓库，所以这里先构建再打包；构建出来的就是下面 tgz 里的那一份。
+      - run: node scripts/build-client.mjs
+      - run: node --test "test/*.test.mjs"
+      - run: node test/render-smoke.mjs
+      # prepack 会重建 lib/client.js 并同步更新说明，产物因此总是从 tag 指向的源码构建。
+      - run: npm pack --pack-destination dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tgz
+          generate_release_notes: true
+          fail_on_unmatched_files: true

@@ -130,8 +130,9 @@ lib/
 │
 ├─ host/                    需要动文件系统或跨进程的操作
 │  ├─ actions.js      701  改名/派生/归档/置顶 → 调 DSH 自己的服务
-│  ├─ trash.js        496  删除/恢复/清空的字节搬运
-│  ├─ move.js         777  跨 workspace 移动/复制（重写 header cwd + 换登记）
+│  ├─ trash.js        549  删除/恢复/清空的字节搬运（并同步 DSH 的工作区登记）
+│  ├─ registry.js     141  DSH 工作区登记：删除即解绑、恢复即绑回，走 registry 自己的写链；没有 registry 的宿主静默跳过
+│  ├─ move.js         746  跨 workspace 移动/复制（重写 header cwd + 换登记）
 │  ├─ move-journal.js 101  移动的意图日志：崩在两次写之间时由启动收尾，不留孤儿
 │  ├─ datadir.js      367  数据目录检查与七步迁移
 │  ├─ bridge.js       170  命令环形缓冲 + 游标

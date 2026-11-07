@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 七十三个测试文件，各自钉住什么
+## 1. 七十五个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -38,7 +38,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/session-sync.test.mjs` | 282 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历；**没有订阅者也照发**（轮询读同一根总线，静默等于让兜底也聋掉） |
 | `test/storage-watch.test.mjs` | 214 | 存储目录的轮询：第一次读只是基线不是通知、`storages/workspace.json` 被改写只报一次（带 `refresh`、`structural`、在跑的会话 id）、没变就继续安静、**没有订阅者也照样发布**（否则 `/bridge/poll` 永远问不到东西）；`sessions/` 下多一个或少一个会话目录也算结构变化（`reason: "sessions"`、`structural: true`），而在会话目录里追加日志不算 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
-| `test/trash.test.mjs` | 425 | 回收站：删除、恢复阶梯、清空、对账 |
+| `test/trash.test.mjs` | 585 | 回收站：删除、恢复阶梯、清空、对账，以及 DSH 工作区登记——删除即解绑（拒绝解绑就搬回并撤销条目）、恢复即绑回（绑不回去不算失败）、没有 registry 的宿主照常工作，以及启动时把旧版本留下的幽灵条目从登记里清掉 |
 | `test/trash-subagent.test.mjs` | 182 | 子智能体自己进回收站：只搬它自己的 payload、父会话的日志留着、`parentSession` 记在条目上；删父会话时整条链（父 + 子 + 孙）一起走；正在跑的那一条被跳进 `skipped`，整批不因此失败 |
 | `test/move.test.mjs` | 532 | 跨 workspace 移动/复制的三件事一个事务 |
 | `test/placement-move.test.mjs` | 264 | 往工作区里的文件夹放会话：同工作区只写 placement、日志不动；跨工作区不带 `move:true` 直接 400「这个文件夹只接受它所在工作区里的会话」且一个字没写；带了就先按 /move 把 payload 搬过去再写 placement（header 的 cwd 跟着改）；一批里有一条正在跑，那条进 `failed`、其余照摆；整批都搬不动就抛 `session-active`，revision 不动 |
@@ -73,6 +73,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/logfacts.test.mjs` | 212 | 日志只答一个问题：有没有过一轮对话，只读头时的窗口边界，以及「一轮没关」不再被当成状态 |
 | `test/annotations.test.mjs` | 32 | 注解 id 守卫：`__proto__` / `constructor` / `prototype` 不能变成幻影条目 |
 | `test/reveal.test.mjs` | 237 | reveal 白名单：只开自己列出来的路径（UNC 路径是凭据泄漏，不是便利） |
+| `test/panel-hooks.test.mjs` | 120 | 面板与 hook 的接缝：分片里每个 `useXxx()` 都有声明、hook 的 `return { … }` 覆盖调用方解构的每个名字、`onRename:` 交出去的符号确实来自某处；拆 hook 时漏一个 return 键会让面板一打开就落进 `.se-crash`（`renameEntity` 就是这么丢的） |
+| `test/reveal-agent-lifecycle.test.mjs` | 77 | 常驻的 reveal agent 不许拖住父进程：真开一个子进程预热、不调用 `process.exit`，20 秒内必须自己退出；去掉 `unref()` 时这条会挂 20 秒后报「the warm-up held the process open」，它钉的就是干净 checkout 里整套测试停在 453 的那个 bug |
 | `test/update.test.mjs` | 135 | 更新检查：数字段比较、release 解析、5 分钟缓存、失败码，不是假"已是最新" |
 | `test/about.test.mjs` | 236 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过） |
 | `test/notes-gate.test.mjs` | 115 | 更新说明什么时候说、什么时候闭嘴：每个版本一次，没记过版本的机器首次也播；「已经说过」记在 host 的文件里，不是 localStorage（web GUI 每次启动换端口就是一个新的 origin，空存储会把公告变成每次开机都弹） |

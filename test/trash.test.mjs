@@ -65,14 +65,17 @@ async function writeSession(home, project, sessionId, extra = {}) {
 }
 
 /**
- * @param {{ home: string, dataDir: string, sessions?: object[] }} input
+ * @param {{ home: string, dataDir: string, sessions?: object[], registry?: any }} input
  */
-function fakeApi({ home, dataDir, sessions = [] }) {
+function fakeApi({ home, dataDir, sessions = [], registry = null }) {
   ensureDataDir(dataDir);
   const paths = dataPaths(dataDir);
   return {
     dshHome: () => home,
     paths,
+    // A host with no registry (the default here) is the shape every other test
+    // in this file was written against; the registry tests pass one in.
+    ctx: registry ? { workspaceRegistry: registry } : undefined,
     documents: openDocuments(paths),
     invalidated: 0,
     reader: {
@@ -422,4 +425,161 @@ test("a payload directory name cannot escape the trash directory", () => {
     assert.throws(() => trashTargetDir(paths, bad), (error) => error.code === "trash-not-found", bad);
   }
   assert.equal(trashTargetDir(paths, "t-lz9x1a-abc123"), join(paths.trashDir, "t-lz9x1a-abc123"));
+});
+
+
+/**
+ * A stand-in for DSH's workspace registry.
+ *
+ * The real service keeps one `sessionIds` array per workspace and serialises
+ * every write through `enqueueOperation`; a session belongs to a workspace
+ * exactly when its id is in that array, and nowhere else. `state.refuse` models
+ * a registry that answers with an error instead of writing — a read-only host, or
+ * a workspace whose own record is locked by another window.
+ *
+ * @param {{ id: string, path?: string, sessionIds?: string[] }[]} workspaces
+ * @param {{ refuse?: boolean }} [options]
+ */
+function fakeRegistry(workspaces, { refuse = false } = {}) {
+  const state = { refuse };
+  const entities = workspaces.map((workspace) => ({
+    id: workspace.id,
+    path: workspace.path ?? "C:/work",
+    record: { sessionIds: [...(workspace.sessionIds ?? [])] },
+    async detachSession(sessionId) {
+      if (state.refuse) throw new Error("the registry refused the write");
+      this.record.sessionIds = this.record.sessionIds.filter((id) => id !== sessionId);
+    },
+    async attachSession(sessionId) {
+      if (state.refuse) throw new Error("the registry refused the write");
+      if (!this.record.sessionIds.includes(sessionId)) this.record.sessionIds.push(sessionId);
+    },
+  }));
+  return {
+    state,
+    entities,
+    writes: 0,
+    list: () => entities,
+    async enqueueOperation(operation) {
+      this.writes += 1;
+      return operation();
+    },
+  };
+}
+
+test("trashing also drops the session from DSH's workspace list", async () => {
+  const box = await sandbox();
+  try {
+    const registry = fakeRegistry([{ id: "w1", sessionIds: ["s1", "s2"] }]);
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      registry,
+      sessions: [{ id: "s1", title: "first", workspaceId: "w1" }],
+    });
+    await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"]);
+    // This is the bug the registry call exists for: the panel reads the disk, so
+    // it forgot the row the moment the directory moved, while DSH kept drawing
+    // it from `sessionIds` — and kept a tab alive for a session that was gone.
+    assert.deepEqual(registry.entities[0].record.sessionIds, ["s2"]);
+    assert.equal(registry.writes, 1, "the write goes through the registry's own chain");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a registry that refuses the detach undoes the whole delete", async () => {
+  const box = await sandbox();
+  try {
+    const registry = fakeRegistry([{ id: "w1", sessionIds: ["s1"] }], { refuse: true });
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      registry,
+      sessions: [{ id: "s1", title: "first", workspaceId: "w1" }],
+    });
+    const dir = await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, []);
+    assert.deepEqual(result.skipped, ["s1"]);
+    assert.equal(result.errors[0].code, "registry-detach-failed");
+    assert.equal(existsSync(dir), true, "the payload is back where it started");
+    const index = await api.documents.trash.read();
+    assert.deepEqual(Object.keys(index.entries ?? {}), [], "no entry survives a rolled-back delete");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("restoring puts the session back into its workspace", async () => {
+  const box = await sandbox();
+  try {
+    const registry = fakeRegistry([{ id: "w1", sessionIds: ["s1"] }]);
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      registry,
+      sessions: [{ id: "s1", title: "first", workspaceId: "w1" }],
+    });
+    await writeSession(box.home, "proj", "s1");
+    await trashSessions(api, ["s1"]);
+    assert.deepEqual(registry.entities[0].record.sessionIds, []);
+
+    const restored = await restoreSessions(api, ["s1"]);
+    assert.deepEqual(restored.restored, ["s1"]);
+    assert.deepEqual(registry.entities[0].record.sessionIds, ["s1"]);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a registry that refuses the attach does not turn a restore into a failure", async () => {
+  const box = await sandbox();
+  try {
+    const registry = fakeRegistry([{ id: "w1", sessionIds: ["s1"] }]);
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      registry,
+      sessions: [{ id: "s1", title: "first", workspaceId: "w1" }],
+    });
+    await writeSession(box.home, "proj", "s1");
+    await trashSessions(api, ["s1"]);
+    registry.state.refuse = true;
+
+    const restored = await restoreSessions(api, ["s1"]);
+    assert.deepEqual(restored.restored, ["s1"], "the bytes are back, which is what a restore promises");
+    assert.deepEqual(restored.errors, []);
+    assert.deepEqual(registry.entities[0].record.sessionIds, [], "and the panel still lists it from disk");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a start clears the workspace list of entries the bin already holds", async () => {
+  const box = await sandbox();
+  try {
+    // A delete made before the trash knew about the registry: the payload moved,
+    // the id stayed accounted, so DSH kept drawing a row over an empty path.
+    const before = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [{ id: "s1", title: "first", workspaceId: "w1" }],
+    });
+    await writeSession(box.home, "proj", "s1");
+    await trashSessions(before, ["s1"]);
+
+    const registry = fakeRegistry([{ id: "w1", sessionIds: ["s1"] }]);
+    const api = fakeApi({ home: box.home, dataDir: box.dataDir, registry, sessions: [] });
+    await reconcileTrash(api);
+
+    assert.deepEqual(registry.entities[0].record.sessionIds, [], "the next start heals what an older build left");
+    assert.equal(registry.writes, 1, "and writes nothing when there is nothing to heal");
+  } finally {
+    await box.cleanup();
+  }
 });

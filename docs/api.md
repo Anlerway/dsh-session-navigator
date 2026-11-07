@@ -90,9 +90,11 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 | `disk-full` | 507 | 同上的通用码（写文件时 `ENOSPC`） |
 | `io-error` | 500 | 数据目录读不了（`ENOENT`/`EACCES`/`EIO`… 被翻译成这个，不再冒充 `bad-request`） |
 | `move-incomplete` / `move-rollback-failed` | 500 | 跨卷拷贝不完整、回滚没做完——会话**没有**被删，见 `move.js` |
+| `trash-rollback-failed` | 500 | 删除搬完文件后 DSH 拒绝解绑登记，且搬不回去——payload 在回收站里，可以恢复 |
 | `update-unreachable` | 502 | 连不上 GitHub，或答复不是 release JSON（更新检查，见 §4.11） |
 | `open-failed` | 502 | 系统浏览器拉不起来（Star / Issue 链接） |
 | `capability-missing` | 501 | 该 profile 缺这个服务 |
+| `registry-detach-failed` | 409 | DSH 的工作区登记拒绝了这次解绑，删除已整体撤销，会话原样留在原处 |
 | `cross-site` | 403 | 跨站写请求（`Sec-Fetch-Site: cross-site`） |
 | `unsupported-media-type` | 415 | 写请求没用 `application/json` |
 | 其它（含 `ui-asset-missing`） | 500 | 未预期的服务端故障 |
@@ -384,7 +386,12 @@ Windows 上还多两件事，都是踩过的坑（`lib/host/actions.js`）：
 `code`，看不了逐条结果。
 
 `POST /trash` 的 `ids` 必须是非空数组，否则 `400 ids must be a non-empty array`：「删 0 个」不可能是用户的意思，
-多半是勾选状态丢了。它也是真移动：会话目录离开 DSH 的 sessions 树，所以 DSH 自己的侧栏里也会消失。
+多半是勾选状态丢了。它也是真移动：会话目录离开 DSH 的 sessions 树，**并且**从 DSH 的工作区登记里解绑
+（`workspace.json` 的 `sessionIds`，见 `lib/host/registry.js`）——两件缺一不可。面板列的是磁盘，登记没解绑时
+目录搬走了行就没，DSH 自己的侧栏却还画着它，开着的会话连标签页都留着；那正是「删了还在」的样子。
+登记拒绝解绑时整条删除回滚（`registry-detach-failed`）：宁可没删，也不留一个删了一半的会话。
+恢复反过来做同一件事：文件搬回去之后把 id 绑回原工作区，绑不回去只说明 DSH 侧栏少一行（header 的 `cwd`
+已经指不回工作区目录），不影响恢复本身。
 同样是逐条的：`trashed` 是搬走的，`skipped` 是本来就在回收站或没有日志的，`errors` 是搬失败
 的（`session-active` 等），三者合起来正好是请求的 id 集合。并发删除同一会话时，先在文档锁里
 认领条目（`pending: true`）再搬文件，后到者看见条目已存在就记 `skipped`，不会各写一个 trashId

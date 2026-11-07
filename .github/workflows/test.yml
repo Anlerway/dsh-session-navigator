@@ -37,7 +37,7 @@ jobs:
       - run: node scripts/lint.mjs
       - run: node scripts/check-docs.mjs
       - run: node scripts/check-prose.mjs
-      # The eight dictionaries have to agree with each other key by key, and each
+      # The ten dictionaries have to agree with each other key by key, and each
       # one has to name its own language and the language the summariser should
       # answer in. A half-translated table looks fine on screen until the first
       # label falls back to Chinese in a Japanese window.
