@@ -540,6 +540,56 @@ if (pane !== null && typeof pane !== "object") throw new Error("the drag must re
 if (rect !== null && rect !== undefined && typeof rect !== "object") throw new Error("the drag must receive the box element or null");
 console.log("ListPane (marquee) ok: .selrect present, blank press starts a box");
 
+// ── the rows nobody can see are placeholders ────────────────────────────────
+// A 2000-row list is ~58k elements to build, and the panel rebuilds it on every
+// keystroke and every summary tick. An off-screen row is therefore a bare div of
+// the same height, swapped for the real row once it comes near the viewport.
+//
+// Two things are pinned here. Without IntersectionObserver there is nothing to
+// come near, so every row must be real — that is the state every assertion above
+// relies on, and a harness that silently deferred them would have made several of
+// them vacuous. And when the observer does exist, the selected row must still be
+// built: the detail pane describes a row the user can see.
+const bulkSessions = Array.from({ length: 40 }, (_, index) => ({ ...session, id: "bulk-" + index }));
+const eagerList = listPaneWith({ sessions: bulkSessions });
+if (findAll(eagerList, hasClass("rowph")).length !== 0) {
+  throw new Error("without an observer every row must be a real row");
+}
+
+/** The observer the pane installs; it records what it was asked to watch. */
+const watchedNodes = [];
+class RecordingObserver {
+  constructor(callback, options) {
+    this.callback = callback;
+    this.options = options ?? {};
+  }
+  observe(node) {
+    watchedNodes.push(node);
+  }
+  unobserve() {}
+  disconnect() {}
+}
+globalThis.IntersectionObserver = RecordingObserver;
+let deferredList;
+try {
+  deferredList = listPaneWith({ sessions: bulkSessions, selected: "bulk-3" });
+} finally {
+  delete globalThis.IntersectionObserver;
+}
+const placeholders = findAll(deferredList, hasClass("rowph"));
+if (placeholders.length !== bulkSessions.length - 1) {
+  throw new Error("expected " + (bulkSessions.length - 1) + " placeholders, got " + placeholders.length);
+}
+if (placeholders.some((node) => !node.props?.["data-ph"])) {
+  throw new Error("every placeholder must name the session it stands for");
+}
+if (placeholders.some((node) => node.props["data-ph"] === "bulk-3")) {
+  throw new Error("the selected row must be built, not deferred");
+}
+const selectedRows = findAll(deferredList, hasClass("row")).filter((node) => node.props?.["data-id"] === "bulk-3");
+if (selectedRows.length !== 1) throw new Error("the selected row must still be drawn once");
+console.log("ListPane (deferred rows) ok: 1 real row, " + placeholders.length + " placeholders");
+
 // ── containers in the list ──────────────────────────────────────────────────
 // Three things are pinned here, all of which were invisible in the UI:
 //   1. a user folder under the current scope must be *listed*, not only drawn

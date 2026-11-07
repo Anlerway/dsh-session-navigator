@@ -536,6 +536,14 @@
       const selRectRef = useRef(null);
       const [colMode, setColMode] = useState("full");
       const hasSelection = checked.size > 0;
+      // 可视部分加载: a few thousand sessions is ~58k elements, and the panel
+      // rerenders on every keystroke, tick and summary tick. A row outside the
+      // viewport is therefore drawn as a placeholder — one div, exactly as tall
+      // as the row it stands for — and swapped for the real row once it comes
+      // near. The data never leaves the list: bands, counts, sorting and the
+      // check-set still see every session, only the drawing waits.
+      const rowsMayDefer = typeof IntersectionObserver === "function";
+      const [revealedIds, setRevealedIds] = useState(() => new Set());
 
       // 多选拖动: one drag carries the whole check-set, not just the row
       // under the pointer. It is split into the sessions a workspace can take
@@ -560,6 +568,61 @@
         observer.observe(element);
         return () => observer.disconnect();
       }, []);
+
+      // One observer per pane decides when a placeholder has come close enough
+      // to be built. The root is the scrolling body, so a row is only measured
+      // against what the list actually shows, and the 800px margin means the swap
+      // happens a screen before the row is visible: scrolling never shows a seam.
+      const revealObserverRef = useRef(null);
+      const watchedRef = useRef(null);
+      useEffect(() => {
+        if (!rowsMayDefer) return undefined;
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const ids = [];
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              const id = entry.target.getAttribute("data-ph");
+              if (id) ids.push(id);
+            }
+            if (ids.length === 0) return;
+            setRevealedIds((prior) => {
+              const next = new Set(prior);
+              for (const id of ids) next.add(id);
+              return next;
+            });
+          },
+          { root: bodyRef.current, rootMargin: "800px 0px" },
+        );
+        revealObserverRef.current = observer;
+        return () => {
+          observer.disconnect();
+          revealObserverRef.current = null;
+          watchedRef.current = null;
+        };
+      }, []);
+
+      // After every render, hand the observer the placeholders this render
+      // created, and forget the ones that left the document. Reading them off the
+      // DOM rather than through a ref callback is deliberate: a callback ref's
+      // identity changes on every render, so React would detach and reattach
+      // every placeholder on every keystroke.
+      useEffect(() => {
+        const observer = revealObserverRef.current;
+        const body = bodyRef.current;
+        if (!observer || !body) return;
+        const watched = watchedRef.current ?? (watchedRef.current = new Set());
+        for (const node of watched) {
+          if (node.isConnected) continue;
+          observer.unobserve(node);
+          watched.delete(node);
+        }
+        for (const node of body.querySelectorAll("[data-ph]")) {
+          if (watched.has(node)) continue;
+          watched.add(node);
+          observer.observe(node);
+        }
+      });
 
       // The search box reads the fields 搜索范围 asked for. Three of them
       // are on the rows the pane already holds; 会话内容 is not — the panel has no
@@ -655,33 +718,46 @@
         .map(asMember)
         .filter(Boolean);
 
+      /**
+       * One nested entry: the row itself, or the placeholder that holds its place.
+       *
+       * A selected row and a row under an open rename editor are always real — a
+       * highlight or a caret cannot be drawn on a div that is not there — and so
+       * is everything when the environment has no IntersectionObserver, which is
+       * any test harness and any browser old enough to lack it.
+       */
+      const rowOf = (entry) => {
+        const id = entry.session.id;
+        const editing = rename?.kind === "session" && rename.id === id && rename.surface !== "tree";
+        if (rowsMayDefer && !revealedIds.has(id) && selected !== id && !editing) {
+          return h("div", { key: id, className: "rowph", "data-ph": id });
+        }
+        return h(SessionRow, {
+          key: id,
+          session: entry.session,
+          selected: selected === id,
+          checked: checked.has(id),
+          onCheck,
+          onSelect,
+          now,
+          depth: entry.depth,
+          childCount: entry.childCount,
+          collapsed: entry.collapsed,
+          onToggleChildren,
+          rename: editing ? rename : null,
+          onBeginRename: onBeginRename ? (sessionId) => onBeginRename("session", sessionId, "list") : undefined,
+          onRowContextMenu: onRowContextMenu
+            ? (event, session) => onRowContextMenu(event, "session", session.id, session)
+            : undefined,
+          onOpenSession,
+          clipboard,
+          contentHit: contentHits?.[id] ?? null,
+          dragSet: dragSetOf(id),
+        });
+      };
+
       // Subagent sessions follow their parent instead of sitting beside it.
-      const rowsOf = (list) =>
-        nestSessions(list, collapsed).map((entry) =>
-          h(SessionRow, {
-            key: entry.session.id,
-            session: entry.session,
-            selected: selected === entry.session.id,
-            checked: checked.has(entry.session.id),
-            onCheck,
-            onSelect,
-            now,
-            depth: entry.depth,
-            childCount: entry.childCount,
-            collapsed: entry.collapsed,
-            onToggleChildren,
-            rename:
-              rename?.kind === "session" && rename.id === entry.session.id && rename.surface !== "tree" ? rename : null,
-            onBeginRename: onBeginRename ? (id) => onBeginRename("session", id, "list") : undefined,
-            onRowContextMenu: onRowContextMenu
-              ? (event, session) => onRowContextMenu(event, "session", session.id, session)
-              : undefined,
-            onOpenSession,
-            clipboard,
-            contentHit: contentHits?.[entry.session.id] ?? null,
-            dragSet: dragSetOf(entry.session.id),
-          }),
-        );
+      const rowsOf = (list) => nestSessions(list, collapsed).map(rowOf);
 
       /**
        * Rows for a list of container nodes, wired to the right id space.

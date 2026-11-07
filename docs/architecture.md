@@ -347,6 +347,13 @@ groups.push({ key, title, icon, count, rows });
 再藏起来——被折的行既不在 DOM 里，也不进框选，删不掉看不见的东西。状态随布局记忆落盘
 （`foldedBands: [...foldedBands]`，`lib/client.js`）。
 
+折叠之后还有一层懒：行本身也是按视口建的。`rowOf()`（`lib/client.js`）对还没进过视口的会话先
+画一个 `div.rowph`：高度 32px，与 `.row` 严丝合缝，换出来的行因此不会把滚动条顶跳一下。
+`IntersectionObserver`（`root` 是 `.listbody`，上下各留 800px 提前量）看见它才换成真正的
+`SessionRow`。正在重命名的那一行和当前选中的那一行不走占位：前者要立刻接住焦点，后者是框选
+与快捷键的锚点。环境里没有 `IntersectionObserver`（`render-smoke` 的假 document 就是）时全部
+行照常建，行为与从前一致。
+
 ### 5.3 图标：工具栏与右键菜单是两色，别处是单色
 
 `ICONS`（`lib/client.js`）是一张 16×16、`stroke-width` 1.3、圆头圆角的静态表，

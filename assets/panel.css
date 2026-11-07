@@ -267,6 +267,10 @@
 .se-shell .grp.folded{color:var(--sm-text-3)}
 .se-shell .grp .gcount{font-weight:400;color:var(--sm-text-3)}
 .se-shell .row{flex:0 0 auto;display:flex;align-items:center;height:32px;padding-right:12px;border-radius:4px;cursor:default; position:relative;user-select:none;content-visibility:auto;contain-intrinsic-size:auto 32px;}
+/* A row that is far off screen is a bare div until it comes near: same box, no
+   children. The height here must match the row above, or replacing a placeholder
+   would move every row under it and the scrollbar would jump. */
+.se-shell .rowph{flex:0 0 auto;height:32px;border-radius:4px;}
 /* A list of a few thousand sessions only paints what the viewport shows. The
    height is fixed at 32px (44px in the icon view, and the auto keyword remembers
    the size once it has been measured), so skipping the rest neither moves the
