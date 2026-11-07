@@ -24,6 +24,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { sameVersion } from "./manifest.js";
+
 /** Projection cache format version this reader understands. */
 export const PROJCACHE_VERSION = 7;
 
@@ -212,12 +214,26 @@ async function mapLimit(items, limit, task) {
  * Missing directories are not an error: a fresh DSH home has no cache yet and
  * the caller falls back to the session headers.
  *
+ * `known` is the manifest's facts map (sources/manifest.js), keyed by session id.
+ * A record whose file still has the size and mtime the last run stat'ed is
+ * answered from there: no open, no parse. On a 5 000-session home those two steps
+ * were ~63 ms and ~107 ms per start at 130 sessions, and they grow with the
+ * library. Each returned record carries the `size` / `mtimeMs` it was read
+ * against so the caller can hand a fresh manifest back without a second stat.
+ *
+ * The version check is not redundant with `sameVersion`: DSH bumps
+ * PROJCACHE_VERSION when the on-disk shape changes, and a cache written by an
+ * older DSH can be the same size at the same mtime only by accident — but facts
+ * from an older schema are the one thing the manifest must never serve.
+ *
  * @param {string} dir
- * @returns {Promise<Map<string, object>>} sessionId → { version, facts }
+ * @param {{ known?: Map<string, { size: number, mtimeMs: number, version: number, facts: object }> }} [options]
+ * @returns {Promise<Map<string, { version: number, facts: object, size: number, mtimeMs: number }>>}
  */
-export async function readProjcache(dir) {
-  /** @type {Map<string, object>} */
+export async function readProjcache(dir, options = {}) {
+  /** @type {Map<string, { version: number, facts: object, size: number, mtimeMs: number }>} */
   const out = new Map();
+  const known = options.known ?? null;
   let names;
   try {
     names = await readdir(dir);
@@ -241,10 +257,19 @@ export async function readProjcache(dir) {
     if (cached && cached.key === key) {
       entry = cached.entry;
     } else {
-      entry = await readProjcacheFile(filePath);
+      const prior = known?.get(name.slice(0, -".json".length));
+      if (prior && prior.version === PROJCACHE_VERSION && sameVersion(prior, info)) {
+        // The manifest answered: shape the entry as if it had been parsed, and
+        // let the in-process cache hold it from here on.
+        entry = { sessionId: name.slice(0, -".json".length), version: prior.version, facts: prior.facts };
+      } else {
+        entry = await readProjcacheFile(filePath);
+      }
       fileCache.set(filePath, { key, entry });
     }
-    return entry ? [entry.sessionId, { version: entry.version, facts: entry.facts }] : null;
+    return entry
+      ? [entry.sessionId, { version: entry.version, facts: entry.facts, size: info.size, mtimeMs: info.mtimeMs }]
+      : null;
   });
   for (const row of read) if (row) out.set(row[0], row[1]);
   // Keep the map bounded by what is on disk: a session DSH deleted would

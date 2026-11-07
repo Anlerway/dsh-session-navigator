@@ -4,6 +4,9 @@
  * Three sources, one merged answer (see src/domain/sessions.js for the merge
  * rules). This module owns the I/O and the caching policy:
  *
+ *   L0 manifest — the last process's answers, keyed by the version of the file
+ *                 they came from (sources/manifest.js). Read once per start, and
+ *                 the reason a cold start no longer decodes every header.
  *   L2 headers  — the expensive-but-truthful path: directory walk + one zstd
  *                 frame per session. Cached in-process and invalidated by a
  *                 short TTL, because a listing that re-decodes every header on
@@ -20,12 +23,15 @@
  * a burst of requests into one walk.
  */
 
+import { dirname } from "node:path";
+
 import { FIXED_NODES } from "../constants.js";
 import { buildSessionView } from "../domain/sessions.js";
 import { shortcutTargetsIn } from "../domain/shortcuts.js";
 import { buildAutoTree } from "../domain/tree.js";
-import { readAllHeaders } from "../sources/heads.js";
+import { scanHeaders } from "../sources/heads.js";
 import { readLogFacts } from "../sources/logfacts.js";
+import { readManifest, sameVersion, writeManifest } from "../sources/manifest.js";
 import { projcacheDir, readProjcache } from "../sources/projcache.js";
 import { readWorkspaceFile, readWorkspaceService } from "../sources/workspaces.js";
 
@@ -34,6 +40,25 @@ const HEADER_TTL_MS = 1500;
 
 /** How many log tails are classified at once (same bound as the header walk). */
 const LOG_READ_CONCURRENCY = 8;
+
+/**
+ * How long the manifest write waits for the home to go quiet.
+ *
+ * The mirror is a cache for the *next* start, and the running process already
+ * holds it in memory: writing while the user works buys nothing and costs a
+ * 3.4 MB rewrite per burst at 2000 sessions. Every new scan pushes the write
+ * back again, so a panel that keeps answering turns never touches the disk.
+ */
+const MANIFEST_QUIET_MS = 60_000;
+
+/**
+ * The longest an unwritten change may wait for that quiet, in milliseconds.
+ *
+ * A crash loses whatever the mirror had not caught up on, so "never while busy"
+ * needs a floor: ten minutes of continuous work still lands on disk, and an
+ * ordinary evening of use ends with one more write at shutdown.
+ */
+const MANIFEST_MAX_DELAY_MS = 600_000;
 
 /**
  * @typedef {object} Snapshot
@@ -57,14 +82,23 @@ const LOG_READ_CONCURRENCY = 8;
  *   the sidecar state that decorates the derived tree: user folders, placements,
  *   the trash index, and the view settings that decide which sessions are hidden.
  *   Async because the documents live on disk.
+ * @param {() => string | null} [options.manifestPath] absolute path of the
+ *   sessions manifest (sources/manifest.js); absent disables the mirror, which is
+ *   what a test or a checkout without a data directory wants
+ * @param {() => string | null} [options.manifestTmpDir] same-volume scratch
+ *   directory for the atomic write of that file
+ * @param {number} [options.manifestQuietMs] how long a dirtied mirror waits for
+ *   the home to stop changing before it is written
+ * @param {number} [options.manifestMaxDelayMs] the longest that wait may grow
+ *   while changes keep arriving
  * @param {number} [options.ttlMs]
  */
 export function createReader(options) {
   const ttlMs = options.ttlMs ?? HEADER_TTL_MS;
 
-  /** @type {{ headers: Map<string, object>, at: number } | null} */
+  /** @type {{ headers: Map<string, object>, logs: Map<string, object>, at: number } | null} */
   let headerCache = null;
-  /** @type {Promise<Map<string, object>> | null} */
+  /** @type {Promise<{ headers: Map<string, object>, logs: Map<string, object> }> | null} */
   let inflight = null;
   /**
    * Single-flight for the projection-cache directory: two requests arriving
@@ -89,17 +123,19 @@ export function createReader(options) {
   let epoch = 0;
 
   /**
-   * Header map, reusing the last scan when it is still fresh.
+   * Header scan, reusing the last walk when it is still fresh.
    *
    * Concurrent callers share one walk: a burst of requests must not multiply
-   * the filesystem cost.
+   * the filesystem cost. `known` is the manifest's log mirror, which turns a
+   * decode into a stat for every log the last process already read.
    *
    * @param {boolean} refresh force a rescan
-   * @returns {Promise<Map<string, object>>}
+   * @param {{ logs: Map<string, any> } | null} known
+   * @returns {Promise<{ headers: Map<string, object>, logs: Map<string, object> }>}
    */
-  async function headers(refresh) {
+  async function headers(refresh, known) {
     const now = Date.now();
-    if (!refresh && headerCache && now - headerCache.at < ttlMs) return headerCache.headers;
+    if (!refresh && headerCache && now - headerCache.at < ttlMs) return headerCache;
     if (inflight) {
       // A refresh must not join a walk that began before the write it is
       // refreshing for; let the older walk finish, then read the tree again.
@@ -107,11 +143,11 @@ export function createReader(options) {
       await inflight.catch(() => {});
     }
     const startedEpoch = epoch;
-    /** @type {Promise<Map<string, object>>} */
-    const walk = readAllHeaders(options.dshHome())
-      .then((headers) => {
-        if (startedEpoch === epoch) headerCache = { headers, at: Date.now() };
-        return headers;
+    /** @type {Promise<{ headers: Map<string, object>, logs: Map<string, object> }>} */
+    const walk = scanHeaders(options.dshHome(), { known: known?.logs })
+      .then((scan) => {
+        if (startedEpoch === epoch) headerCache = { headers: scan.headers, logs: scan.logs, at: Date.now() };
+        return scan;
       })
       .finally(() => {
         if (inflight === walk) inflight = null;
@@ -150,13 +186,23 @@ export function createReader(options) {
     /** @type {{ home: string, run: Promise<any> | null }} */
     const entry = { home, run: null };
     entry.run = (async () => {
-      const [headerMap, cacheMap, registry] = await Promise.all([
-        headers(refresh),
-        projcacheOf(home),
+      // The manifest is read once per start, and everything below consults it
+      // before going to disk: an unchanged log is a stat, an unchanged cache
+      // file is a stat, and only what changed is read the old way.
+      const known = await manifestOf();
+      // The data directory can be relocated mid-read (see `manifestOf`); a scan
+      // that started against one mirror must not write its answers into the
+      // other one's file.
+      const knownPath = known === null ? null : known.path;
+      const [scan, cacheMap, registry] = await Promise.all([
+        headers(refresh, known),
+        projcacheOf(home, known),
         readRegistry(),
       ]);
-      const logFacts = await logFactsOf(headerMap);
-      return { headerMap, cacheMap, registry, logFacts };
+      const logFacts = await logFactsOf(scan, known);
+      rememberScan(known, knownPath, scan, logFacts);
+      rememberFacts(known, knownPath, cacheMap);
+      return { headerMap: scan.headers, cacheMap, registry, logFacts };
     })().finally(() => {
       if (baseInflight === entry) baseInflight = null;
     });
@@ -250,12 +296,13 @@ export function createReader(options) {
    * they join one read instead.
    *
    * @param {string} home
+   * @param {{ facts: Map<string, any> } | null} known
    * @returns {Promise<Map<string, object>>}
    */
-  function projcacheOf(home) {
+  function projcacheOf(home, known) {
     if (projcacheInflight && projcacheInflight.home === home) return projcacheInflight.run;
     const entry = { home, run: null };
-    entry.run = readProjcache(projcacheDir(home)).finally(() => {
+    entry.run = readProjcache(projcacheDir(home), { known: known?.facts }).finally(() => {
       if (projcacheInflight === entry) projcacheInflight = null;
     });
     projcacheInflight = entry;
@@ -265,35 +312,234 @@ export function createReader(options) {
   /**
    * Classify every log: has it ever started a turn?
    *
-   * This is the only part of a snapshot that opens a log at all, so it is
-   * bounded twice: a fixed worker count, and a per-log cache keyed by
-   * size+mtime (`sources/logfacts.js`). In steady state a listing therefore
-   * reads nothing — only the session whose turn is running has a new mtime.
+   * The manifest answers for a log whose header and file version it already
+   * recorded, which is what makes a warm start open no logs at all. Everything
+   * else is read here, bounded twice: a fixed worker count, and a per-log cache
+   * keyed by size+mtime (`sources/logfacts.js`).
    *
-   * @param {Map<string, any>} headerMap
+   * A log whose facts could not be read stores nothing (`undefined`), so the
+   * next scan tries again instead of remembering a failure as an answer.
+   *
+   * @param {{ logs: Map<string, { size: number, mtimeMs: number, ctimeMs: number, header: object }> }} scan
+   * @param {{ logs: Map<string, any> } | null} known
    * @returns {Promise<Map<string, { turnStart: boolean | null }>>}
    */
-  async function logFactsOf(headerMap) {
-    /** @type {Array<any>} */
-    const logs = [];
-    for (const header of headerMap.values()) {
-      if (header?.id && header?.logPath) logs.push(header);
-    }
-    /** @type {Map<string, any>} */
+  async function logFactsOf(scan, known) {
+    /** @type {Map<string, { turnStart: boolean | null }>} */
     const out = new Map();
+    /** @type {Array<{ logPath: string, entry: any }>} */
+    const pending = [];
+    for (const [logPath, entry] of scan.logs) {
+      const prior = known?.logs.get(logPath);
+      if (prior && prior.turnStart !== undefined && sameVersion(prior, entry)) {
+        out.set(entry.header.id, { turnStart: prior.turnStart });
+        continue;
+      }
+      pending.push({ logPath, entry });
+    }
     let cursor = 0;
-    const workers = Array.from({ length: Math.min(LOG_READ_CONCURRENCY, logs.length) }, async () => {
+    const workers = Array.from({ length: Math.min(LOG_READ_CONCURRENCY, pending.length) }, async () => {
       for (;;) {
         const index = cursor;
         cursor += 1;
-        if (index >= logs.length) return;
-        const header = logs[index];
-        const facts = await readLogFacts(header.logPath, header.sizeBytes, header.mtimeMs);
-        if (facts) out.set(header.id, facts);
+        if (index >= pending.length) return;
+        const { logPath, entry } = pending[index];
+        const facts = await readLogFacts(logPath, entry.size, entry.mtimeMs);
+        if (facts) out.set(entry.header.id, facts);
       }
     });
     await Promise.all(workers);
     return out;
+  }
+
+  /**
+   * The manifest mirror: the previous process's answers, plus the write that
+   * hands them to the next one.
+   *
+   * Deliberately not dropped by `invalidate()`. Every entry validates itself
+   * against the file it describes (size + times), so a stale mirror can only
+   * miss, never lie — and `invalidate()` runs on every storage event, so
+   * dropping it would re-read the file for an answer it already had.
+   *
+   * @type {{ path: string | null, ready: Promise<void> | null, logs: Map<string, any>, facts: Map<string, any>, timer: any, writing: Promise<boolean> | null, dirty: boolean, dirtySince: number }}
+   */
+  const manifest = {
+    path: null,
+    ready: null,
+    logs: new Map(),
+    facts: new Map(),
+    timer: null,
+    writing: null,
+    dirty: false,
+    // When the oldest change still missing from the file happened, 0 for none.
+    // The quiet window restarts on every change; this one does not, which is
+    // what turns "wait for calm" into a bounded wait.
+    dirtySince: 0,
+  };
+
+  /**
+   * The mirror for the current data directory, reading it on first use.
+   *
+   * `manifestPath` is a live getter: the data directory can be relocated at
+   * runtime (src/index.js rebuilds `paths`), and a mirror keyed to the old
+   * directory describes logs nobody is reading any more. A relocation therefore
+   * drops the mirror and reads the new file.
+   *
+   * @returns {Promise<object | null>} the mirror, or null when it is disabled
+   */
+  async function manifestOf() {
+    const path = typeof options.manifestPath === "function" ? options.manifestPath() : null;
+    if (!path) return null;
+    if (manifest.path !== path) {
+      manifest.path = path;
+      manifest.logs = new Map();
+      manifest.facts = new Map();
+      manifest.dirty = false;
+      manifest.dirtySince = 0;
+      // A timer armed for the old file would fire against the new path and
+      // overwrite it with the empty maps above.
+      if (manifest.timer !== null) {
+        clearTimeout(manifest.timer);
+        manifest.timer = null;
+      }
+      manifest.ready = readManifest(path).then((read) => {
+        // A relocation that happened while the file was being read wins: those
+        // entries describe another directory.
+        if (manifest.path !== path) return;
+        manifest.logs = read.logs;
+        manifest.facts = read.facts;
+      });
+    }
+    await manifest.ready;
+    return manifest;
+  }
+
+  /**
+   * Replace the log mirror with what this scan actually found.
+   *
+   * Replacing rather than merging is what drops the entries of sessions that
+   * were removed: the walk just enumerated the home, so anything it did not see
+   * is not there. Not dirty means byte-for-byte the same mirror, and a quiet
+   * panel never touches the disk.
+   *
+   * @param {object | null} known
+   * @param {string | null} knownPath the mirror path this scan was read against
+   * @param {{ logs: Map<string, { size: number, mtimeMs: number, ctimeMs: number, header: object }> }} scan
+   * @param {Map<string, { turnStart: boolean | null }>} logFacts
+   */
+  function rememberScan(known, knownPath, scan, logFacts) {
+    if (known === null || known.path !== knownPath) return;
+    let dirty = scan.logs.size !== known.logs.size;
+    /** @type {Map<string, any>} */
+    const next = new Map();
+    for (const [logPath, entry] of scan.logs) {
+      const facts = logFacts.get(entry.header.id);
+      const turnStart = facts ? facts.turnStart : undefined;
+      /** @type {any} */
+      const record = {
+        size: entry.size,
+        mtimeMs: entry.mtimeMs,
+        ctimeMs: entry.ctimeMs,
+        header: entry.header,
+      };
+      if (turnStart !== undefined) record.turnStart = turnStart;
+      const prior = known.logs.get(logPath);
+      if (!prior || prior.turnStart !== turnStart || !sameVersion(prior, entry)) dirty = true;
+      next.set(logPath, record);
+    }
+    known.logs = next;
+    if (dirty) markDirty(known);
+  }
+
+  /**
+   * Replace the facts mirror with what the projection cache just returned.
+   *
+   * @param {object | null} known
+   * @param {string | null} knownPath the mirror path this read was made against
+   * @param {Map<string, { size?: number, mtimeMs?: number, version?: number, facts?: object }>} cacheMap
+   */
+  function rememberFacts(known, knownPath, cacheMap) {
+    if (known === null || known.path !== knownPath) return;
+    /** @type {Map<string, any>} */
+    const next = new Map();
+    for (const [sessionId, record] of cacheMap) {
+      if (!Number.isFinite(record?.size) || !Number.isFinite(record?.mtimeMs)) continue;
+      if (!Number.isInteger(record?.version)) continue;
+      next.set(sessionId, {
+        size: record.size,
+        mtimeMs: record.mtimeMs,
+        version: record.version,
+        facts: record.facts,
+      });
+    }
+    let dirty = next.size !== known.facts.size;
+    for (const [sessionId, record] of next) {
+      const prior = known.facts.get(sessionId);
+      if (!prior || prior.version !== record.version || !sameVersion(prior, record)) dirty = true;
+    }
+    known.facts = next;
+    if (dirty) markDirty(known);
+  }
+
+  /**
+   * Arm the write: the home has to be quiet for the full window, and the oldest
+   * unwritten change caps how long that can be postponed.
+   *
+   * Both numbers are read here rather than captured, so a test can drive them
+   * per reader without a global.
+   */
+  function markDirty(known) {
+    known.dirty = true;
+    // A write already in flight re-arms this from its own finally().
+    if (known.writing !== null) return;
+    const now = Date.now();
+    if (!known.dirtySince) known.dirtySince = now;
+    const quiet = options.manifestQuietMs ?? MANIFEST_QUIET_MS;
+    const cap = options.manifestMaxDelayMs ?? MANIFEST_MAX_DELAY_MS;
+    // Restart the quiet window on every change; the cap counts from the first.
+    const wait = Math.max(0, Math.min(quiet, cap - (now - known.dirtySince)));
+    if (known.timer !== null) {
+      clearTimeout(known.timer);
+      known.timer = null;
+    }
+    known.timer = setTimeout(() => {
+      known.timer = null;
+      void flushManifest();
+    }, wait);
+    // A cache write must never be the reason the process stays alive.
+    known.timer.unref?.();
+  }
+
+  /**
+   * Write the mirror now, or join the write already in flight.
+   *
+   * Exposed for tests and for a caller that is about to exit; the wait for quiet
+   * above is what runs in normal operation. A failed write is reported as `false` and
+   * not thrown: the manifest is a cache, and a start that could not refresh it
+   * is still a correct start.
+   *
+   * @returns {Promise<boolean>} whether the file was written
+   */
+  async function flushManifest() {
+    const known = manifest;
+    const path = known.path;
+    if (!path) return false;
+    if (known.timer !== null) {
+      clearTimeout(known.timer);
+      known.timer = null;
+    }
+    if (known.writing) return known.writing;
+    known.dirty = false;
+    known.dirtySince = 0;
+    const tmpDir = typeof options.manifestTmpDir === "function" ? options.manifestTmpDir() : dirname(path);
+    known.writing = writeManifest(path, tmpDir ?? dirname(path), known.logs, known.facts)
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => {
+        known.writing = null;
+        if (known.dirty) markDirty(known);
+      });
+    return known.writing;
   }
 
   /**
@@ -362,6 +608,7 @@ export function createReader(options) {
 
   return {
     snapshot,
+    flushManifest,
     invalidate() {
       epoch += 1;
       headerCache = null;

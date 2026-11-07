@@ -101,14 +101,15 @@ src/
 ├─ fs.js               52  存在与列举：宿主与组件安装共用的两个判断
 │
 ├─ sources/                 读 DSH 的数据（只读，除 move 的受控重写）
-│  ├─ heads.js        322  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）；header 按 size+mtime+ctime 缓存，没再动过的日志不解第二遍
-│  ├─ projcache.js    268  L1：storages/session_projcache 的每会话小 JSON；一次只开 8 个，结果仍按目录顺序回填
+│  ├─ manifest.js     202  L0：上一次启动已经答过的 header 与 projection facts，按文件 size+mtime(+ctime) 自校验；派生文件，坏了当空、删了重扫
+│  ├─ heads.js        400  L2：sessions 目录遍历（按实际版本名取最新日志，并发 8，结果排序）；header 按 size+mtime+ctime 缓存，没再动过的日志不解第二遍；有 L0 时连文件都不开
+│  ├─ projcache.js    293  L1：storages/session_projcache 的每会话小 JSON；一次只开 8 个，结果仍按目录顺序回填；有 L0 时跳过读文件与解析
 │  ├─ workspaces.js   127  workspace registry：优先活服务，回退 storages/workspace.json
 │  ├─ logfacts.js     182  日志只回答一件事：这个会话有没有过一轮对话（空白会话），每条日志一份、按 size+mtime 校验的 LRU
 │  ├─ live.js         122  哪些会话真的在跑：只信 ctx.agents 的 status，绝不从 ctx.sessions 或日志推断
 │  ├─ artifact.js     227  会话文件路径编码/解码、读日志、重写 header
 │  ├─ content.js      429  会话内容索引：按 path|size|activityAt 判失效，逐份构建、可续查，总是落盘；每条正文留头 1.2 万 + 尾 8 千字符
-│  └─ reader.js       376  三源合并 + TTL 缓存策略（/bootstrap 的数据源）；base 读单飞、tree 首次读取才建
+│  └─ reader.js       623  三源合并 + TTL 缓存策略（/bootstrap 的数据源）；L0 的生命周期（读一次、安静期回写、invalidate 不丢）、base 读单飞、tree 首次读取才建
 │
 ├─ domain/                  纯规则，无 IO，可直接单测
 │  ├─ sessions.js     310  合并三源 → 扁平会话列表（header 定身份，cache 只填空）
@@ -380,7 +381,8 @@ groups.push({ key, title, icon, count, rows });
 ```
                        ┌─ L2 heads（sessions 目录 + zstd 第一帧）  ← 真相：存在性、id、cwd
 reader.snapshot()  ←───┼─ L1 projcache（每会话小 JSON）            ← 便宜：标题、时间、计数
-                       └─ workspace registry（活服务 → 文件）      ← 归属、归档、置顶
+                       ├─ workspace registry（活服务 → 文件）      ← 归属、归档、置顶
+                       └─ L0 manifest（上次的 L2/L1 答案）         ← 只对没变过的文件生效，省掉上面两路的 I/O
         ↓ 合并（domain/sessions.js）
         ↓ 叠加侧车（tree / annotations / trash index）
 GET /bootstrap  →  一次往返把面板需要的全部东西给客户端

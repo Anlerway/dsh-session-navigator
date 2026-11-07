@@ -27,6 +27,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 ├── summaries.v1.json     AI 写出的标题/描述/标签，与累计花费的 token 账本（见 §1.1）
 ├── move-journal.v1.json  正在进行的跨工作区移动（见 §6.2）
 ├── content-index.v1.json 会话内容索引的缓存（派生文件，删了只是要重建一次）
+├── sessions-manifest.v1.json 会话头与 projection facts 的上次答案（派生文件，删了只是重扫一次；它只服务下一次启动，所以 home 安静 60 秒才写、变化不停也最多等 10 分钟）
 ├── .location             迁移后留下的指针（只有 copy 模式会留）
 ├── .tmp/                 原子写的临时文件，启动时只清 `*.tmp`
 ├── quarantine/           读不出来的文档原件（`<name>.corrupt-<ts>.json`）

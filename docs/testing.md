@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 七十九个测试文件，各自钉住什么
+## 1. 八十个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -74,6 +74,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/heads.test.mjs` | 158 | 会话 header 扫描：换过格式版本的日志仍找得到、同 id 只出一份、无日志目录跳过；以及按文件缓存——没动过的日志只解一次（第二次拿到同一个对象），而**同尺寸同 mtime 的覆写仍算改写**（只信 size + mtime 会读到旧 header，ctime 才拦得住） |
 | `test/logfacts.test.mjs` | 253 | 日志只答一个问题：有没有过一轮对话，只读头时的窗口边界，以及「一轮没关」不再被当成状态；缓存按日志一份且容量跟着会话数走（比旧的 512 条窗口更大的一批日志也仍然命中），日志长出第一轮对话后要重读 |
 | `test/reader.test.mjs` | 101 | 快照的两条边界：overlay 读的是**调用那一刻**的样子（侧车文档写入不 bump epoch，所以整份快照不能缓存），tree 在第一次读取时才建、也只建一次（`snapshot.tree === snapshot.tree`，序列化后再比对仍一致） |
+| `test/manifest.test.mjs` | 392 | L0 的三条纪律：**命中时不开文件**（清单里的 header 与日志里的 cwd 故意不一致，谁被返回就说明谁被读了）、**改写过就不认**（同样长度的重写仍走解码）、**上次没找到的条目会被剔掉**；另外 manifest 的坏 JSON / 别的 schema 版本 / 单条损坏都当空，projection cache 用等长坏内容 + 还原 mtime 证明确实没读文件；写盘时机不再是「变化后 3 秒」——**安静 60 秒**才落盘，10 分钟的硬上限兜底，期间任何新变化都重置安静窗口（三条各钉一头：刚脏时文件必须不存在、凑不满安静期也要在上限时写出、第二次变化要把时钟拨回） |
 | `test/annotations.test.mjs` | 32 | 注解 id 守卫：`__proto__` / `constructor` / `prototype` 不能变成幻影条目 |
 | `test/reveal.test.mjs` | 237 | reveal 白名单：只开自己列出来的路径（UNC 路径是凭据泄漏，不是便利） |
 | `test/panel-hooks.test.mjs` | 120 | 面板与 hook 的接缝：分片里每个 `useXxx()` 都有声明、hook 的 `return { … }` 覆盖调用方解构的每个名字、`onRename:` 交出去的符号确实来自某处；拆 hook 时漏一个 return 键会让面板一打开就落进 `.se-crash`（`renameEntity` 就是这么丢的） |

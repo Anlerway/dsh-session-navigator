@@ -358,6 +358,12 @@ export function dataPaths(dir = pluginDataDir()) {
     // ignored and overwritten in place. Keeping one stable name is deliberate:
     // renaming it would orphan the old file instead of replacing it.
     contentIndex: join(dir, "content-index.v1.json"),
+    // The sessions manifest (src/sources/manifest.js): headers and projection
+    // facts keyed by the version of the file they came from, so a start can stat
+    // its way out of decoding every log. A derived file like the index above —
+    // losing it costs one full scan and never a session — and its `.v1` is a
+    // slot, not the schema version.
+    manifest: join(dir, "sessions-manifest.v1.json"),
     // AI 字段: one stored record per session, plus the cumulative
     // token ledger. A document, not a cache — the text cost money to produce
     // and cannot be reproduced, so it is written and kept like annotations are.

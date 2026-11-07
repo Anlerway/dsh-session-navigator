@@ -23,8 +23,9 @@
  */
 
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { readFirstRecord } from "../dsh/zstd.js";
+import { sameVersion } from "./manifest.js";
 // The log name and format version are owned by sources/artifact.js (the writer);
 // importing them keeps a version bump from having to touch two files.
 import { SESSION_FORMAT_VERSION, SESSION_LOG_FILE } from "./artifact.js";
@@ -139,26 +140,34 @@ export function clearHeaderCache() {
 /**
  * Read one session header, reusing the decode when the log has not changed.
  *
+ * The answer carries the `stat` the header was decoded against: the caller
+ * writes it into the manifest (sources/manifest.js), and a scan that already
+ * stat'ed the file must not pay for a second one.
+ *
  * @param {string} logPath absolute path to `session.v4.jsonl.zstd`
- * @returns {Promise<object | null>}
+ * @param {import("node:fs").Stats | null} [knownInfo] a stat the walk already took
+ * @returns {Promise<{ header: object, info: import("node:fs").Stats } | null>}
  */
-async function readSessionHeader(logPath) {
-  let info;
-  try {
-    // The log size is what the list shows in its 大小 column, and together with
-    // mtime it is also the version key of the cached decode.
-    info = await stat(logPath);
-  } catch {
-    // A log the walk found a moment ago is gone now: report it as absent
-    // rather than as a broken read.
-    headerCache.delete(logPath);
-    return null;
+async function readSessionHeader(logPath, knownInfo) {
+  /** @type {import("node:fs").Stats | null} */
+  let info = knownInfo ?? null;
+  if (info === null) {
+    try {
+      // The log size is what the list shows in its 大小 column, and together with
+      // mtime it is also the version key of the cached decode.
+      info = await stat(logPath);
+    } catch {
+      // A log the walk found a moment ago is gone now: report it as absent
+      // rather than as a broken read.
+      headerCache.delete(logPath);
+      return null;
+    }
   }
   const key = versionKeyOf(info);
   const cached = headerCache.get(logPath);
   if (cached !== undefined && cached.key === key) {
     rememberHeader(logPath, key, cached.header);
-    return cached.header;
+    return { header: cached.header, info };
   }
   try {
     const raw = await readFirstRecord(logPath);
@@ -168,7 +177,7 @@ async function readSessionHeader(logPath) {
       return null;
     }
     rememberHeader(logPath, key, header);
-    return header;
+    return { header, info };
   } catch {
     headerCache.delete(logPath);
     return null;
@@ -253,18 +262,33 @@ async function newestLog(dir) {
  * walked defensively: a stray file or a nested directory is skipped rather than
  * throwing, because a plugin must never take the app down over a data-dir quirk.
  *
+ * The expensive part is the innermost level: a session directory is read only to
+ * learn which format version its log is named after, and at 5 000 sessions that
+ * is 5 000 directory reads for names the last run already recorded. `known` — the
+ * manifest's log map — answers for those: the recorded path is stat'ed instead,
+ * and the directory is read only for a session directory that is new, renamed, or
+ * whose recorded log has gone (an in-place format upgrade). The two outer levels
+ * still have to be walked, because a new session appears there and nowhere else.
+ *
  * The result is sorted by path, so "the same session id was found twice" always
- * resolves the same way (see `readAllHeaders`).
+ * resolves the same way (see `scanHeaders`).
  *
  * @param {string} dshHome
- * @returns {Promise<Array<{ logPath: string, projectDir: string }>>}
+ * @param {{ known?: Map<string, { size: number, mtimeMs: number, ctimeMs?: number }> }} [options]
+ * @returns {Promise<Array<{ logPath: string, projectDir: string, info: import("node:fs").Stats | null }>>}
  */
-export async function discoverLogs(dshHome) {
+export async function discoverLogs(dshHome, options = {}) {
   const root = sessionsDir(dshHome);
-  /** @type {Array<{ logPath: string, projectDir: string }>} */
+  /** @type {Array<{ logPath: string, projectDir: string, info: import("node:fs").Stats | null }>} */
   const found = [];
-  /** @type {Array<{ dir: string, projectDir: string }>} */
+  /** @type {Array<{ dir: string, projectDir: string, knownPath: string | null }>} */
   const sessionDirs = [];
+
+  // Session directory → the log the last run found in it. A log path is
+  // `<dir>/<name>`, so the directory is the join key.
+  /** @type {Map<string, string>} */
+  const knownByDir = new Map();
+  for (const logPath of options.known?.keys() ?? []) knownByDir.set(dirname(logPath), logPath);
 
   let projects;
   try {
@@ -284,13 +308,27 @@ export async function discoverLogs(dshHome) {
     }
     for (const session of sessions) {
       if (!session.isDirectory()) continue;
-      sessionDirs.push({ dir: join(projectDir, session.name), projectDir: project.name });
+      const dir = join(projectDir, session.name);
+      sessionDirs.push({ dir, projectDir: project.name, knownPath: knownByDir.get(dir) ?? null });
     }
   }
 
   await mapLimit(sessionDirs, HEAD_CONCURRENCY, async (entry) => {
-    const logPath = await newestLog(entry.dir);
-    if (logPath !== null) found.push({ logPath, projectDir: entry.projectDir });
+    /** @type {import("node:fs").Stats | null} */
+    let info = null;
+    let logPath = null;
+    if (entry.knownPath !== null) {
+      try {
+        info = await stat(entry.knownPath);
+        logPath = entry.knownPath;
+      } catch {
+        // Written by a newer format version, renamed, or gone: ask the
+        // directory. One extra read for a session that was upgraded in place.
+        info = null;
+      }
+    }
+    if (logPath === null) logPath = await newestLog(entry.dir);
+    if (logPath !== null) found.push({ logPath, projectDir: entry.projectDir, info });
   });
 
   found.sort((a, b) => (a.logPath < b.logPath ? -1 : a.logPath > b.logPath ? 1 : 0));
@@ -298,25 +336,65 @@ export async function discoverLogs(dshHome) {
 }
 
 /**
- * Read every session header under the sessions root.
+ * Read every session header under the sessions root, and report the file
+ * versions behind them.
+ *
+ * `known` is the manifest's log map (sources/manifest.js). A recorded path whose
+ * size, mtime and ctime still match is answered without opening the log: at
+ * 5 000 sessions that is the difference between ~440 ms of first-frame decoding
+ * and none. Everything else — a rewritten log, a new session, a cache that was
+ * never written — takes the ordinary decode.
  *
  * @param {string} dshHome
- * @returns {Promise<Map<string, object>>} sessionId → header
+ * @param {{ known?: Map<string, { size: number, mtimeMs: number, ctimeMs?: number, header: object }> }} [options]
+ * @returns {Promise<{ headers: Map<string, object>, logs: Map<string, { size: number, mtimeMs: number, ctimeMs: number, header: object }> }>}
  */
-export async function readAllHeaders(dshHome) {
-  const logs = await discoverLogs(dshHome);
+export async function scanHeaders(dshHome, options = {}) {
+  const known = options.known ?? null;
+  const logs = await discoverLogs(dshHome, { known });
+  const results = await mapLimit(logs, HEAD_CONCURRENCY, async (found) => {
+    const prior = known?.get(found.logPath);
+    // The manifest answered for this exact file version: no open, no decode.
+    if (prior && found.info && sameVersion(prior, found.info)) {
+      // Keep the in-process cache in step — the log facts are keyed against it,
+      // and a listing that reopened the log would undo the point of the manifest.
+      rememberHeader(found.logPath, versionKeyOf(found.info), prior.header);
+      return { logPath: found.logPath, header: prior.header, info: found.info };
+    }
+    const read = await readSessionHeader(found.logPath, found.info);
+    return read === null ? null : { logPath: found.logPath, header: read.header, info: read.info };
+  });
+
   /** @type {Map<string, object>} */
-  const out = new Map();
-  // `discoverLogs` sorted the paths, and a `Map` keeps the first write, so two
-  // copies of one session id resolve to the same header on every scan instead of
-  // depending on which parallel read finished first.
-  const headers = await mapLimit(logs, HEAD_CONCURRENCY, (entry) => readSessionHeader(entry.logPath));
-  for (const header of headers) {
-    if (!header?.id) continue;
-    if (!out.has(header.id)) out.set(header.id, header);
+  const headers = new Map();
+  /** @type {Map<string, { size: number, mtimeMs: number, ctimeMs: number, header: object }>} */
+  const entries = new Map();
+  for (const result of results) {
+    if (!result?.header?.id) continue;
+    entries.set(result.logPath, {
+      size: result.info.size,
+      mtimeMs: result.info.mtimeMs,
+      ctimeMs: result.info.ctimeMs,
+      header: result.header,
+    });
+    // `discoverLogs` sorted the paths, and a `Map` keeps the first write, so two
+    // copies of one session id resolve to the same header on every scan instead
+    // of depending on which parallel read finished first.
+    if (!headers.has(result.header.id)) headers.set(result.header.id, result.header);
   }
   // This walk just enumerated every log under the home, so anything cached for
   // a path it did not see belongs to a home that is no longer being read.
   sweepHeaderCache(new Set(logs.map((entry) => entry.logPath)));
-  return out;
+  return { headers, logs: entries };
+}
+
+/**
+ * Read every session header under the sessions root.
+ *
+ * @param {string} dshHome
+ * @param {{ known?: Map<string, any> }} [options] see `scanHeaders`
+ * @returns {Promise<Map<string, object>>} sessionId → header
+ */
+export async function readAllHeaders(dshHome, options = {}) {
+  return (await scanHeaders(dshHome, options)).headers;
 }

@@ -217,6 +217,11 @@ export function apply(ctx) {
       // trash index. A broken document degrades to "no folders, empty trash" in
       // the reader rather than failing the whole listing.
       overlay: () => readOverlay(documents),
+      // Live getters, not captured strings: 数据目录 can be relocated at runtime
+      // (the migration above rebuilds `paths`), and the manifest must follow it
+      // instead of describing another directory's logs.
+      manifestPath: () => paths.manifest,
+      manifestTmpDir: () => paths.tmpDir,
     }),
     /**
      * 会话内容 index: the only state the panel cannot derive from the
@@ -245,6 +250,18 @@ export function apply(ctx) {
      */
     indexBuilder: createIndexBuilder(),
   };
+
+  /**
+   * Hand the manifest to the next start when this one ends.
+   *
+   * The wait for quiet covers normal use; this covers the process that is closed
+   * inside that window — with a minute of quiet and a ten minute cap, most closes
+   * — and would otherwise pay a full scan next time: the exact cost the manifest
+   * exists to remove. Not awaited: disposal is
+   * synchronous, and the write is atomic, so a flush that does not finish leaves
+   * the previous file rather than a broken one.
+   */
+  ctx.effect?.(() => () => void api.reader.flushManifest(), "session-navigator: sessions manifest");
 
   /**
    * AI 字段.
