@@ -47,8 +47,10 @@ package.json
    - `bridge`：浮窗 ↔ 独立窗口的命令总线（内存）；
    - `theme`：浮窗上报、窗口读取的调色板。
 4. **组装 `api` 对象**。这是路由处理器唯一的依赖入口：
-   `ctx / dataDir / paths / documents / migration / reopen / component / detached / bridge /
-   theme / capabilities / reader / content / indexBuilder / summarizer`。`dataDir` 与 `paths` 是
+   `ctx / dataDir / paths / documents / migration / reopen / component / detached / detachedOpen /
+   bridge / theme / capabilities / reader / content / indexBuilder / summarizer`。
+   `detachedOpen` 是 `detached` 的只读布尔版：后者懒创建控制器，为此读它等于顺手绑上控制口，
+   所以只想知道「窗口开着吗」的地方（清除缓存判断 Chromium profile 能不能删）读 `detachedOpen`。`dataDir` 与 `paths` 是
    getter，迁移后自动指向新值——内容索引的缓存文件也跟着走（`content` 用 getter 拿路径，见 api.md §4.14）。
    `summarizer` 在字面量之后单独赋值：它要引用正在定义的 `api`，而且它的
    `summaries` / `settings` 必须**每次现读** `documents`——迁移会重新赋值那个变量，

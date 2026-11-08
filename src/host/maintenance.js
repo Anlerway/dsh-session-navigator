@@ -11,7 +11,10 @@
  *     trees from a cancelled install, which are the only *large* files this
  *     plugin ever writes;
  *   - `sessions-manifest.v1.json` and the 会话内容 index: both are read off the
- *     logs, so keeping them is an optimisation and dropping them costs one scan.
+ *     logs, so keeping them is an optimisation and dropping them costs one scan;
+ *   - the detached window's Chromium profile (`detached/chromium/<hash>/`): a
+ *     browser cache by another name, rebuilt on the next launch, and the tens of
+ *     megabytes nobody would otherwise notice.
  *
  * It deliberately does not touch:
  *
@@ -19,6 +22,8 @@
  *     could not be parsed. Deleting them is data loss dressed as maintenance;
  *   - DSH's own projection cache (`<dshHome>/storages/session_projcache`) —
  *     not this plugin's to clear, and DSH would rebuild it anyway;
+ *   - the helper's profile *while the window is open*: a live Chromium holds
+ *     those files, and half a deletion leaves a profile no one can use;
  *   - the session store itself.
  */
 
@@ -150,7 +155,7 @@ export function invalidateMemory(api) {
  * Clear every cache this plugin owns.
  *
  * @param {any} api
- * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, manifest: { removed: number, bytes: number }, skipped: string[], tookMs: number }>}
+ * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, manifest: { removed: number, bytes: number }, profile: { removed: number, bytes: number }, skipped: string[], tookMs: number }>}
  */
 export async function clearCaches(api) {
   const started = Date.now();
@@ -244,13 +249,49 @@ export async function clearCaches(api) {
     }
   }
 
+  // 独立窗口那台 Chromium 的 profile. A browser cache under another name:
+  // Cache / GPUCache / Code Cache / Local Storage, all rebuilt on the next
+  // launch, and the one directory here that reaches tens of megabytes. Window
+  // geometry lives in `detached/window.json`, so nothing the window has to
+  // remember is in it.
+  let profile = { removed: 0, bytes: 0 };
+  const profileRoot = dataDir ? join(dataDir, "detached", "chromium") : "";
+  if (profileRoot && existsSync(profileRoot)) {
+    // A running Chromium holds its own profile open. Deleting it from under a
+    // live window leaves a half-written directory the next launch cannot use,
+    // so an open window makes this one item wait — the cheapest correct answer.
+    // The question is asked of `detachedOpen`, not `detached`: the controller
+    // is built on first read (and binds its control socket), and a cache clear
+    // is no reason to hand the user a helper they never opened.
+    let windowOpen = false;
+    try {
+      windowOpen = api?.detachedOpen === true;
+    } catch {
+      // Unreadable state cannot prove the window is closed, so it waits too.
+      windowOpen = true;
+    }
+    if (windowOpen) {
+      skipped.push("window-open");
+    } else {
+      const profileBytes = sizeOf(profileRoot);
+      try {
+        rmSync(profileRoot, { recursive: true, force: true });
+        profile = { removed: 1, bytes: profileBytes };
+        caches.push("detached-profile");
+      } catch {
+        skipped.push("profile-in-use");
+      }
+    }
+  }
+
   return {
-    freedBytes: tmp.bytes + downloads.bytes + staging.bytes + content.freedBytes + manifest.bytes,
+    freedBytes: tmp.bytes + downloads.bytes + staging.bytes + content.freedBytes + manifest.bytes + profile.bytes,
     caches,
     tmp,
     downloads,
     staging,
     manifest,
+    profile,
     skipped,
     tookMs: Date.now() - started,
   };

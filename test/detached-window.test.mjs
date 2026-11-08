@@ -9,7 +9,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const here = (path) => new URL(`../${path}`, import.meta.url);
 const read = (path) => readFileSync(here(path), "utf8");
@@ -640,4 +642,33 @@ test("the scan route resolves DSH's home itself, instead of asking the page for 
   assert.equal(typeof seen.home, "string", "a home path reaches the manager");
   assert.ok(seen.home.length > 0, "and it is not empty");
   assert.equal(answer.home, seen.home, "the page is told which tree was scanned");
+});
+
+// ── the helper's own Chromium profile ──────────────────────────────────────
+// One directory per profile key, named after the hash of that key. A key that
+// changes leaves its cache behind under a name nothing will open again, so the
+// launch that knows the current key sweeps the rest.
+
+test("a launch sweeps the profiles an earlier key left", async () => {
+  const { sweepStaleProfiles } = await import("../src/detached/launcher.js");
+  const root = mkdtempSync(join(tmpdir(), "se-profiles-"));
+  try {
+    for (const name of ["a8ae9bd0cc051c3f", "54a6e035250e91c5", "0123456789abcdef", "not-a-profile"]) {
+      mkdirSync(join(root, name, "Cache"), { recursive: true });
+    }
+    assert.equal(await sweepStaleProfiles(root, "a8ae9bd0cc051c3f"), 2, "every hex profile but the current one goes");
+    assert.deepEqual(readdirSync(root).sort(), ["a8ae9bd0cc051c3f", "not-a-profile"], "the current one and the stranger stay");
+    assert.equal(await sweepStaleProfiles(join(root, "missing"), "a8ae9bd0cc051c3f"), 0, "a first launch has nothing to sweep");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the sweep runs before the helper exists", () => {
+  const launcher = read("src/detached/launcher.js");
+  assert.match(launcher, /await sweepStaleProfiles\(dirname\(userData\), basename\(userData\)\)/, "the launch that knows the key sweeps its siblings");
+  assert.ok(
+    launcher.indexOf("sweepStaleProfiles(dirname(userData)") < launcher.indexOf("spawn(runtime.binary"),
+    "and does it before the process is started",
+  );
 });

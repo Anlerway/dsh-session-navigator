@@ -9,7 +9,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -213,6 +213,68 @@ test("clearCaches drops the plugin's own caches and keeps the user's bytes", asy
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the helper's Chromium profile is cache too", async () => {
+  const dir = makeDataDir();
+  const profile = join(dir, "detached", "chromium", "54a6e035250e91c5");
+  mkdirSync(join(profile, "Cache"), { recursive: true });
+  writeFileSync(join(profile, "Cache", "data_0"), "c".repeat(500));
+  writeFileSync(join(dir, "detached", "window.json"), '{"width":800}');
+  const api = stubApi(dir, "ready");
+  // Reading api.detached would build the controller and bind its control
+  // socket; a clear only needs the boolean, so it must ask detachedOpen.
+  let built = false;
+  Object.defineProperty(api, "detached", {
+    get() {
+      built = true;
+      return { running: false };
+    },
+  });
+  try {
+    const result = await clearCaches(api);
+
+    // A browser cache under another name: nothing the window has to remember
+    // lives in it, and the next launch makes a fresh one.
+    assert.equal(existsSync(join(dir, "detached", "chromium")), false, "the profile is gone");
+    assert.equal(existsSync(join(dir, "detached", "window.json")), true, "the window's geometry is not cache");
+    assert.deepEqual(result.profile, { removed: 1, bytes: 500 });
+    assert.ok(result.caches.includes("detached-profile"), "the clear says it took it: " + result.caches.join(","));
+    assert.deepEqual(result.skipped, []);
+    assert.equal(built, false, "the clear never builds the controller to learn a boolean");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a profile a running window is using waits for its next chance", async () => {
+  const dir = makeDataDir();
+  const cache = join(dir, "detached", "chromium", "a8ae9bd0cc051c3f", "Cache");
+  mkdirSync(cache, { recursive: true });
+  writeFileSync(join(cache, "data_0"), "c".repeat(500));
+  const api = stubApi(dir, "ready");
+  api.detachedOpen = true;
+  try {
+    const result = await clearCaches(api);
+
+    // A live Chromium holds those files: deleting them from under it leaves a
+    // profile the next launch cannot use.
+    assert.deepEqual(result.skipped, ["window-open"]);
+    assert.deepEqual(result.profile, { removed: 0, bytes: 0 });
+    assert.equal(existsSync(join(cache, "data_0")), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the sweep learns whether a window is open without building one", () => {
+  const read = (name) => readFileSync(join(import.meta.dirname, "..", "src", name), "utf8");
+
+  // `api.detached` is lazy: reading it starts the controller and binds its
+  // control socket. A clear that only needs "is a window open" must not pay
+  // for a controller the user may never use.
+  assert.match(read("index.js"), /get detachedOpen\(\) \{\s*return detached\?\.running === true;/);
+  assert.match(read(join("host", "maintenance.js")), /windowOpen = api\?\.detachedOpen === true;/);
 });
 
 test("a component install in flight keeps its download directory", async () => {

@@ -21,8 +21,8 @@
 import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import { installHelperApp, writeHelperApp } from "../component/install.js";
 import { normalizeLang } from "../lang.js";
@@ -43,6 +43,45 @@ const RETRY_DELAYS_MS = [1000, 3000, 8000];
 function helperProfileDir(dataDir, profileKey) {
   const id = createHash("sha256").update(profileKey).digest("hex").slice(0, 16);
   return join(dataDir, "detached", "chromium", id);
+}
+
+/** What a profile directory is called: the first 16 hex digits of a sha256. */
+const PROFILE_NAME = /^[0-9a-f]{16}$/;
+
+/**
+ * Remove the profiles an earlier profile key left behind.
+ *
+ * The directory name is the hash of the key, so a changed key leaves its
+ * profile sitting under the current root where nothing will ever open it again
+ * — tens of megabytes of Chromium cache that only an uninstall would take. The
+ * launch that knows the key sweeps its siblings instead.
+ *
+ * Only names that look like a profile are candidates: whatever else lives in
+ * that directory was put there by someone else.
+ *
+ * @param {string} root the `detached/chromium` directory
+ * @param {string} keep the profile this launch is about to use
+ * @returns {Promise<number>} how many directories were removed
+ */
+export async function sweepStaleProfiles(root, keep) {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch {
+    // No root yet, which is what a first launch looks like.
+    return 0;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === keep || !PROFILE_NAME.test(entry.name)) continue;
+    try {
+      await rm(join(root, entry.name), { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      /* a window from the older build still holds it; the next launch retries */
+    }
+  }
+  return removed;
 }
 
 /**
@@ -223,6 +262,10 @@ export function createDetachedController(options) {
 
     const userData = helperProfileDir(options.dataDir, profileKey);
     await mkdir(userData, { recursive: true });
+
+    // A profile key that has changed leaves a directory nothing reads any more.
+    const swept = await sweepStaleProfiles(dirname(userData), basename(userData));
+    if (swept > 0) log("info", `detached: removed ${swept} stale Chromium profile(s)`);
 
     // An owned runtime carries the app at `<runtime>/resources/app`, which
     // Electron finds when nothing is passed on the command line; refreshing it

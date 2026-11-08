@@ -51,6 +51,11 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 （`src/detached/launcher.js`）：必须给 helper 一个专属的 `--user-data-dir`，
 和主应用共用 profile 会让两边的 Chromium 状态互相踩。
 
+key 变了（旧版本算的是别的东西、或数据目录换过）就会留下一个没人再打开的同级目录，所以
+`launch()` 在起进程之前把同目录下其它 16 位十六进制的目录扫掉（`sweepStaleProfiles`）——
+只认这个形状的名字，别人放进去的东西不动。`清除缓存`（api.md §4.11）也会整棵清掉它，
+前提是独立窗口已经关掉；窗口开着时那一次跳过它。
+
 **侧车只存 DSH 不知道的东西。** 标题、cwd、时间戳、回合数、归档集、置顶集每次请求都从 DSH 读，
 侧车删掉也不会丢会话——这是 `src/store/documents.js` 写明的设计约束（源文档 S8）。
 `summaries.v1.json` 是这条规则唯一要解释的地方：摘要既不是 DSH 的数据，也不是派生缓存——

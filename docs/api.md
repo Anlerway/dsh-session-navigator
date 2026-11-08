@@ -661,7 +661,7 @@ handler 自己 `createWriteStream` 落盘。**上传没有固定上限，边界�
 | `GET /update` | `?force=1` 跳过 5 分钟缓存 | `{ current, latest, hasUpdate, url, name, publishedAt, notes, checkedAt }` |
 | `GET /version` | — | `{ build, version }` |
 | `POST /about/open` | `{ target }` | `{ target, url, opened: true }` |
-| `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, manifest, skipped, tookMs }` |
+| `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, manifest, profile, skipped, tookMs }` |
 | `GET /release-notes` | — | `{ title, blocks, bytes, updatedAt, version, seen }` |
 | `POST /release-notes/seen` | `{ version }` | `{ version }`（写进去的记录；空版本是 no-op） |
 
@@ -694,6 +694,10 @@ host 做。仓库地址只在 `src/constants.js` 的 `REPO_URL` 写一次，API 
 - 内存：`reader.invalidate()`、`clearLogFacts()`、各侧车的 `invalidate()`。
 - 磁盘：数据目录的 `.tmp`（`cleanTmp`，被中断的写会被**搬进** `quarantine/` 而不是删掉）、
   组件的 `download/`（含续传用的 `.part`）与 `.component-staging/`。
+- 独立窗口那台 Chromium 的 profile：`detached/chromium/<hash>/`（`<hash>` 是 profileKey 的 sha256 前 16 位，
+  见 §1 与 data-directory.md）。里面只有 Cache / GPUCache / Code Cache / Local Storage，几 MB 到几十 MB，
+  下次开窗口重建一份空的；窗口的几何在 `detached/window.json`，会话、设置、壁纸都不在这一棵里。
+  `caches` 报 `detached-profile`，`profile` 是它的 `{ removed, bytes }`。
 - 派生文件：`content-index.v1.json`（§4.14）与 `sessions-manifest.v1.json`（§1 目录内容里那条，会话头与 projection facts 的上次答案）。
   两份都是"读过一遍就知道"的答案，删掉只让下一次启动重扫一遍会话（清单还会让本次
   进程的下一次列表从日志重新读，这正是内存缓存一起清掉的意义）；
@@ -709,9 +713,14 @@ host 做。仓库地址只在 `src/constants.js` 的 `REPO_URL` 写一次，API 
 
 组件正在 `downloading / verifying / extracting`，或状态文件读不出来时，后两项跳过，
 `skipped` 里报 `component-busy`——那正是它在用的目录，删一半等于让它下次从断点装坏。
+独立窗口**开着**时 profile 这一项整棵跳过，`skipped` 报 `window-open`：活着的 Chromium 占着自己那份
+profile，删一半留下的是一份谁都用不了的目录，等下一次比删一半正确。这个判断读的是
+`api.detachedOpen`（一个纯布尔），不是 `api.detached`：后者懒创建控制器，为一个判断把它建起来
+会顺带绑上控制口，用户只是清理缓存却收到一个 helper 控制器。
+
 `quarantine/`（用户自己的坏数据）、DSH 的 `storages/session_projcache` 和会话本身
-**从不**在这里被碰。浏览器缓存也不在其中：面板的 `/ui/*` 一律 `no-store`（§4.10），
-其余页面缓存属于 DSH 自己的渲染进程和独立窗口，不在插件手里。
+**从不**在这里被碰。DSH 渲染进程自己的页面缓存不在插件手里，面板的 `/ui/*` 一律
+`no-store`（§4.10）；独立窗口那份在插件手里，就是上面那一条。
 
 `GET /release-notes` 是「更新说明」弹窗的正文，而正文是**文档**，不是代码里的字符串
 （`src/domain/notes.js` + `src/host/changelog.js`）。改一次文案就是改一个 markdown 文件，

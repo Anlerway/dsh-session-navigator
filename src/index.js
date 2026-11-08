@@ -186,6 +186,16 @@ export function apply(ctx) {
     get detached() {
       return detachedFor();
     },
+    /**
+     * Whether a window is on screen, without creating the controller.
+     *
+     * The getter above builds one on first read (and binds its control
+     * socket), so anything that only needs the boolean — the cache sweep has
+     * to know whether a Chromium holds its profile — must ask here instead.
+     */
+    get detachedOpen() {
+      return detached?.running === true;
+    },
     /** The panel ↔ window command bus. */
     bridge,
     /** The last session states announced through that bus. */

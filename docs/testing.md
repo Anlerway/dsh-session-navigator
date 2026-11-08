@@ -52,7 +52,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/export.test.mjs` | 296 | 会话日志 → Markdown / JSONL：真实形状（`time`、`data.message.content`、独立 `tool/call` 事件、`source.kind`）才算数——助手回复与工具调用曾经因为读错字段整类消失；注入上下文与系统提示不进正文；压缩摘要与被替换片段**只报告、不丢弃** |
 | `test/summary-apply.test.mjs` | 103 | 直接驱动 `POST /summaries/:id/apply` 这个真实路由（用内存侧车代替磁盘）：描述**追加**在用户备注后面，不覆盖、重复点两次不会贴两遍、标签只并勾选的那几个并写进标签库、不勾等于全并、过期勾选回 `nothing-to-apply`、字段名不认识回 `bad-request`、记录里没有的字段不能应用 |
 | `test/summaries.test.mjs` | 921 | AI 字段而不联网：stub 掉 `llm` 服务，断言送进模型的**正文**（只有双方发言，思考过程与工具输出从不出现，超长时头 55% 尾 45%）、提示词只列被要的字段（关掉的字段不在契约里）、回答的解析与校验（围栏与前后废话都读得出来、缺字段算缺失、`reasoning` 块不影响正文、工具调用块旁边的文字照收、只有工具调用则重试后报 `llm/tool-only`）、“乱答重试一次且两次都记账、两次都败不落盘”、待补清单只看**描述与标签**（备注抵描述、手写标签抵标签、手改标题不算）、标签先裁到 8 字再去重、生成时先看已有标签库并把它写进提示词、`alignTags()` 把同义词归到库里已有的写法、`mergeNote()` 只追加，不覆盖、`pickTags()` 只并勾选的且过期勾选算拒绝、队列单飞与取消（已写好的保留、一条失败不拖垮整批）、重复入队只算一次、token 账本（失败的尝试也记 `runs`）、模型目录 TTL 与单 provider 失败隔离、`effort` 是适配器自己的词所以换模型就丢；每个拒绝码映射到的 HTTP 状态（401 / 409 / 413 / 422 / 429 / 501 / 未知 500） |
-| `test/detached-window.test.mjs` | 621 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案；借用那条路的三个接口：launcher 把 `appDir` 当第一个参数、Host 的 runtime thunk 带上 `appDir`、`GET /component/scan` 与 `component-borrow-invalid` → 400 |
+| `test/detached-window.test.mjs` | 674 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案；借用那条路的三个接口：launcher 把 `appDir` 当第一个参数、Host 的 runtime thunk 带上 `appDir`、`GET /component/scan` 与 `component-borrow-invalid` → 400；旧 key 的 Chromium profile 在启动前被扫掉 |
 | `test/detached-wallpaper.test.mjs` | 360 | 独立窗口借来的壁纸：media token 只有问过 inventory 才存在（宿主内存里那张表，重启就失效）、image / video / Scene 三种画法（Scene 退成宿主已经渲染好的那帧）、换壁纸只能靠轮询，且读的是整个 `/wallpaper-engine/settings`（id 在 `core`、亮度在 `appearance`，一次请求要两样）、DSH 没有壁纸插件时一层都不留、`?wallpaper=0` 连请求都不发；本插件的设置各管一段（关掉连问都不问、自定义图优先、三个百分比分别落在图片 / 面板 / 黑蒙版上：模糊度只算自己那层且不与插件的模糊相加，磨砂度写进面板的 `--panel-alpha`、0 时连底栏的 tint 一起消失，壁纸暗度写进 `--se-wallpaper-dim` 由 `::after` 那层读） |
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/component-dialog.test.mjs` | 198 | 缺 Electron 组件时点开的是安装器而不是一句话：弹窗的 kind 是 panel、正文就是设置页那个 ComponentPanel（下载 chip、借用扫描都在），打开独立窗口先 settle 再收面板 |
@@ -84,7 +84,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/panel-hooks.test.mjs` | 120 | 面板与 hook 的接缝：分片里每个 `useXxx()` 都有声明、hook 的 `return { … }` 覆盖调用方解构的每个名字、`onRename:` 交出去的符号确实来自某处；拆 hook 时漏一个 return 键会让面板一打开就落进 `.se-crash`（`renameEntity` 就是这么丢的） |
 | `test/reveal-agent-lifecycle.test.mjs` | 77 | 常驻的 reveal agent 不许拖住父进程：真开一个子进程预热、不调用 `process.exit`，20 秒内必须自己退出；去掉 `unref()` 时这条会挂 20 秒后报「the warm-up held the process open」，它钉的就是干净 checkout 里整套测试停在 453 的那个 bug |
 | `test/update.test.mjs` | 135 | 更新检查：数字段比较、release 解析、5 分钟缓存、失败码，不是假"已是最新" |
-| `test/about.test.mjs` | 236 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过） |
+| `test/about.test.mjs` | 308 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过，独立窗口的 Chromium profile 要关着窗口才清） |
 | `test/notes-gate.test.mjs` | 115 | 更新说明什么时候说、什么时候闭嘴：每个版本一次，没记过版本的机器首次也播；「已经说过」记在 host 的文件里，不是 localStorage（web GUI 每次启动换端口就是一个新的 origin，空存储会把公告变成每次开机都弹） |
 | `test/notes.test.mjs` | 156 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算，以及两者必须逐字一致——不一致说明发版会带上旧说明 |
 | `test/locale-parity.test.mjs` | 88 | `zh` 与 `en` 两份 `settings` 的键集合一致、占位符一致、英文标签放得下（另外六种语言由 `check-i18n.mjs` 校验）；设置页的 token 块必须自带 `--sm-danger` |
