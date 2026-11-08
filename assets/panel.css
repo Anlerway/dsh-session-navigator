@@ -70,6 +70,15 @@
   flex-direction: column;
   width: min(1100px, 92vw);
   height: min(720px, 88vh);
+  /* Centring in the viewport is only right when the whole viewport is ours.
+     On Windows DSH draws its own titlebar across the top, and the app
+     publishes where that chrome ends in --dsh-frame-overlay-top (clearance
+     plus 20 px). Capping the box against it keeps the panel's titlebar below
+     the app's window buttons instead of on top of them; the auto margins
+     around a fixed box then re-centre it in the smaller space. Percentage
+     presets read the window itself, so they replace this cap below: their box
+     starts at the chrome edge and runs to the bottom. */
+  max-height: calc(100vh - 2 * max(24px, var(--dsh-frame-overlay-top, 24px)));
   border-radius: 8px;
   border: 1px solid var(--sm-border);
   box-shadow: var(--sm-shadow);
@@ -89,7 +98,18 @@
 .se-shell[data-size="md"]{width:min(1100px,94vw);height:min(720px,90vh)}
 .se-shell[data-size="lg"]{width:min(1320px,94vw);height:min(820px,90vh)}
 .se-shell[data-size="xl"]{width:min(1600px,94vw);height:min(960px,90vh)}
-.se-shell[data-sizing="percent"]{width:var(--se-w);height:var(--se-h)}
+.se-shell[data-sizing="percent"]{
+  width: var(--se-w);
+  height: var(--se-h);
+  /* A percentage size is a share of the window, so it starts where the window's
+     own chrome ends (--dsh-frame-top-clearance is that edge, not the chrome plus
+     the usual 20 px breathing room) and runs to the bottom edge. Centring a
+     100vh box between two equal margins would leave a band of the app above and
+     below it, which is the thing "fill the window" is asking not to see. Fixed
+     presets keep the symmetric cap on .se-shell above. */
+  inset: var(--dsh-frame-top-clearance, 0px) 0 0;
+  max-height: calc(100vh - var(--dsh-frame-top-clearance, 0px));
+}
 .se-shell[data-sizing="percent"][data-size="p50"]{--se-w:50vw;--se-h:50vh}
 .se-shell[data-sizing="percent"][data-size="p70"]{--se-w:70vw;--se-h:70vh}
 .se-shell[data-sizing="percent"][data-size="p85"]{--se-w:85vw;--se-h:85vh}

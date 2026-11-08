@@ -376,6 +376,26 @@ test("the caption buttons fill the titlebar, so they read as its buttons and not
   assert.match(button, /width:\s*46px/);
   assert.match(button, /border-radius:\s*0/, "one square cell, the way a system caption is");
   assert.match(ruleOf(css, ".se-shell .titlebar {"), /padding-right:\s*138px/, "three 46 px cells, so the tabs stop exactly where they start");
+  // The floating panel is fixed to the whole window, so its auto margins centre
+  // it in space the DSH chrome already owns. The app publishes where that chrome
+  // ends; the cap has to read it, or a 90vh preset lands on the window buttons.
+  // .se-shell appears twice (theme tokens, then geometry); the fixed box is the one
+  // whose height this is about.
+  const shellAt = panel.search(/\.se-shell\{\s*position:\s*fixed/);
+  assert.notEqual(shellAt, -1, "the floating shell is a fixed box");
+  const shell = panel.slice(shellAt, panel.indexOf("}", shellAt));
+  assert.match(shell, /--dsh-frame-overlay-top/, "the cap follows the space DSH leaves, not the viewport");
+  assert.match(shell, /max-height:\s*calc\(100vh - 2 \* max\(/);
+  // A percentage panel is a share of the window, so it is not a centred dialog:
+  // it starts where the app's own content starts and reaches the bottom edge.
+  // AppFrame.module.css pads its frame by --dsh-windows-titlebar-height on
+  // Windows and publishes the same edge as --dsh-frame-top-clearance, so a
+  // 100vh box anchored there fills the window instead of leaving a band above
+  // and below. The 20 px of --dsh-frame-overlay-top is breathing room for
+  // overlays, which is the thing a "fill" choice asks not to see.
+  const percent = ruleOf(panel, '.se-shell[data-sizing="percent"]{');
+  assert.match(percent, /inset:\s*var\(--dsh-frame-top-clearance, 0px\) 0 0/, "the top edge is the chrome edge, not the viewport top");
+  assert.match(percent, /max-height:\s*calc\(100vh - var\(--dsh-frame-top-clearance, 0px\)\)/, "one clearance, not one on each side");
 });
 
 test("each caption button drives the frame", async () => {
