@@ -220,6 +220,7 @@
     "setCacheFreed": "Очищено, освобождено {size}.",
     "setCacheFreedNone": "Освобождать нечего.",
     "setCacheSkipped": "Компонент устанавливается; его папка загрузки пропущена.",
+    "setCacheWindowOpen": "Отдельное окно открыто, его кеш пропущен.",
     "setCacheFailed": "Очистка не удалась: {reason}",
     "setStar": "Поставьте звезду проекту — спасибо за поддержку",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

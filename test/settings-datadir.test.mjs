@@ -2,8 +2,9 @@
  * The 数据目录 group: where the folder lives, how big it is, and how the row
  * catches up after something else on the page moved bytes around.
  *
- * Its own file because the group crosses two others — 清理缓存 and the browser
- * component both change what is on disk, and the size row has to notice.
+ * Its own file because the size row has to notice that something else changed
+ * the directory — a clear pressed inside the group, or a component installed
+ * from the group below.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -41,6 +42,7 @@ test("数据目录 offers 还原至默认位置 only when there is a default to 
   assert.deepEqual(collect(dataGroup(away.tree), byClass("se-set-chip")).map(textOf), [
     "setDataDirRestore",
     "setDataDirChange",
+    "setCacheGo",
   ]);
 
   // Already home: nothing to restore.
@@ -57,7 +59,10 @@ test("数据目录 offers 还原至默认位置 only when there is a default to 
       contents: [],
     },
   });
-  assert.deepEqual(collect(dataGroup(home.tree), byClass("se-set-chip")).map(textOf), ["setDataDirChange"]);
+  assert.deepEqual(collect(dataGroup(home.tree), byClass("se-set-chip")).map(textOf), [
+    "setDataDirChange",
+    "setCacheGo",
+  ]);
 
   // Pinned by the environment: the button would be undone on the next start.
   const pinned = await renderSettings({
@@ -73,7 +78,10 @@ test("数据目录 offers 还原至默认位置 only when there is a default to 
       contents: [],
     },
   });
-  assert.deepEqual(collect(dataGroup(pinned.tree), byClass("se-set-chip")).map(textOf), ["setDataDirChange"]);
+  assert.deepEqual(collect(dataGroup(pinned.tree), byClass("se-set-chip")).map(textOf), [
+    "setDataDirChange",
+    "setCacheGo",
+  ]);
 });
 
 test("还原至默认位置 inspects the default folder and confirms it as a restore", async () => {
@@ -143,8 +151,8 @@ test("占用大小 follows 清理缓存 instead of keeping the number from mount
       tookMs: 3,
     },
   });
-  // One read on mount, and that is what the row would keep showing for the rest
-  // of the page's life: the clear lives in another group.
+  // One read on mount. The clear below the size row is what makes it read again:
+  // the button sits in this group, so the refresh is a plain call, not a token.
   assert.equal(sizeReads(calls), 1);
   const before = sizeText(tree);
 

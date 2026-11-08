@@ -220,6 +220,7 @@
     "setCacheFreed": "지움, {size} 확보.",
     "setCacheFreedNone": "확보할 것이 없다.",
     "setCacheSkipped": "컴포넌트를 설치하는 중이라 다운로드 폴더는 건너뛰었다.",
+    "setCacheWindowOpen": "독립 창이 열려 있어 그 캐시는 건너뛰었습니다.",
     "setCacheFailed": "지우기 실패: {reason}",
     "setStar": "프로젝트에 별을 눌러 주세요. 응원 감사합니다.",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

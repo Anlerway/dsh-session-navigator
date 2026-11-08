@@ -220,6 +220,7 @@
     "setCacheFreed": "Cleared, {size} freed.",
     "setCacheFreedNone": "Nothing to free.",
     "setCacheSkipped": "Component is installing; its download folder was skipped.",
+    "setCacheWindowOpen": "The detached window is open; its cache was skipped.",
     "setCacheFailed": "Clear failed: {reason}",
     "setStar": "Star the project, thanks for the support",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

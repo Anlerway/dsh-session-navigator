@@ -169,12 +169,16 @@
     // The data-directory group owns its own request cycle: a migration is a
     // long operation with a pre-flight the rest of the page has no business
     // knowing about, and a failure here must not blank the other settings.
+    // 清理缓存 lives here too: it frees bytes under this directory, so the size
+    // row right above it is the only honest place to report the result.
     function DataDirGroup({ t, current, onMigrated, saving, refreshToken }) {
       const [state, setState] = useState({ phase: "loading", data: null, error: "" });
       const [plan, setPlan] = useState(null);
       const [busy, setBusy] = useState("");
       const [error, setError] = useState("");
       const [note, setNote] = useState("");
+      const [cache, setCache] = useState({ phase: "idle", data: null, error: "" });
+      const [cleaning, setCleaning] = useState(false);
 
       const load = useCallback(async () => {
         try {
@@ -186,11 +190,30 @@
       }, []);
 
       // `refreshToken` is the page saying something under this directory moved —
-      // a component install, 清理缓存, 清除数据. The size row is this group's, so the
+      // a component install or 清除数据. The size row is this group's, so the
       // re-read happens here rather than in every group that can move bytes.
       useEffect(() => {
         load();
       }, [load, refreshToken]);
+
+      // 清理缓存 — the plugin's derived caches only; sessions, logs and the
+      // component download stay. Not a settings write, so no revision is cited:
+      // citing one would 409 a clear just because a switch was toggled in
+      // another window.
+      const clearCache = useCallback(async () => {
+        setCleaning(true);
+        setCache({ phase: "idle", data: null, error: "" });
+        try {
+          const data = await apiSend("POST", "/cache/clear", {}, { ifMatch: false });
+          setCache({ phase: "ready", data, error: "" });
+          // The size row above is the number this button changes; read it again.
+          await load();
+        } catch (failure) {
+          setCache({ phase: "error", data: null, error: String(failure?.message ?? failure) });
+        } finally {
+          setCleaning(false);
+        }
+      }, [load]);
 
       // The picker is a Host primitive on `uiWorkspace`; the desktop build routes
       // it to the native dialog through `__DSH_DIRECTORY_PICKER__`. Resolved at
@@ -266,6 +289,11 @@
 
       const data = state.data;
       const sizeText = data ? formatSize(data.sizeBytes) : "";
+      const freed = cache.data?.freedBytes ?? 0;
+      const skipped = Array.isArray(cache.data?.skipped) ? cache.data.skipped : [];
+      // Spelled out rather than counted: "1.2 MB" is what the user came for, and
+      // "0 B" reads as a failure when in fact there was nothing to clear.
+      const freedText = freed > 0 ? formatSize(freed) : "";
       // The confirmation under the row speaks the action the user asked for:
       // coming home is a restore, going anywhere else is a migration.
       const restoring = plan?.isDefault === true;
@@ -313,6 +341,35 @@
               { label: t("setDataDirSize") },
               h("span", { className: "se-set-path" }, sizeText || "-"),
               data.fromEnv ? h("span", { className: "se-set-hint" }, t("setEnvOverride")) : null,
+            )
+          : null,
+        h(
+          SetRow,
+          { label: t("setCacheClear"), hint: t("setCacheClearHint") },
+          h(
+            "button",
+            { type: "button", className: "se-set-chip", disabled: cleaning, onClick: clearCache },
+            cleaning ? t("setCacheClearing") : t("setCacheGo"),
+          ),
+        ),
+        cache.phase === "ready"
+          ? h(
+              "div",
+              { className: "se-set-row" },
+              h(
+                "div",
+                { className: "se-set-main" },
+                h("div", { className: "se-set-note" }, freedText ? t("setCacheFreed", { size: freedText }) : t("setCacheFreedNone")),
+                skipped.includes("component-busy") ? h("div", { className: "se-set-hint" }, t("setCacheSkipped")) : null,
+                skipped.includes("window-open") ? h("div", { className: "se-set-hint" }, t("setCacheWindowOpen")) : null,
+              ),
+            )
+          : null,
+        cache.phase === "error"
+          ? h(
+              "div",
+              { className: "se-set-row" },
+              h("div", { className: "se-set-main" }, h("div", { className: "se-set-err" }, t("setCacheFailed", { reason: cache.error }))),
             )
           : null,
         plan

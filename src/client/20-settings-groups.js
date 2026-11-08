@@ -492,19 +492,17 @@
     }
 
     // ── 关于 ───────────────────────────────────────────────────────────
-    // Four things that have nothing to do with how the panel looks: which build
-    // this is, whether a newer one exists, how to free what the plugin cached,
-    // and where the project lives. None of it touches the settings document, so
-    // none of it can leave one behind.
+    // Three things that have nothing to do with how the panel looks: which build
+    // this is, whether a newer one exists, and where the project lives. 清理缓存
+    // used to live here; it moved to 数据目录, because the bytes it frees are the
+    // ones that group measures. None of it touches the settings document.
     //
     // The update check and every link go through the host: api.github.com sends
     // no CORS headers, and the detached window's main process denies
     // window.open. The client only ever names a target — the host's allowlist
     // turns "star" into a URL.
-    function AboutGroup({ t, version, onDataChanged }) {
+    function AboutGroup({ t, version }) {
       const [check, setCheck] = useState({ phase: "idle", data: null, error: "" });
-      const [cache, setCache] = useState({ phase: "idle", data: null, error: "" });
-      const [cleaning, setCleaning] = useState(false);
       const [opening, setOpening] = useState("");
       const [linkError, setLinkError] = useState("");
       const [notes, setNotes] = useState({ phase: "idle", data: null, error: "" });
@@ -520,22 +518,6 @@
         }
       }, []);
 
-      const clearCache = useCallback(async () => {
-        setCleaning(true);
-        setCache({ phase: "idle", data: null, error: "" });
-        try {
-          // Not a settings write: no revision to cite, and citing one would
-          // 409 a clear just because a switch was toggled in another window.
-          const data = await apiSend("POST", "/cache/clear", {}, { ifMatch: false });
-          setCache({ phase: "ready", data, error: "" });
-          // The bytes just freed were counted by the data-directory group.
-          onDataChanged?.();
-        } catch (failure) {
-          setCache({ phase: "error", data: null, error: String(failure?.message ?? failure) });
-        } finally {
-          setCleaning(false);
-        }
-      }, [onDataChanged]);
 
       const open = useCallback(async (target) => {
         setOpening(target);
@@ -567,11 +549,7 @@
 
       const versionText = version ? "v" + String(version).replace(/^v/i, "") : "-";
       const update = check.data;
-      const freed = cache.data?.freedBytes ?? 0;
-      const skipped = Array.isArray(cache.data?.skipped) ? cache.data.skipped : [];
-      // Spelled out rather than counted: "1.2 MB" is what the user came for, and
-      // "0 B" reads as a failure when in fact there was nothing to clear.
-      const freedText = freed > 0 ? formatSize(freed) : "";
+
 
       return h(
         "div",
@@ -643,39 +621,6 @@
             )
           : null,
 
-        h(
-          SetRow,
-          { label: t("setCacheClear"), hint: t("setCacheClearHint") },
-          h(
-            "button",
-            {
-              type: "button",
-              className: "se-set-chip",
-              disabled: cleaning,
-              onClick: clearCache,
-            },
-            cleaning ? t("setCacheClearing") : t("setCacheGo"),
-          ),
-        ),
-        cache.phase === "ready"
-          ? h(
-              "div",
-              { className: "se-set-row" },
-              h(
-                "div",
-                { className: "se-set-main" },
-                h("div", { className: "se-set-note" }, freedText ? t("setCacheFreed", { size: freedText }) : t("setCacheFreedNone")),
-                skipped.includes("component-busy") ? h("div", { className: "se-set-hint" }, t("setCacheSkipped")) : null,
-              ),
-            )
-          : null,
-        cache.phase === "error"
-          ? h(
-              "div",
-              { className: "se-set-row" },
-              h("div", { className: "se-set-main" }, h("div", { className: "se-set-err" }, t("setCacheFailed", { reason: cache.error }))),
-            )
-          : null,
 
         h(
           SetRow,

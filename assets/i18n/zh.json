@@ -220,6 +220,7 @@
     "setCacheFreed": "已清理，释放 {size}。",
     "setCacheFreedNone": "没有可释放的空间。",
     "setCacheSkipped": "组件正在安装，这次跳过它的下载目录。",
+    "setCacheWindowOpen": "独立窗口还开着，这次跳过它的缓存。",
     "setCacheFailed": "清理失败：{reason}",
     "setStar": "给项目点个 Star，感谢您的支持",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

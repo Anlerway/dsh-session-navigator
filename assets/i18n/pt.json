@@ -220,6 +220,7 @@
     "setCacheFreed": "Limpado, {size} liberados.",
     "setCacheFreedNone": "Nada para liberar.",
     "setCacheSkipped": "O componente está instalando; a pasta de download dele foi ignorada.",
+    "setCacheWindowOpen": "A janela independente está aberta, o cache dela foi ignorado.",
     "setCacheFailed": "A limpeza falhou: {reason}",
     "setStar": "Dê uma estrela ao projeto — obrigado pelo apoio",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

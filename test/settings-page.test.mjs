@@ -43,6 +43,34 @@ test("打开方式 is the first group on the page, with 浮窗 selected", async 
   assert.equal(chips[1].props.title, "setOpenDetachedBlocked");
 });
 
+test("the page walks from the entry down to the one group that cannot be undone", async () => {
+  const { tree } = await renderSettings();
+  const order = [
+    "setGroupOpen",
+    "setGroupDisplay",
+    "setGroupHeader",
+    "setGroupList",
+    "setGroupSearch",
+    "setGroupAi",
+    "setGroupModal",
+    "setGroupWallpaper",
+    "setGroupComponent",
+    "setGroupData",
+    "setGroupAbout",
+    "setGroupDanger",
+  ];
+  // A heading can carry a hint of its own (the component group does), so match
+  // the key it starts with instead of the whole text.
+  const headings = collect(tree, byClass("se-set-grp")).map((group) => {
+    const heading = textOf(collect(group, byClass("se-set-h"))[0]);
+    return order.find((key) => heading.startsWith(key)) ?? heading;
+  });
+  // 打开方式 first because it is what every press of the entry feels; 清理缓存
+  // sits with 数据目录, whose size row it changes; 危险操作 alone at the bottom.
+  assert.deepEqual(headings, order);
+  assert.equal(collect(tree, byClass("se-set-grp")).length, order.length);
+});
+
 test("picking 独立弹窗 saves the mode and nothing else", async () => {
   const { tree, calls, driver, api, t } = await renderSettings({ mode: "panel", component: "ready" });
   const chips = collect(tree, byClass("se-set-chip"));
@@ -135,6 +163,10 @@ test("显示 offers 详细日期 / 距今时间 and 自动转换 / 固定 KB, ea
  *  it by its heading instead of by position. */
 const aboutGroup = (tree) => collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupAbout"));
 
+/** The 数据目录 group. 清理缓存 lives in it now: the bytes it frees are the ones
+ *  the size row above it measures. */
+const dataGroup = (tree) => collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupData"));
+
 const chipLabelled = (tree, key) => collect(tree, byClass("se-set-chip")).find((chip) => textOf(chip) === key);
 
 /** The 更新说明 document body, once its dialog is up. */
@@ -148,11 +180,11 @@ test("关于 prints the build it is running", async () => {
   const about = aboutGroup(tree);
   assert.match(textOf(about), /setGroupAbout/);
   assert.equal(textOf(collect(about, byClass("se-set-ver"))[0]), "v1.0.0");
-  // Five things to press, in the order the group explains them: the check, the
-  // notes, the clear, and the two pages the project lives on.
+  // Four things to press, in the order the group explains them: the check, the
+  // notes, and the two pages the project lives on. 清理缓存 left for 数据目录.
   assert.deepEqual(
     collect(about, byClass("se-set-chip")).map(textOf),
-    ["setCheckUpdate", "setNotesOpen", "setCacheGo", "setStarGo", "setIssueGo"],
+    ["setCheckUpdate", "setNotesOpen", "setStarGo", "setIssueGo"],
   );
   // Nothing is asked of GitHub until the user presses the button: a settings
   // page that phones home on open is a settings page people remove.
@@ -239,9 +271,31 @@ test("清理缓存 reports what came back, and skips a download in flight", asyn
   assert.equal(cleared.headers["if-match"], undefined);
 
   const after = await driver.settle(() => page(driver, api, t));
-  const text = textOf(aboutGroup(after));
+  const text = textOf(dataGroup(after));
   assert.match(text, /setCacheFreed/);
   assert.match(text, /setCacheSkipped/, "a busy component's download directory is skipped, not deleted");
+});
+
+test("清理缓存 says why the window's profile was left alone", async () => {
+  const { tree, driver, api, t } = await renderSettings({
+    clear: {
+      freedBytes: 900,
+      caches: ["sessions"],
+      tmp: { removed: 1, bytes: 900 },
+      downloads: { removed: 0, bytes: 0 },
+      staging: { removed: 0, bytes: 0 },
+      profile: { removed: 0, bytes: 0 },
+      skipped: ["window-open"],
+      tookMs: 3,
+    },
+  });
+  chipLabelled(tree, "setCacheGo").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const text = textOf(dataGroup(after));
+  assert.match(text, /setCacheWindowOpen/, "an open window is named, not silently left out");
+  assert.ok(!/setCacheSkipped/.test(text), "and it is not reported as a component install");
 });
 
 test("Star opens the repository through the host", async () => {

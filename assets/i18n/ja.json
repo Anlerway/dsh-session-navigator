@@ -220,6 +220,7 @@
     "setCacheFreed": "削除した。{size} を解放。",
     "setCacheFreedNone": "解放できるものがない。",
     "setCacheSkipped": "コンポーネントのインストール中なので、そのダウンロード先は飛ばした。",
+    "setCacheWindowOpen": "独立ウィンドウが開いているため、そのキャッシュはスキップしました。",
     "setCacheFailed": "削除に失敗：{reason}",
     "setStar": "プロジェクトに Star を。ご支援ありがとうございます。",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

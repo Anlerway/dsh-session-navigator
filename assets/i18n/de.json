@@ -220,6 +220,7 @@
     "setCacheFreed": "Geleert, {size} freigegeben.",
     "setCacheFreedNone": "Nichts freizugeben.",
     "setCacheSkipped": "Die Komponente wird installiert; ihr Download-Ordner wurde übersprungen.",
+    "setCacheWindowOpen": "Das abgelöste Fenster ist offen, sein Cache wurde ausgelassen.",
     "setCacheFailed": "Leeren fehlgeschlagen: {reason}",
     "setStar": "Gib dem Projekt einen Stern – danke für die Unterstützung",
     "setStarHint": "github.com/Anlerway/dsh-session-navigator",

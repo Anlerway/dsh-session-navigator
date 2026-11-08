@@ -259,7 +259,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 | 插槽 | id | order | 组件 | 作用 |
 |---|---|---|---|---|
 | `sidebar.footer.action` | `session-navigator-footer` | 40 | `FooterAction` | 侧栏底部入口，开/关浮窗 |
-| `settings.section` | `session-navigator` | 510 | `SettingsSection` | 设置页分组（label 是 thunk，跟随语言）；组序 打开方式 → 列表 → 会话界面 → 浮窗 → Electron 组件 → 数据目录 → 关于 → 危险操作 |
+| `settings.section` | `session-navigator` | 510 | `SettingsSection` | 设置页分组（label 是 thunk，跟随语言）；组序 打开方式 → 显示 → 会话界面 → 列表 → 搜索索引 → AI 字段 → 浮窗 → 独立窗口美化 → Electron 组件 → 数据目录 → 关于 → 危险操作 |
 | `settings.onboarding` | `session-navigator-opener` | 900 | 匿名 | 只为拿到 `openSection` 后立即 `complete()`，不留 UI |
 | `conversation.session.header.actions` | `session-navigator-header` | 60 | `SessionHeaderActions` | 会话标题栏五个按钮（样式跟随设置 `shell.header.style`） |
 | `sidebar.workspaces.session.menu.item` | `session-navigator-rows` | 500 | `SessionMenuItems` | 会话行 "…" 菜单两条 |

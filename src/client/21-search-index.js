@@ -665,66 +665,6 @@
             : null,
         ),
 
-        // 独立窗口美化 — the picture under the panel. Only the detached window
-        // has one: inside DSH the panel is a layer over DSH's own surface, so
-        // the group says so instead of pretending the switch does something
-        // there.
-        h(WallpaperGroup, { t, settings, save, saving, onChanged: load }),
-
-        // 列表 — the two switches the 更多 menu also toggles. They live here as
-        // the full explanation; the menu is a shortcut to the same document.
-        h(
-          "div",
-          { className: "se-set-grp" },
-          h("div", { className: "se-set-h" }, t("setGroupList")),
-          h(
-            SetRow,
-            { label: t("setAutoCollapse"), hint: t("setAutoCollapseHint") },
-            h(SetSwitch, {
-              on: settings.list.autoCollapse,
-              disabled: saving,
-              title: t("setAutoCollapse"),
-              onToggle: (autoCollapse) => save({ list: { autoCollapse } }),
-            }),
-          ),
-          h(
-            SetRow,
-            { label: t("setShowArchived"), hint: t("setShowArchivedHint") },
-            h(SetSwitch, {
-              on: settings.list.showArchived,
-              disabled: saving,
-              title: t("setShowArchived"),
-              onToggle: (showArchived) => save({ list: { showArchived } }),
-            }),
-          ),
-          // 过滤空会话 — a session that never started a turn is not a
-          // conversation: it is what closing the window before typing leaves
-          // behind, and it only pads the list. On by default.
-          h(
-            SetRow,
-            { label: t("setHideBlank"), hint: t("setHideBlankHint") },
-            h(SetSwitch, {
-              on: hideBlank,
-              disabled: saving,
-              title: t("setHideBlank"),
-              onToggle: (value) => save({ list: { hideBlank: value } }),
-            }),
-          ),
-          // 折叠子智能体 — the children of a delegation are not sessions the user
-          // can act on, so they fold under the parent by default. Off keeps the
-          // whole subtree visible for a reader who wants to watch the run.
-          h(
-            SetRow,
-            { label: t("setSubagents"), hint: t("setSubagentsHint") },
-            h(SetSwitch, {
-              on: collapseSubagents,
-              disabled: saving,
-              title: t("setSubagents"),
-              onToggle: (value) => save({ list: { collapseSubagents: value } }),
-            }),
-          ),
-        ),
-
         // 显示 — how a row spells what it already knows: a timestamp and a size.
         // Neither setting changes what the panel reads, only how it is written,
         // so they sit together and stay out of the 列表 group.
@@ -785,16 +725,6 @@
           ),
         ),
 
-        // 搜索索引 — 会话内容的 index: whether it is kept, built while idle, rebuilt
-        // now, or dropped. Placed with 显示 because both are about the reading
-        // of the list rather than about the shell it sits in.
-        h(IndexGroup, { t, settings, saving, save }),
-
-        // AI 字段 — sits next to 搜索索引 because both are about
-        // reading the library rather than about how the panel looks: one reads
-        // the logs to search them, the other reads them to write a summary.
-        h(SummaryGroup, { t, settings, saving, save }),
-
         // 会话界面 — how the five buttons this plugin adds to DSH's conversation
         // header are labelled. 自动 is the shipped responsive rule (words while
         // they fit); 仅显示图标 is for users who know the glyphs.
@@ -817,6 +747,72 @@
           ),
         ),
 
+        // 列表 — the two switches the 更多 menu also toggles. They live here as
+        // the full explanation; the menu is a shortcut to the same document.
+        h(
+          "div",
+          { className: "se-set-grp" },
+          h("div", { className: "se-set-h" }, t("setGroupList")),
+          h(
+            SetRow,
+            { label: t("setAutoCollapse"), hint: t("setAutoCollapseHint") },
+            h(SetSwitch, {
+              on: settings.list.autoCollapse,
+              disabled: saving,
+              title: t("setAutoCollapse"),
+              onToggle: (autoCollapse) => save({ list: { autoCollapse } }),
+            }),
+          ),
+          h(
+            SetRow,
+            { label: t("setShowArchived"), hint: t("setShowArchivedHint") },
+            h(SetSwitch, {
+              on: settings.list.showArchived,
+              disabled: saving,
+              title: t("setShowArchived"),
+              onToggle: (showArchived) => save({ list: { showArchived } }),
+            }),
+          ),
+          // 过滤空会话 — a session that never started a turn is not a
+          // conversation: it is what closing the window before typing leaves
+          // behind, and it only pads the list. On by default.
+          h(
+            SetRow,
+            { label: t("setHideBlank"), hint: t("setHideBlankHint") },
+            h(SetSwitch, {
+              on: hideBlank,
+              disabled: saving,
+              title: t("setHideBlank"),
+              onToggle: (value) => save({ list: { hideBlank: value } }),
+            }),
+          ),
+          // 折叠子智能体 — the children of a delegation are not sessions the user
+          // can act on, so they fold under the parent by default. Off keeps the
+          // whole subtree visible for a reader who wants to watch the run.
+          h(
+            SetRow,
+            { label: t("setSubagents"), hint: t("setSubagentsHint") },
+            h(SetSwitch, {
+              on: collapseSubagents,
+              disabled: saving,
+              title: t("setSubagents"),
+              onToggle: (value) => save({ list: { collapseSubagents: value } }),
+            }),
+          ),
+        ),
+
+        // 搜索索引 — 会话内容的 index: whether it is kept, built while idle, rebuilt
+        // now, or dropped. Sits right under 列表 because both are about reading
+        // the list rather than about the shell the panel sits in.
+        h(IndexGroup, { t, settings, saving, save }),
+
+        // AI 字段 — sits next to 搜索索引 because both are about
+        // reading the library rather than about how the panel looks: one reads
+        // the logs to search them, the other reads them to write a summary.
+        h(SummaryGroup, { t, settings, saving, save }),
+
+        // 浮窗 — how the panel's own dialog is sized, dimmed and closed.
+        // Four limits that only matter once a panel is on screen.
         h(
           "div",
           { className: "se-set-grp" },
@@ -885,6 +881,12 @@
           ),
         ),
 
+        // 独立窗口美化 — the picture under the panel. Only the detached window
+        // has one: inside DSH the panel is a layer over DSH's own surface, so
+        // the group says so instead of pretending the switch does something
+        // there.
+        h(WallpaperGroup, { t, settings, save, saving, onChanged: load }),
+
         // Electron 组件 — the optional Electron runtime 独立窗口 needs. Its own
         // section, because it carries weight and a progress bar that must not be
         // mixed into the presentation switches.
@@ -912,14 +914,14 @@
 
         h(DataDirGroup, { t, current: actualDir, onMigrated: load, saving, refreshToken: dataTick }),
 
-        // 关于 — which build this is, whether a newer one exists, what can be
-        // freed, and where the project lives. Last, because it is the only group
-        // that is not about how the panel behaves.
-        h(AboutGroup, { t, version: boot.data?.version ?? "", onDataChanged: bumpData }),
+        // 关于 — which build this is, whether a newer one exists, and where the
+        // project lives. Second to last: every group above describes how the
+        // panel behaves, and the one below is the only thing that cannot be undone.
+        h(AboutGroup, { t, version: boot.data?.version ?? "" }),
 
         // 危险操作 — its own section, last, because it is the only thing on this
-        // page that cannot be undone and it must not sit next to a chip that
-        // merely frees some cache.
+        // page that cannot be undone. Nothing else here shares that property, so
+        // it gets the bottom of the page to itself.
         h(DangerGroup, {
           t,
           onReset: () => {

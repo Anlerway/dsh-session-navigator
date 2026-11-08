@@ -64,7 +64,7 @@ test("English copy stays short enough for a settings row", () => {
     "setResetTyped", "setResetCancel", "setResetConfirm", "setResetBusy", "setResetDone",
   ];
   const HINTS = [
-    "setCacheClearHint", "setCacheSkipped", "setCacheFailed", "setStarHint",
+    "setCacheClearHint", "setCacheSkipped", "setCacheWindowOpen", "setCacheFailed", "setStarHint",
     "setUpdateFailed", "setLinkFailed", "setResetHint", "setResetFailed",
   ];
   const tooLong = [
