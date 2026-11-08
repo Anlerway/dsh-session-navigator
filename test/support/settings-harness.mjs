@@ -11,6 +11,12 @@ import { loadClientBundle, recordingFetch } from "./client-bundle.mjs";
 
 export const EXPOSE = ["SettingsSection"];
 
+/** Shallow dependency comparison; functions are never news. */
+function sameDeps(previous, next) {
+  if (previous.length !== next.length) return false;
+  return previous.every((value, index) => Object.is(value, next[index]) || (typeof value === "function" && typeof next[index] === "function"));
+}
+
 /**
  * A React stand-in with working state.
  *
@@ -20,7 +26,7 @@ export const EXPOSE = ["SettingsSection"];
  */
 export function makeReact() {
   const scopes = new Map();
-  const ranEffects = new Set();
+  const effectDeps = new Map();
   let cursor = 0;
   let cells = [];
   let pending = [];
@@ -63,12 +69,16 @@ export function makeReact() {
       };
       return [cell.value, set];
     },
-    useEffect: (effect) => {
-      const index = readIndex();
-      // Once per component, like `[]` deps — the one effect in this page that
-      // would loop is the one guarded by a `[]` dependency list.
-      if (ranEffects.has(cells.scope + ":" + index)) return;
-      ranEffects.add(cells.scope + ":" + index);
+    useEffect: (effect, deps) => {
+      const key = cells.scope + ":" + readIndex();
+      // Dependencies are compared the way React compares them, except that two
+      // functions always count as equal: this stand-in keeps a callback's first
+      // identity, so a `[load]` list would otherwise re-run on every paint. An
+      // omitted list means `[]`, which is what the page means by it.
+      const list = Array.isArray(deps) ? deps : [];
+      const previous = effectDeps.get(key);
+      if (previous && sameDeps(previous, list)) return;
+      effectDeps.set(key, list);
       pending.push(effect);
     },
     useLayoutEffect: (effect) => React.useEffect(effect),
@@ -454,10 +464,14 @@ export async function renderSettings({
         : { ok: false, code: "update-unreachable", error: "GitHub is not reachable" };
     }
     if (path === "/cache/clear") {
-      return {
-        ok: true,
-        result: clear ?? { freedBytes: 0, caches: [], tmp: { removed: 0, bytes: 0 }, downloads: { removed: 0, bytes: 0 }, staging: { removed: 0, bytes: 0 }, skipped: [], tookMs: 1 },
-      };
+      const result = clear ?? { freedBytes: 0, caches: [], tmp: { removed: 0, bytes: 0 }, downloads: { removed: 0, bytes: 0 }, staging: { removed: 0, bytes: 0 }, manifest: { removed: 0, bytes: 0 }, skipped: [], tookMs: 1 };
+      // A real clear takes the bytes out of the data directory, which is what the
+      // 占用大小 row reads back: the stub has to shrink by as much or the refresh
+      // has nothing to show.
+      if (result.ok !== false && dataDir && typeof dataDir.sizeBytes === "number") {
+        dataDir = { ...dataDir, sizeBytes: Math.max(0, dataDir.sizeBytes - (result.freedBytes ?? 0)) };
+      }
+      return { ok: true, result };
     }
     if (path === "/release-notes") {
       if (notes && notes.ok === false) return notes;

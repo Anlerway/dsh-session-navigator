@@ -9,7 +9,9 @@
  *   - `.tmp/` leftovers from atomic writes interrupted by a crash;
  *   - partial browser-component downloads (`component/download/`) and staging
  *     trees from a cancelled install, which are the only *large* files this
- *     plugin ever writes.
+ *     plugin ever writes;
+ *   - `sessions-manifest.v1.json` and the 会话内容 index: both are read off the
+ *     logs, so keeping them is an optimisation and dropping them costs one scan.
  *
  * It deliberately does not touch:
  *
@@ -148,7 +150,7 @@ export function invalidateMemory(api) {
  * Clear every cache this plugin owns.
  *
  * @param {any} api
- * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, skipped: string[], tookMs: number }>}
+ * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, manifest: { removed: number, bytes: number }, skipped: string[], tookMs: number }>}
  */
 export async function clearCaches(api) {
   const started = Date.now();
@@ -217,12 +219,38 @@ export async function clearCaches(api) {
     /* an index that cannot be dropped still answers from memory */
   }
 
+  // 会话清单. Headers and projection facts, all re-derivable from the logs, and
+  // the biggest thing the plugin itself writes after the component. Reading it
+  // is what lets a start skip decoding every file, so deleting it is a real
+  // trade: one full scan later for the bytes back now.
+  let manifest = { removed: 0, bytes: 0 };
+  const manifestPath = typeof api?.paths?.manifest === "string" ? api.paths.manifest : "";
+  const manifestBytes = sizeOf(manifestPath);
+  if (manifestBytes > 0) {
+    // The mirror has to let go first: a quiet-window write that is already armed,
+    // or the flush on the way out, would put the file straight back and hand the
+    // user the bytes they just freed.
+    try {
+      api?.reader?.forgetManifest?.();
+    } catch {
+      /* a reader that cannot forget still has a file this clear can delete */
+    }
+    try {
+      rmSync(manifestPath, { force: true });
+      manifest = { removed: 1, bytes: manifestBytes };
+      caches.push("sessions-manifest");
+    } catch {
+      skipped.push("manifest-in-use");
+    }
+  }
+
   return {
-    freedBytes: tmp.bytes + downloads.bytes + staging.bytes + content.freedBytes,
+    freedBytes: tmp.bytes + downloads.bytes + staging.bytes + content.freedBytes + manifest.bytes,
     caches,
     tmp,
     downloads,
     staging,
+    manifest,
     skipped,
     tookMs: Date.now() - started,
   };

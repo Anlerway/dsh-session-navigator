@@ -337,6 +337,46 @@ test("the mirror forgets a session the walk no longer finds", async () => {
   }
 });
 
+test("a forgotten mirror is not written back", async () => {
+  const home = await mkdtemp(join(tmpdir(), "manifest-"));
+  const dataDir = await mkdtemp(join(tmpdir(), "manifest-data-"));
+  try {
+    const tmpDir = join(dataDir, ".tmp");
+    await mkdir(tmpDir, { recursive: true });
+    const manifestPath = join(dataDir, "sessions-manifest.v1.json");
+    await writeSession(home, "s-1");
+
+    const reader = createReader({
+      dshHome: () => home,
+      manifestPath: () => manifestPath,
+      manifestTmpDir: () => tmpDir,
+      // A window short enough that a write would land inside this test.
+      manifestQuietMs: 40,
+      manifestMaxDelayMs: 40,
+    });
+    await reader.snapshot();
+    await reader.flushManifest();
+    assert.equal(await exists(manifestPath), true);
+
+    // 清理缓存 deletes the file; the mirror has to let go, or the quiet window
+    // and the flush on the way out put it straight back.
+    await rm(manifestPath);
+    reader.forgetManifest();
+    await delay(120);
+    assert.equal(await exists(manifestPath), false, "nothing wrote it back");
+    assert.equal(await reader.flushManifest(), false, "and the shutdown flush is a no-op");
+
+    // A scan refills the mirror, and the next window writes the file again —
+    // forgetting is not a permanent mute.
+    await reader.snapshot({ refresh: true });
+    assert.equal(await reader.flushManifest(), true);
+    assert.equal(await exists(manifestPath), true);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("a damaged manifest is an empty one, never an error", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "manifest-data-"));
   try {

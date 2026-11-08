@@ -610,7 +610,7 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 | `GET /update` | `?force=1` 跳过 5 分钟缓存 | `{ current, latest, hasUpdate, url, name, publishedAt, notes, checkedAt }` |
 | `GET /version` | — | `{ build, version }` |
 | `POST /about/open` | `{ target }` | `{ target, url, opened: true }` |
-| `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, skipped, tookMs }` |
+| `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, manifest, skipped, tookMs }` |
 | `GET /release-notes` | — | `{ title, blocks, bytes, updatedAt, version, seen }` |
 | `POST /release-notes/seen` | `{ version }` | `{ version }`（写进去的记录；空版本是 no-op） |
 
@@ -643,6 +643,18 @@ host 做。仓库地址只在 `src/constants.js` 的 `REPO_URL` 写一次，API 
 - 内存：`reader.invalidate()`、`clearLogFacts()`、各侧车的 `invalidate()`。
 - 磁盘：数据目录的 `.tmp`（`cleanTmp`，被中断的写会被**搬进** `quarantine/` 而不是删掉）、
   组件的 `download/`（含续传用的 `.part`）与 `.component-staging/`。
+- 派生文件：`content-index.v1.json`（§4.14）与 `sessions-manifest.v1.json`（§1 目录内容里那条，会话头与 projection facts 的上次答案）。
+  两份都是"读过一遍就知道"的答案，删掉只让下一次启动重扫一遍会话（清单还会让本次
+  进程的下一次列表从日志重新读，这正是内存缓存一起清掉的意义）；
+  `caches` 里分别报 `content-index` 与 `sessions-manifest`，`manifest` 是后者的
+  `{ removed, bytes }`。
+
+清单那一项要分两步看：文件删得掉，**内存里的镜像**也必须放手。否则安静窗口里已经排好的
+那次写、以及进程退出时的 `flushManifest()`，都会把文件原样写回去，用户刚看到释放的字节
+又长回来。所以 `clearCaches` 在 `rm` 之前调 `reader.forgetManifest()`：清空 logs/facts、
+取消定时器，并让 `flushManifest()` 返回 `false`（下一次 `snapshot()` 重新填满镜像之后，
+写回才恢复正常）。`invalidate()` **不**做这件事——它挂在每次 storage 事件上，在那儿丢掉
+镜像等于每次事件后重扫。删不掉（被扫描器占着）时 `skipped` 报 `manifest-in-use`。
 
 组件正在 `downloading / verifying / extracting`，或状态文件读不出来时，后两项跳过，
 `skipped` 里报 `component-busy`——那正是它在用的目录，删一半等于让它下次从断点装坏。

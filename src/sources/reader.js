@@ -361,7 +361,7 @@ export function createReader(options) {
    * miss, never lie — and `invalidate()` runs on every storage event, so
    * dropping it would re-read the file for an answer it already had.
    *
-   * @type {{ path: string | null, ready: Promise<void> | null, logs: Map<string, any>, facts: Map<string, any>, timer: any, writing: Promise<boolean> | null, dirty: boolean, dirtySince: number }}
+   * @type {{ path: string | null, ready: Promise<void> | null, logs: Map<string, any>, facts: Map<string, any>, timer: any, writing: Promise<boolean> | null, dirty: boolean, dirtySince: number, forgotten: boolean }}
    */
   const manifest = {
     path: null,
@@ -371,6 +371,9 @@ export function createReader(options) {
     timer: null,
     writing: null,
     dirty: false,
+    // Set by `forgetManifest()`: the file is gone because the user cleared the
+    // caches, so nothing may write it back until a scan fills the mirror again.
+    forgotten: false,
     // When the oldest change still missing from the file happened, 0 for none.
     // The quiet window restarts on every change; this one does not, which is
     // what turns "wait for calm" into a bounded wait.
@@ -448,6 +451,7 @@ export function createReader(options) {
       next.set(logPath, record);
     }
     known.logs = next;
+    known.forgotten = false;
     if (dirty) markDirty(known);
   }
 
@@ -478,6 +482,7 @@ export function createReader(options) {
       if (!prior || prior.version !== record.version || !sameVersion(prior, record)) dirty = true;
     }
     known.facts = next;
+    known.forgotten = false;
     if (dirty) markDirty(known);
   }
 
@@ -524,6 +529,9 @@ export function createReader(options) {
     const known = manifest;
     const path = known.path;
     if (!path) return false;
+    // The file was deleted on purpose and nothing has been read since: writing
+    // an empty one back would leave the user a manifest that holds no answers.
+    if (known.forgotten) return false;
     if (known.timer !== null) {
       clearTimeout(known.timer);
       known.timer = null;
@@ -615,6 +623,28 @@ export function createReader(options) {
       // Nobody joins a read that began before this bump; the callers already
       // waiting on it keep their (pre-bump) answer, as before.
       baseInflight = null;
+    },
+    /**
+     * Let go of the mirror, so a deleted manifest stays deleted.
+     *
+     * 清理缓存 takes `sessions-manifest.v1.json`; without this the pending
+     * quiet-window write — and the flush on shutdown — would put it straight
+     * back, and the user would watch the bytes they just freed return. The next
+     * scan fills the mirror again and the next quiet window writes it.
+     *
+     * Deliberately not part of `invalidate()`: that runs on every storage event,
+     * and a mirror dropped there would be rewritten after each one.
+     */
+    forgetManifest() {
+      if (manifest.timer !== null) {
+        clearTimeout(manifest.timer);
+        manifest.timer = null;
+      }
+      manifest.logs = new Map();
+      manifest.facts = new Map();
+      manifest.dirty = false;
+      manifest.dirtySince = 0;
+      manifest.forgotten = true;
     },
     get headerCacheAge() {
       return headerCache ? Date.now() - headerCache.at : null;

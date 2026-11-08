@@ -169,7 +169,7 @@
     // The data-directory group owns its own request cycle: a migration is a
     // long operation with a pre-flight the rest of the page has no business
     // knowing about, and a failure here must not blank the other settings.
-    function DataDirGroup({ t, current, onMigrated, saving }) {
+    function DataDirGroup({ t, current, onMigrated, saving, refreshToken }) {
       const [state, setState] = useState({ phase: "loading", data: null, error: "" });
       const [plan, setPlan] = useState(null);
       const [busy, setBusy] = useState("");
@@ -185,9 +185,12 @@
         }
       }, []);
 
+      // `refreshToken` is the page saying something under this directory moved —
+      // a component install, 清理缓存, 清除数据. The size row is this group's, so the
+      // re-read happens here rather than in every group that can move bytes.
       useEffect(() => {
         load();
-      }, [load]);
+      }, [load, refreshToken]);
 
       // The picker is a Host primitive on `uiWorkspace`; the desktop build routes
       // it to the native dialog through `__DSH_DIRECTORY_PICKER__`. Resolved at

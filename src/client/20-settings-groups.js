@@ -18,7 +18,7 @@
       return phase === "downloading" || phase === "verifying" || phase === "extracting";
     }
 
-    function ComponentPanel({ t, component, onChanged, onOpened }) {
+    function ComponentPanel({ t, component, onChanged, onDataChanged, onOpened }) {
       const [status, setStatus] = useState(component ?? null);
       const [busy, setBusy] = useState("");
       const [note, setNote] = useState("");
@@ -64,6 +64,10 @@
           const path = kind === "install" ? "/component/install" : `/component/${kind}`;
           const result = await apiSend("POST", path, {});
           apply(result);
+          // An install lands ~150 MB inside the data directory and a remove takes
+          // it away; the 占用大小 row in the next group has to stop saying the old
+          // number.
+          onDataChanged?.();
           // A remove can succeed as an uninstall while a locked file survives on
           // disk — a scanner or an indexer can hold one for a moment. That is not
           // an error: the leftovers are swept on the next start, and a reinstall
@@ -80,7 +84,7 @@
         } finally {
           setBusy("");
         }
-      }, [apply, load, t]);
+      }, [apply, load, onDataChanged, t]);
 
       const openDetached = useCallback(async () => {
         setBusy("open");
@@ -122,6 +126,9 @@
         setNote("");
         try {
           apply(await apiSend("POST", "/component/install", { borrowed: root }));
+          // A borrowed runtime writes nothing here, but the ones a remove left
+          // behind are swept on the way in, so the number moved anyway.
+          onDataChanged?.();
           setScan(null);
           setNote(t("setCompBorrowNote"));
         } catch (failure) {
@@ -130,7 +137,7 @@
         } finally {
           setBusy("");
         }
-      }, [apply, load, t]);
+      }, [apply, load, onDataChanged, t]);
 
       // Same formatter as the list columns (TB cap, honouring the size-unit
       // setting); the em dash keeps the blank-cell convention of this group.
@@ -257,7 +264,7 @@
     }
 
     /** The settings page's card: the installer under its own caption. */
-    function ComponentGroup({ t, component, onChanged }) {
+    function ComponentGroup({ t, component, onChanged, onDataChanged }) {
       return h(
         "div",
         { className: "se-set-grp" },
@@ -267,7 +274,7 @@
           t("setGroupComponent"),
           h("span", { className: "se-set-note", style: { marginLeft: "8px", fontWeight: 400 } }, t("setComponentFor")),
         ),
-        h(ComponentPanel, { t, component, onChanged }),
+        h(ComponentPanel, { t, component, onChanged, onDataChanged }),
       );
     }
 
@@ -574,7 +581,7 @@
     // no CORS headers, and the detached window's main process denies
     // window.open. The client only ever names a target — the host's allowlist
     // turns "star" into a URL.
-    function AboutGroup({ t, version }) {
+    function AboutGroup({ t, version, onDataChanged }) {
       const [check, setCheck] = useState({ phase: "idle", data: null, error: "" });
       const [cache, setCache] = useState({ phase: "idle", data: null, error: "" });
       const [cleaning, setCleaning] = useState(false);
@@ -601,12 +608,14 @@
           // 409 a clear just because a switch was toggled in another window.
           const data = await apiSend("POST", "/cache/clear", {}, { ifMatch: false });
           setCache({ phase: "ready", data, error: "" });
+          // The bytes just freed were counted by the data-directory group.
+          onDataChanged?.();
         } catch (failure) {
           setCache({ phase: "error", data: null, error: String(failure?.message ?? failure) });
         } finally {
           setCleaning(false);
         }
-      }, []);
+      }, [onDataChanged]);
 
       const open = useCallback(async (target) => {
         setOpening(target);

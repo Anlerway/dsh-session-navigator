@@ -512,6 +512,12 @@
       const [saving, setSaving] = useState(false);
       const [error, setError] = useState("");
       const [note, setNote] = useState("");
+      // 占用大小 is drawn by the data-directory group, but a component install
+      // (~150 MB) and 清理缓存 both write into that same directory from other
+      // groups. They bump this counter instead of each fetching /datadir: one
+      // reader, one number, refreshed the moment something moved.
+      const [dataTick, setDataTick] = useState(0);
+      const bumpData = useCallback(() => setDataTick((count) => count + 1), []);
 
       const load = useCallback(async () => {
         try {
@@ -854,6 +860,7 @@
         h(ComponentGroup, {
           t,
           component: null,
+          onDataChanged: bumpData,
           onChanged: (next) => {
             // The mode chips above were rendered from the first snapshot; a
             // component that just became ready must enable 独立窗口 without a
@@ -872,17 +879,24 @@
           },
         }),
 
-        h(DataDirGroup, { t, current: actualDir, onMigrated: load, saving }),
+        h(DataDirGroup, { t, current: actualDir, onMigrated: load, saving, refreshToken: dataTick }),
 
         // 关于 — which build this is, whether a newer one exists, what can be
         // freed, and where the project lives. Last, because it is the only group
         // that is not about how the panel behaves.
-        h(AboutGroup, { t, version: boot.data?.version ?? "" }),
+        h(AboutGroup, { t, version: boot.data?.version ?? "", onDataChanged: bumpData }),
 
         // 危险操作 — its own section, last, because it is the only thing on this
         // page that cannot be undone and it must not sit next to a chip that
         // merely frees some cache.
-        h(DangerGroup, { t, onReset: load }),
+        h(DangerGroup, {
+          t,
+          onReset: () => {
+            // 清除数据 empties the directory the size row is describing.
+            load();
+            bumpData();
+          },
+        }),
 
         h(
           "div",

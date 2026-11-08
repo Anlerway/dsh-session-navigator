@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 八十一个测试文件，各自钉住什么
+## 1. 八十二个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -31,7 +31,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
 | `test/settings.test.mjs` | 295 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
-| `test/settings-page.test.mjs` | 1277 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组、危险操作组（DELETE 才亮红按钮）、数据目录、显示格式、写请求的 body；Electron 组件的借用：扫描 chip 排在 install 后面、扫出来的候选行、借用走 POST，不用 PUT（借用不是设置）、借用态显示路径，不显示体积、点「断开借用」只发一次 remove |
+| `test/settings-page.test.mjs` | 850 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组、危险操作组（DELETE 才亮红按钮）、显示格式、写请求的 body；Electron 组件的借用：扫描 chip 排在 install 后面、扫出来的候选行、借用走 POST，不用 PUT（借用不是设置）、借用态显示路径，不显示体积、点「断开借用」只发一次 remove |
+| `test/settings-datadir.test.mjs` | 199 | 数据目录组：还原至默认位置只在「有默认目录、且不是环境变量钉住」时出现、点它走 inspect→migrate（不是「更改位置」）且完成文案是「已还原至默认位置」、占用大小在清理缓存与安装/卸载组件之后会重新读一次（harness 的 useEffect 现在认 deps） |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
 | `test/live-state.test.mjs` | 124 | 「进行中」只在核说自己拿着的时候才亮：假「进行中」比漏标更糟（它锁住一行、挡住归档与删除），所以出处看核给的持有序，`ctx.sessions` 不算 |

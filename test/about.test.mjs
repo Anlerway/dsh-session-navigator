@@ -32,6 +32,9 @@ function makeDataDir() {
   writeFileSync(join(dir, "component", "download", "electron.zip.part"), "y".repeat(200));
   mkdirSync(join(dir, ".component-staging", "runtime"), { recursive: true });
   writeFileSync(join(dir, ".component-staging", "runtime", "chrome.exe"), "z".repeat(300));
+  // The sessions manifest: the previous run's answers, re-derivable from the
+  // logs, and the largest file this plugin writes after the component.
+  writeFileSync(join(dir, "sessions-manifest.v1.json"), "m".repeat(400));
   return dir;
 }
 
@@ -41,9 +44,10 @@ function stubApi(dataDir, phase) {
   return {
     calls,
     dataDir,
-    paths: { tmpDir: join(dataDir, ".tmp") },
+    paths: { tmpDir: join(dataDir, ".tmp"), manifest: join(dataDir, "sessions-manifest.v1.json") },
     reader: {
       invalidate: () => calls.push("sessions"),
+      forgetManifest: () => calls.push("manifest-forgotten"),
     },
     documents: {
       tree: { invalidate: () => calls.push("tree") },
@@ -180,7 +184,9 @@ test("clearCaches drops the plugin's own caches and keeps the user's bytes", asy
 
     // In memory: the session walk and the sidecars would otherwise answer from
     // memoised copies until the process restarted.
-    assert.deepEqual(api.calls, ["sessions", "tree", "settings"]);
+    // The mirror lets go after the sidecars are invalidated, and before the file
+    // is deleted — the other order would let a pending write recreate it.
+    assert.deepEqual(api.calls, ["sessions", "tree", "settings", "manifest-forgotten"]);
 
     // On disk: the atomic-write leftovers and the unfinished download are gone,
     // the payloads are not.
@@ -197,6 +203,12 @@ test("clearCaches drops the plugin's own caches and keeps the user's bytes", asy
 
     assert.ok(result.freedBytes >= 600, "the freed bytes are reported, not guessed: " + result.freedBytes);
     assert.equal(result.tmp.removed, 1);
+
+    // The manifest goes too: every fact in it came out of a log, so the only
+    // cost of dropping it is one full scan on the next start.
+    assert.equal(existsSync(join(dir, "sessions-manifest.v1.json")), false);
+    assert.deepEqual(result.manifest, { removed: 1, bytes: 400 });
+    assert.ok(result.caches.includes("sessions-manifest"), "the clear says it took the manifest: " + result.caches.join(","));
     assert.deepEqual(result.skipped, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -230,6 +242,24 @@ test("an unreadable component record does not become a licence to delete", async
     // next clear rather than delete something a running install is writing.
     assert.deepEqual(result.skipped, ["component-busy"]);
     assert.equal(existsSync(join(dir, "component", "download", "electron.zip.part")), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a manifest that will not be deleted is reported, not silently kept", async () => {
+  const dir = makeDataDir();
+  rmSync(join(dir, "sessions-manifest.v1.json"), { force: true });
+  // A directory where the manifest belongs: `rmSync` without `recursive`
+  // cannot take it, which is the same failure a scanner holding the file gives.
+  mkdirSync(join(dir, "sessions-manifest.v1.json"), { recursive: true });
+  writeFileSync(join(dir, "sessions-manifest.v1.json", "kept"), "x".repeat(64));
+  const api = stubApi(dir, "ready");
+  try {
+    const result = await clearCaches(api);
+    assert.deepEqual(result.skipped, ["manifest-in-use"]);
+    assert.deepEqual(result.manifest, { removed: 0, bytes: 0 });
+    assert.equal(existsSync(join(dir, "sessions-manifest.v1.json")), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
