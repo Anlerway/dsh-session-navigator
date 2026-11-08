@@ -49,6 +49,24 @@ export function noteFiles(language) {
   return codes.map((code) => join(NOTES_DIR, `${code}.md`));
 }
 
+/**
+ * Which file the notes should come from, for one request.
+ *
+ * The page knows what this process cannot: the language DSH is drawing in.
+ * `lang` is that code, sent along with the request; a saved 界面语言 arrives
+ * the same way, because the page resolves it before asking. The settings
+ * document answers when the request names no language at all; a value this
+ * plugin cannot draw answers "", which leaves `readNotes` its own fallbacks
+ * (English, then Chinese) instead of guessing 中文.
+ *
+ * @param {unknown} requested the `lang` query value
+ * @param {any} [settings] the settings document, when one was read
+ * @returns {string} one of `LANGS`, or "" when nothing names a file
+ */
+export function notesLanguage(requested, settings) {
+  return normalizeLang(requested) || normalizeLang(settings?.ui?.lang) || "";
+}
+
 /** @type {{ key: string, notes: null | { title: string, blocks: any[], bytes: number, updatedAt: number } }} */
 let memo = { key: "", notes: null };
 

@@ -361,6 +361,30 @@
     }
 
     /**
+     * The language the 更新说明 should be read in.
+     *
+     * The host only runs routes; it cannot see which language DSH is drawing
+     * in, so the page has to say. This is the same answer `uiLang()` gives a
+     * detached window, minus its 中文 default: a page that cannot tell leaves
+     * the question to the host, which then answers in English instead of
+     * pretending the reader chose Chinese.
+     *
+     * @param {(key: string) => string} [t] the translator in scope
+     * @returns {string} one of LANGS, or "" when this page cannot tell
+     */
+    function notesLang(t) {
+      // A saved 界面语言 outranks DSH's, exactly as it does for the labels.
+      if (uiLangOverride) return uiLangOverride;
+      return normalizeLang(typeof t === "function" ? t("langCode") : "");
+    }
+
+    /** `GET /release-notes`, naming the interface language when it is known. */
+    function notesPath(t) {
+      const lang = notesLang(t);
+      return lang ? "/release-notes?lang=" + encodeURIComponent(lang) : "/release-notes";
+    }
+
+    /**
      * The language the *summariser* is asked to write in — not the UI language.
      *
      * The Host builds its prompt from a two-way branch (zh or en) in

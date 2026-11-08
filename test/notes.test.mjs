@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { NOTES_MAX_BYTES, notesRuns, parseNotes } from "../src/domain/notes.js";
-import { NOTES_DIR, noteFiles, readNotes } from "../src/host/changelog.js";
+import { NOTES_DIR, noteFiles, notesLanguage, readNotes } from "../src/host/changelog.js";
 import { LANGS } from "../src/lang.js";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -146,6 +146,14 @@ test("a language without a file falls back to English, then Chinese", () => {
   assert.deepEqual(noteFiles("en"), [at("en"), at("zh")], "the fallbacks are not repeated");
   assert.deepEqual(noteFiles("zh"), [at("zh"), at("en")]);
   assert.deepEqual(noteFiles("tlh"), [at("en"), at("zh")], "a language this plugin cannot draw names no file");
+});
+
+test("the page names the language; the settings document only answers when it does not", () => {
+  assert.equal(notesLanguage("ja", { ui: { lang: "auto" } }), "ja", "the language the page is drawing in wins");
+  assert.equal(notesLanguage("tlh", { ui: { lang: "ru" } }), "ru", "an unknown code falls back to the saved choice");
+  assert.equal(notesLanguage(undefined, { ui: { lang: "zh-TW" } }), "zh-hant", "and a region code folds into its table");
+  assert.equal(notesLanguage("", { ui: { lang: "auto" } }), "", "auto names no file: readNotes tries English next");
+  assert.equal(notesLanguage("ja"), "ja", "a request without a settings document is still answered");
 });
 
 test("readNotes answers in the language it was asked for", async () => {

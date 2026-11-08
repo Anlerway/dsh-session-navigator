@@ -86,6 +86,7 @@ test("the notes route answers which version it belongs to, and which was deliver
   const body = source.slice(start, source.indexOf("\n  },", start));
   assert.match(body, /version:\s*pluginVersion\(\)/);
   assert.match(body, /seen:\s*await readNotesSeen\(api\.paths\.notesSeen\)/);
+  assert.match(body, /readNotes\(\{ language: notesLanguage\(query\?\.get\("lang"\), settings\) \}\)/, "the notes are read in the language the page named");
 });
 
 test("the gate is mounted with the sidebar entry, not with the panel", () => {
@@ -95,6 +96,13 @@ test("the gate is mounted with the sidebar entry, not with the panel", () => {
   const gate = source.slice(source.indexOf("function NotesGate"), source.indexOf("// ── 关于"));
   assert.match(gate, /notesDecision\(data\?\.version, data\?\.seen\)/);
   assert.match(gate, /apiSend\("POST", "\/release-notes\/seen", \{ version: shown\.version \}/);
+});
+
+test("both notes surfaces name the language the page is drawing in", () => {
+  const source = read("lib/client.js");
+  const calls = source.match(/apiGet\(notesPath\(t\)\)/g) ?? [];
+  assert.equal(calls.length, 2, "the startup announcement and 设置 › 关于 both ask with `notesPath(t)`");
+  assert.match(source, /function notesPath\(t\)/);
 });
 
 test("nothing about the record is kept in the page", () => {

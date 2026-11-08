@@ -336,6 +336,16 @@ test("更新说明 is the document, read when it is opened", async () => {
   assert.deepEqual(opened.body, { target: "issues" });
 });
 
+test("更新说明 asks in the language the page is drawing in", async () => {
+  const { driver, api, calls } = await renderSettings();
+  const t = (key) => (key === "langCode" ? "ja" : key);
+  const tree = await driver.settle(() => page(driver, api, t));
+  chipLabelled(tree, "setNotesOpen").props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const asked = calls.filter((call) => /\/release-notes/.test(call.url)).pop();
+  assert.match(asked.url, /\/release-notes\?lang=ja$/, "the host cannot see DSH's locale; the page says which one");
+});
+
 test("更新说明 closes on the backdrop but not on the card, and reads again next time", async () => {
   const { tree, calls, driver, api, t } = await renderSettings();
   const open = async () => {

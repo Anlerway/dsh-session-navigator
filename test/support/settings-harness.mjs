@@ -347,7 +347,9 @@ export async function renderSettings({
     return { ok: true, result: { settings: doc.settings, revision: settingsRevision } };
   };
   const fetchImpl = recordingFetch((call) => {
-    const path = call.url.replace(/^.*?\/api/, "");
+    // The page may name its interface language (`?lang=ja`); the route table
+    // matches paths, so the query stays on `call.url` for assertions only.
+    const path = call.url.replace(/^.*?\/api/, "").split("?")[0];
     if (path === "/settings" && call.method === "GET") {
       const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper);
       doc.settings.shell.modal = { ...currentModal };

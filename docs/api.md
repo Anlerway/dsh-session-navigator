@@ -662,7 +662,7 @@ handler 自己 `createWriteStream` 落盘。**上传没有固定上限，边界�
 | `GET /version` | — | `{ build, version }` |
 | `POST /about/open` | `{ target }` | `{ target, url, opened: true }` |
 | `POST /cache/clear` | — | `{ freedBytes, caches, tmp, downloads, staging, manifest, profile, skipped, tookMs }` |
-| `GET /release-notes` | — | `{ title, blocks, bytes, updatedAt, version, seen }` |
+| `GET /release-notes` | `?lang=<code>` 指名要读哪一种语言 | `{ title, blocks, bytes, updatedAt, version, seen }` |
 | `POST /release-notes/seen` | `{ version }` | `{ version }`（写进去的记录；空版本是 no-op） |
 
 `GET /version` 是客户端模块的构建戳：`build` 是 `lib/client.js` 的 hash，`version` 是 `package.json` 的版本号。
@@ -727,10 +727,12 @@ profile，删一半留下的是一份谁都用不了的目录，等下一次比�
 不用动这个插件的源码，更不用等它被重新构建。
 
 正文在 `docs/changelog/` 下，一种界面语言一份：`<language>.md`，语言码取自 `src/lang.js`
-（`zh`、`zh-hant`、`en`、`ja`、`ko`、`de`、`fr`、`es`、`ru`、`pt`）。路由按
-`api.documents.settings.read()` 里的界面语言取文件；这份语言没有正文时按 `noteFiles()`
-的顺序退到英文、再退到中文，所以新加一份词典不会让弹窗空着，`fr-CA` 这样的地区码归到
-它的基础语言，插件画不出来的语言码（`tlh`）同样落到这两份上。
+（`zh`、`zh-hant`、`en`、`ja`、`ko`、`de`、`fr`、`es`、`ru`、`pt`）。语言由页面在请求里
+带上：`GET /release-notes?lang=<code>` 的那个 `code` 就是面板此刻正在画的语言（保存的
+界面语言优先，其次 DSH 的），因为 host 只跑路由、看不到 DSH 的语言。请求没带 `lang` 时
+才看设置里的界面语言；这份语言没有正文时按 `noteFiles()` 的顺序退到英文、再退到中文，
+所以新加一份词典不会让弹窗空着，`fr-CA` 这样的地区码归到它的基础语言，插件画不出来的
+语言码（`tlh`）同样落到这两份上。
 
 目录随包发布（`package.json` 的 `files` 里有 `docs/changelog/`），装好的副本读的就是仓库
 里那几个文件，没有第二份要同步，也没有一步"发版前记得复制"。十份必须一起改：条目数由

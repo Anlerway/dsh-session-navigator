@@ -24,7 +24,7 @@ import { normalizeSettings } from "./domain/settings.js";
 import { dshHome } from "./dsh/home.js";
 import { statusFor } from "./errors.js";
 import { createBridge } from "./host/bridge.js";
-import { readNotes } from "./host/changelog.js";
+import { notesLanguage, readNotes } from "./host/changelog.js";
 import { migrateFlagsToShortcuts } from "./host/flags.js";
 import { reconcileMoves } from "./host/move.js";
 import { readNotesSeen } from "./host/notes-seen.js";
@@ -559,10 +559,10 @@ const ROUTES = {
    * `seen` is the other half of that decision — the version already delivered,
    * recorded here rather than in the page; see src/host/notes-seen.js for why.
    */
-  "GET /release-notes": async (api) => {
+  "GET /release-notes": async (api, req, res, query) => {
     const settings = normalizeSettings(await api.documents.settings.read());
     return {
-      ...(await readNotes({ language: settings.language })),
+      ...(await readNotes({ language: notesLanguage(query?.get("lang"), settings) })),
       version: pluginVersion(),
       seen: await readNotesSeen(api.paths.notesSeen),
     };

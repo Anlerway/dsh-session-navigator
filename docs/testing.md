@@ -31,7 +31,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
 | `test/settings.test.mjs` | 337 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
-| `test/settings-page.test.mjs` | 904 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组（只剩检查更新、说明与两处链接）、数据目录组（清理缓存在这一组）、危险操作组（DELETE 才亮红按钮）、十二组的先后顺序、显示格式、写请求的 body；Electron 组件的借用：扫描 chip 排在 install 后面、扫出来的候选行、借用走 POST，不用 PUT（借用不是设置）、借用态显示路径，不显示体积、点「断开借用」只发一次 remove |
+| `test/settings-page.test.mjs` | 914 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组（只剩检查更新、说明与两处链接）、数据目录组（清理缓存在这一组）、危险操作组（DELETE 才亮红按钮）、十二组的先后顺序、显示格式、写请求的 body；Electron 组件的借用：扫描 chip 排在 install 后面、扫出来的候选行、借用走 POST，不用 PUT（借用不是设置）、借用态显示路径，不显示体积、点「断开借用」只发一次 remove |
 | `test/settings-sliders.test.mjs` | 237 | 三根滑杆（模糊度 / 磨砂度 / 壁纸暗度）各读自己的键，都是 0–100 的百分比，拖动只改读数、松手才 PUT 那一个键；拖动途中的停顿不是松手（按住时不写，否则松手那次会和中间值抢同一个 If-Match）；上一次写还没回答时下一次松手排队等它，第二次 PUT 引用的计数是第一次写回的那个（If-Match 4 → 5），迟到的回答不会把手指下的数字顶回去；滑杆旁的数值本身是输入框（键入不写、回车才发、Esc 撤回、超过上限夹到边界、清空不等于 0）；回退按钮常驻三根滑杆（默认值 0 / 60 / 10，数值已是默认时置灰，按下写的是默认值不是「减一步」）；轨道读 `assets/panel.css` 自证是固定 150 px、不用 vw、不随行拉伸；遮罩黑度用同一个控件，文档里存 0–0.8、屏上读 0–80 %，键入 25 存回 0.25 |
 | `test/settings-datadir.test.mjs` | 207 | 数据目录组：还原至默认位置只在「有默认目录、且不是环境变量钉住」时出现、点它走 inspect→migrate（不是「更改位置」）且完成文案是「已还原至默认位置」、清理缓存的按钮就在这一组、占用大小在清理缓存与安装/卸载组件之后会重新读一次（harness 的 useEffect 现在认 deps） |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
@@ -85,8 +85,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/reveal-agent-lifecycle.test.mjs` | 77 | 常驻的 reveal agent 不许拖住父进程：真开一个子进程预热、不调用 `process.exit`，20 秒内必须自己退出；去掉 `unref()` 时这条会挂 20 秒后报「the warm-up held the process open」，它钉的就是干净 checkout 里整套测试停在 453 的那个 bug |
 | `test/update.test.mjs` | 135 | 更新检查：数字段比较、release 解析、5 分钟缓存、失败码，不是假"已是最新" |
 | `test/about.test.mjs` | 308 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过，独立窗口的 Chromium profile 要关着窗口才清） |
-| `test/notes-gate.test.mjs` | 115 | 更新说明什么时候说、什么时候闭嘴：每个版本一次，没记过版本的机器首次也播；「已经说过」记在 host 的文件里，不是 localStorage（web GUI 每次启动换端口就是一个新的 origin，空存储会把公告变成每次开机都弹） |
-| `test/notes.test.mjs` | 156 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算，以及两者必须逐字一致——不一致说明发版会带上旧说明 |
+| `test/notes-gate.test.mjs` | 125 | 更新说明什么时候说、什么时候闭嘴：每个版本一次，没记过版本的机器首次也播；「已经说过」记在 host 的文件里，不是 localStorage（web GUI 每次启动换端口就是一个新的 origin，空存储会把公告变成每次开机都弹） |
+| `test/notes.test.mjs` | 185 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算、两者必须逐字一致（不一致说明发版会带上旧说明）、十份文件的条目数互相齐平，以及读哪份文件由页面带上来的 `lang` 决定、没带才看设置里的界面语言 |
 | `test/locale-parity.test.mjs` | 88 | `zh` 与 `en` 两份 `settings` 的键集合一致、占位符一致、英文标签放得下（另外六种语言由 `check-i18n.mjs` 校验）；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：英文表覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/lang-chain.test.mjs` | 93 | 一份语言清单四处一致：`assets/i18n/` 目录、`src/lang.js` 的 `LANGS`、helper 与 shim 各自抄的常量、产物从词典派生的清单；`LANGS.length` 为 10；`normalizeLang` 把区域码归到基语言、把没有词典的码归成空串；桥与 `/detached/open` 只放行这份清单 |

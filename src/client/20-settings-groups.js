@@ -430,7 +430,7 @@
         const timer = setTimeout(() => {
           if (cancelled || notesLayer.asked) return;
           notesLayer.asked = true;
-          apiGet("/release-notes")
+          apiGet(notesPath(t))
             .then((data) => {
               if (cancelled) return;
               if (notesDecision(data?.version, data?.seen) === "idle") return;
@@ -538,12 +538,12 @@
         setNotesOpen(true);
         setNotes((previous) => ({ phase: "loading", data: previous.data, error: "" }));
         try {
-          const data = await apiGet("/release-notes");
+          const data = await apiGet(notesPath(t));
           setNotes({ phase: "ready", data, error: "" });
         } catch (failure) {
           setNotes({ phase: "error", data: null, error: String(failure?.message ?? failure) });
         }
-      }, []);
+      }, [t]);
 
       const hideNotes = useCallback(() => setNotesOpen(false), []);
 
