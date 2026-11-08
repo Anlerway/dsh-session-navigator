@@ -670,6 +670,9 @@
             onArchive: toggleArchive,
             onFork: forkSession,
             onRename: renameEntity,
+            // DetailPane names the row it is describing when it calls these, so
+            // 删除 in the pane and 删除 on that session's own row are the same
+            // request.
             onRestore: restoreSelection,
             onDelete: deleteSelection,
             onExport: exportSession,

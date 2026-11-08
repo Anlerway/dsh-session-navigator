@@ -408,3 +408,100 @@ test("a pre-rename data directory is adopted, not ignored", async () => {
     await box.cleanup();
   }
 });
+
+test("a restore to the default location survives the signpost a move left there", async () => {
+  const box = await sandbox();
+  try {
+    const home = join(box.root, "home");
+    const env = { HOME: home, USERPROFILE: home };
+    const homeDir = defaultDataDir(env);
+    const elsewhere = join(box.root, "elsewhere");
+
+    // Leaving the default directory for another disk keeps only the pointer, so
+    // coming back always starts from a directory that is not empty — by exactly
+    // one file, the one that made the move possible.
+    await mkdir(homeDir, { recursive: true });
+    await writeFile(join(homeDir, ".location"), JSON.stringify({ movedTo: elsewhere, mode: "move" }), "utf8");
+
+    const api = await host(elsewhere);
+    api.env = env;
+    await api.documents.tree.mutate((draft) => {
+      draft.folders["f-1"] = { id: "f-1", name: "Reading", parent: "f-root", createdAt: 1 };
+    });
+
+    const plan = await inspectDataDir(api, homeDir);
+    assert.equal(plan.isDefault, true);
+    assert.equal(plan.defaultDir, homeDir);
+    assert.equal(plan.mode, "move", "a restore inside one volume moves, it copies nothing twice");
+
+    const result = await migrateDataDir(api, { target: homeDir });
+    assert.ok(result.steps.includes("signpost-cleared"), "the stale pointer is not carried home");
+
+    // Home again: the settings document says so, the pointer is gone, and the
+    // directory the data came from is gone with it.
+    assert.equal(readLocation(homeDir), null);
+    assert.equal(resolveDataDir(env), homeDir);
+    assert.equal(existsSync(elsewhere), false);
+    const tree = await api.documents.tree.read();
+    assert.equal(tree.folders["f-1"].name, "Reading");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a restore is refused when the default location holds an older installation", async () => {
+  const box = await sandbox();
+  try {
+    const home = join(box.root, "home");
+    const env = { HOME: home, USERPROFILE: home };
+    const homeDir = defaultDataDir(env);
+    await mkdir(homeDir, { recursive: true });
+    // No tree, so this is not caught by the occupancy markers: it is a leftover
+    // settings file, and restoring over it would merge two data sets.
+    await writeFile(join(homeDir, "settings.v1.json"), "{}", "utf8");
+
+    const api = await host(join(box.root, "current"));
+    api.env = env;
+    await assert.rejects(
+      () => inspectDataDir(api, homeDir),
+      (error) => error.code === "datadir-not-empty" && /earlier installation/.test(error.message),
+    );
+    assert.equal(existsSync(join(homeDir, "settings.v1.json")), true, "nothing was deleted to make room");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("describeDataDir says when a restore is worth offering", async () => {
+  const box = await sandbox();
+  try {
+    const home = join(box.root, "home");
+    const elsewhere = join(box.root, "elsewhere");
+
+    // Away from home: the chip belongs on the row.
+    const away = await host(elsewhere);
+    away.env = { HOME: home, USERPROFILE: home };
+    const described = await describeDataDir(away);
+    assert.equal(described.defaultDir, defaultDataDir(away.env));
+    assert.equal(described.atDefault, false);
+    assert.equal(described.fromEnv, false);
+    assert.equal(described.restorable, true);
+
+    // Already home: nothing to restore, so no chip.
+    const home2 = join(box.root, "home2");
+    const atHome = await host(join(home2, DATA_DIR_NAME));
+    atHome.env = { HOME: home2, USERPROFILE: home2 };
+    const homed = await describeDataDir(atHome);
+    assert.equal(homed.atDefault, true);
+    assert.equal(homed.restorable, false);
+
+    // Pinned by the environment: a restore would be undone on the next start.
+    const pinned = await host(join(box.root, "pinned"));
+    pinned.env = { HOME: home, USERPROFILE: home, DSH_SE_DATA_DIR: join(box.root, "pinned") };
+    const pinnedDescribed = await describeDataDir(pinned);
+    assert.equal(pinnedDescribed.fromEnv, true);
+    assert.equal(pinnedDescribed.restorable, false);
+  } finally {
+    await box.cleanup();
+  }
+});

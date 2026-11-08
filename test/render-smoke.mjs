@@ -122,13 +122,55 @@ globalThis.fetch = async (url, init) => {
 };
 
 let mod = null;
+
+// DSH's dialog primitives, as the host lends them. The stub keeps the contract
+// SeModal relies on — Modal with {open, onClose, title, description, footer,
+// children}, RiskConfirmation with the acknowledgement pair — and renders real
+// elements, so the assertions can see which layer drew a dialog exactly as the
+// app's own components would. The plugin resolves this package through
+// `require`; a host without it must fall back rather than throw, which the last
+// dialog check exercises by deleting the two members.
+const primitivesStub = {
+  Modal: (props) =>
+    React.createElement(
+      "div",
+      { className: "dsh-modal-stub", "data-title": props.title, "data-open": String(props.open) },
+      React.createElement("h2", { className: "dsh-modal-stub-title" }, props.title),
+      props.description ? React.createElement("p", { className: "dsh-modal-stub-desc" }, props.description) : null,
+      React.createElement("div", { className: "dsh-modal-stub-body" }, props.children),
+      props.footer ? React.createElement("div", { className: "dsh-modal-stub-footer" }, props.footer) : null,
+    ),
+  RiskConfirmation: (props) =>
+    React.createElement(
+      "div",
+      { className: "dsh-modal-stub dsh-risk-stub", "data-title": props.title },
+      props.description ? React.createElement("p", { className: "dsh-risk-desc" }, props.description) : null,
+      React.createElement(
+        "label",
+        { className: "dsh-risk-ack" },
+        React.createElement("input", {
+          type: "checkbox",
+          checked: props.acknowledged === true,
+          onChange: (event) => props.onAcknowledgedChange?.(event.target.checked),
+        }),
+        React.createElement("span", null, props.acknowledgeLabel),
+      ),
+      React.createElement(
+        "div",
+        { className: "dsh-modal-stub-footer" },
+        React.createElement("button", { type: "button", className: "act", onClick: props.onCancel }, props.cancelLabel),
+        React.createElement(
+          "button",
+          { type: "button", className: "act primary", disabled: props.acknowledged !== true, onClick: props.onConfirm },
+          props.confirmLabel,
+        ),
+      ),
+    ),
+};
+
 const requireShim = (name) => {
   if (name === "react") return React;
-  // The plugin used to probe @deepseek-ai/dsh-client-ui-primitives for Modal /
-  // RiskConfirmation. It no longer does: the panel and every dialog are drawn by
-  // the plugin itself, so a host without that package behaves identically. The
-  // shim still refuses it, which pins exactly that: requiring it would throw and
-  // fail the whole run.
+  if (name === "@deepseek-ai/dsh-client-ui-primitives") return primitivesStub;
   throw new Error("unexpected require: " + name);
 };
 
@@ -1340,10 +1382,12 @@ if (away.props["data-flip"] !== undefined) throw new Error("a menu with room mus
 console.log("CommandMenu data-flip ok:", nearEdge.props["data-flip"] === "1");
 
 // ── dialogs ─────────────────────────────────────────────────────────────────
-// Every dialog is local now, and it must be local *and* on the plugin's dialog
-// layer. The old design rendered destructive confirms through DSH's Modal,
-// which sits at the app's dialog tier — below this panel — so a confirmation
-// could be painted underneath the window that opened it.
+// Every dialog is drawn by DSH's own primitives: Modal for a question,
+// RiskConfirmation when a destructive action needs a tick first. The panel's
+// layers moved to z-index 900 for this (the app's dialog tier is 1000), so a
+// question now lands *above* the window that asked. The local .fmodal layer
+// survives as the fallback for a host that lends no primitives, and the last
+// check here exercises exactly that path.
 const dialogsHosted = (dialog) =>
   render({ type: DialogHost, props: { dialog, promptRef: { current: null }, onSettle: noop } });
 
@@ -1382,27 +1426,57 @@ console.log("DialogHost confirm ok:", Boolean(plainConfirm));
 console.log("DialogHost risk ok:", Boolean(riskConfirm));
 console.log("DialogHost prompt ok:", Boolean(promptDialog));
 
-for (const [label, dialog] of [["confirm", plainConfirm], ["risk", riskConfirm], ["prompt", promptDialog]]) {
+for (const [label, dialog] of [["confirm", plainConfirm], ["prompt", promptDialog]]) {
   if (!dialog) throw new Error("the " + label + " dialog must render");
-  if (findAll(dialog, hasClass("fmodal")).length !== 1) {
-    throw new Error("the " + label + " dialog must be a local .fmodal layer");
+  if (findAll(dialog, hasClass("dsh-modal-stub")).length !== 1) {
+    throw new Error("the " + label + " dialog must be drawn by DSH's Modal");
   }
-  if (findAll(dialog, (cls) => cls.includes("se-native-dialog")).length > 0) {
-    throw new Error("the " + label + " dialog must not use the removed native class");
+  if (findAll(dialog, hasClass("fmodal")).length > 0) {
+    throw new Error("the " + label + " dialog must not paint the local layer while the host lends primitives");
   }
 }
-// The acknowledgement checkbox is what makes 永久删除 hard to trigger by accident.
-if (findAll(riskConfirm, hasClass("se-dlg-ack")).length !== 1) {
-  throw new Error("a destructive confirm must carry the acknowledgement checkbox");
+// A destructive confirm with an acknowledgement is RiskConfirmation, not a Modal
+// with a lookalike checkbox: the app owns that warning layout.
+if (findAll(riskConfirm, hasClass("dsh-risk-stub")).length !== 1) {
+  throw new Error("an acknowledged confirm must go through DSH's RiskConfirmation");
 }
-if (findAll(plainConfirm, hasClass("se-dlg-ack")).length !== 0) {
-  throw new Error("an ordinary confirm must not carry an acknowledgement");
+if (findAll(plainConfirm, hasClass("dsh-risk-stub")).length !== 0) {
+  throw new Error("an ordinary confirm must not borrow the risk layout");
 }
-const dialogLayer = findAll(plainConfirm, hasClass("fmodal"))[0];
+if (findAll(riskConfirm, hasClass("dsh-risk-ack")).length !== 1) {
+  throw new Error("a destructive confirm must carry the acknowledgement");
+}
+console.log("dialogs presenter: DSH primitives (Modal / RiskConfirmation)");
+
+// Fallback: a host that lends no primitives still gets the question, on the
+// plugin's own layer — which is only ever reached where there is no app dialog
+// to collide with.
+const savedModal = primitivesStub.Modal;
+const savedRisk = primitivesStub.RiskConfirmation;
+delete primitivesStub.Modal;
+delete primitivesStub.RiskConfirmation;
+const fallbackConfirm = dialogsHosted({
+  kind: "confirm",
+  title: "删除文件夹",
+  message: "内容会移动到上一级。",
+  confirmLabel: "删除",
+  cancelLabel: "取消",
+  danger: true,
+  resolve: noop,
+});
+if (findAll(fallbackConfirm, hasClass("dsh-modal-stub")).length !== 0) {
+  throw new Error("a host without primitives must not pretend to have them");
+}
+if (findAll(fallbackConfirm, hasClass("fmodal")).length !== 1) {
+  throw new Error("a host without primitives must fall back to the local dialog layer");
+}
+const dialogLayer = findAll(fallbackConfirm, hasClass("fmodal"))[0];
 if (dialogLayer.props?.onMouseDown === undefined) {
-  throw new Error("the dialog backdrop must dismiss on mousedown, not on any click");
+  throw new Error("the fallback backdrop must dismiss on mousedown, not on any click");
 }
-console.log("dialogs presenter: local (above the panel)");
+primitivesStub.Modal = savedModal;
+primitivesStub.RiskConfirmation = savedRisk;
+console.log("dialogs fallback: local layer when the host lends no primitives");
 
 // ── sizing ──────────────────────────────────────────────────────────────────
 // The host has modalSizeOf; the bundle cannot import it, so the two are pinned
@@ -1535,7 +1609,7 @@ if (fetchCalls.length !== callsBefore) {
 // The question is drawn by the plugin on its own dialog layer, with a solid red
 // confirm button — the same red the 删除 button and menu row carry.
 const question = render({ type: DialogHost, props: { dialog: pending, promptRef: null, onSettle: () => {} } });
-if (findAll(question, hasClass("fmodal")).length !== 1) throw new Error("the question must be drawn on the dialog layer");
+if (findAll(question, hasClass("dsh-modal-stub")).length !== 1) throw new Error("the question must be drawn by DSH's Modal");
 const confirmButtons = findAll(question, hasClass("act")).filter((button) =>
   String(button.props.className).includes("danger-solid"),
 );

@@ -398,9 +398,11 @@
     // this module. See src/domain/notes.js for the subset of markdown that
     // becomes a block, and src/host/changelog.js for which file wins.
     //
-    // Drawn as a fixed layer rather than through DialogHost: this page is
-    // mounted by the settings window, where the panel's dialog host is not
-    // mounted at all — the same reason DangerGroup draws its own form.
+    // Drawn through SeModal rather than DialogHost: this page is mounted by the
+    // settings window, where the panel's dialog host is not mounted at all. The
+    // frame is therefore the app's own Modal here too — the announcement is the
+    // one dialog DSH shows without being asked, and it must not paint its own
+    // layer over the app's dialog tier.
     function notesRuns(runs) {
       return (Array.isArray(runs) ? runs : []).map((run, index) => {
         if (run.bold) return h("strong", { key: index }, run.text);
@@ -424,10 +426,11 @@
     }
 
     function NotesModal({ t, notes, phase, error, opening, linkError, onClose, onOpen }) {
-      // Esc is what everyone presses to leave a layer that covers the page, and
-      // this layer sits outside DialogHost, so the key has to be caught here.
-      // On window, like every other key handler in this bundle: the settings page
-      // runs in its own window, so a window listener is already the narrow scope.
+      // Esc is what everyone presses to leave a dialog. DSH's Modal already owns
+      // that key; the local fallback does not, and closing twice is a no-op, so
+      // the listener stays. On window, like every other key handler in this
+      // bundle: the settings page runs in its own window, so a window listener is
+      // already the narrow scope.
       useEffect(() => {
         const onKeyDown = (event) => {
           if (event.key === "Escape") onClose();
@@ -438,56 +441,38 @@
 
       const blocks = Array.isArray(notes?.blocks) ? notes.blocks : [];
 
+      // Star, issues and the close chip ride in the frame's footer, which is the
+      // same footer every confirm gets — one dialog language, not two.
+      const footer = [
+        h(
+          "button",
+          { key: "star", type: "button", className: "se-set-chip se-notes-chip on", disabled: opening !== "", onClick: () => onOpen("star") },
+          h(Icon, { name: "star", size: 13 }),
+          t("setStarGo"),
+        ),
+        h(
+          "button",
+          { key: "issues", type: "button", className: "se-set-chip se-notes-chip", disabled: opening !== "", onClick: () => onOpen("issues") },
+          h(Icon, { name: "chat", size: 13 }),
+          t("setIssueGo"),
+        ),
+        linkError ? h("span", { key: "link", className: "se-set-err" }, t("setLinkFailed", { reason: linkError })) : null,
+        h("span", { key: "gap", className: "se-notes-gap" }),
+        h("button", { key: "close", type: "button", className: "se-set-chip", onClick: onClose }, t("setNotesClose")),
+      ];
+
+      // The document's own first line already carries the version
+      // ("更新说明：V1.1.0"), so it titles the frame; the plain label is only the
+      // fallback for a file that starts with something else.
       return h(
-        "div",
-        {
-          className: "se-notes",
-          onClick: (event) => {
-            if (event.target === event.currentTarget) onClose();
-          },
-        },
+        SeModal,
+        { title: notes?.title || t("setNotes"), wide: true, onClose, footer },
         h(
           "div",
-          { className: "se-notes-card", role: "dialog", "aria-modal": "true", "aria-label": t("setNotes") },
-          h(
-            "div",
-            { className: "se-notes-bar" },
-            // The document's own first line, which already carries the version
-            // ("更新说明：V1.1.0"); the plain label is only the fallback for a
-            // file that starts with something else.
-            h("div", { className: "se-notes-title" }, notes?.title || t("setNotes")),
-            h(
-              "button",
-              { type: "button", className: "se-set-chip", onClick: onClose, title: t("setNotesClose") },
-              h(Icon, { name: "x", size: 13 }),
-            ),
-          ),
-          h(
-            "div",
-            { className: "se-notes-body" },
-            blocks.map((block, index) => h(NotesBlock, { key: index, block })),
-            phase === "loading" && blocks.length === 0 ? h("div", { className: "se-set-hint" }, t("setNotesLoading")) : null,
-            phase === "error" ? h("div", { className: "se-set-err" }, t("setNotesFailed", { reason: error })) : null,
-          ),
-          h(
-            "div",
-            { className: "se-notes-foot" },
-            h(
-              "button",
-              { type: "button", className: "se-set-chip on", disabled: opening !== "", onClick: () => onOpen("star") },
-              h(Icon, { name: "star", size: 13 }),
-              t("setStarGo"),
-            ),
-            h(
-              "button",
-              { type: "button", className: "se-set-chip", disabled: opening !== "", onClick: () => onOpen("issues") },
-              h(Icon, { name: "chat", size: 13 }),
-              t("setIssueGo"),
-            ),
-            linkError ? h("span", { className: "se-set-err" }, t("setLinkFailed", { reason: linkError })) : null,
-            h("span", { className: "se-notes-gap" }),
-            h("button", { type: "button", className: "se-set-chip", onClick: onClose }, t("setNotesClose")),
-          ),
+          { className: "se-notes-body" },
+          blocks.map((block, index) => h(NotesBlock, { key: index, block })),
+          phase === "loading" && blocks.length === 0 ? h("div", { className: "se-set-hint" }, t("setNotesLoading")) : null,
+          phase === "error" ? h("div", { className: "se-set-err" }, t("setNotesFailed", { reason: error })) : null,
         ),
       );
     }

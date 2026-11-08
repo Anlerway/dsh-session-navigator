@@ -504,9 +504,12 @@
         // do not apply to it any more; only 还原 and 永久删除 make sense.
         session.trashed ? null : h(Btn, { className: "act", icon: "branch", onClick: onFork }, T("分叉")),
         session.trashed
-          ? h(Btn, { className: "act", icon: "restore", onClick: onRestore }, T("还原"))
+          ? h(Btn, { className: "act", icon: "restore", onClick: () => onRestore?.(session.id) }, T("还原"))
           : h(Btn, { className: "act" + (session.archived ? " on" : ""), icon: "archive", onClick: onArchive }, session.archived ? T("取消归档") : T("归档")),
-        h(Btn, { className: "act danger", icon: "trash", onClick: onDelete }, session.trashed ? T("永久删除") : T("删除")),
+        // The row is named here rather than left to the handler: the button knows
+        // which session it is describing, and a verb that re-derives its target
+        // from the selection can hit a different row than the one on screen.
+        h(Btn, { className: "act danger", icon: "trash", onClick: () => onDelete?.(session.id) }, session.trashed ? T("永久删除") : T("删除")),
       );
 
       const nodeActions = h(
@@ -903,57 +906,16 @@
         }));
 
       return h(
-        "div",
-        { className: "fmodal open", role: "dialog", "aria-label": T("筛选"), onClick: (event) => { if (event.target === event.currentTarget) onClose(); } },
-        h(
-          "div",
-          { className: "fdlg" },
-          h(
-            "div",
-            { className: "fhead" },
-            h("span", { className: "fic" }, h(Icon, { name: "tag", size: 13 })),
-            h("span", { className: "ftitle" }, T("筛选")),
-            h("span", { className: "spacer" }),
-            h("button", { type: "button", className: "wbtn", title: T("关闭"), onClick: onClose }, h(Icon, { name: "x", size: 13 })),
-          ),
-          h(
-            "div",
-            { className: "fbody" },
-            selectRow(T("范围"), draft.scope, [["scope", T("当前目录")], ["all", T("全部会话")]], (next) => setDraft((previous) => ({ ...previous, scope: next }))),
-            selectRow(T("收藏"), draft.favorite, [["all", T("所有")], ["yes", T("已收藏")], ["no", T("未收藏")]], (next) => setDraft((previous) => ({ ...previous, favorite: next }))),
-            selectRow(T("归档"), draft.archived, [["all", T("所有")], ["yes", T("已归档")], ["no", T("未归档")]], (next) => setDraft((previous) => ({ ...previous, archived: next }))),
-            selectRow(T("待办"), draft.todo, [["all", T("所有")], ["yes", T("待办中")], ["no", T("非待办")]], (next) => setDraft((previous) => ({ ...previous, todo: next }))),
-            h(
-              "div",
-              { className: "frow", style: { alignItems: "flex-start" } },
-              h("label", { className: "flb" }, T("标签"), h("span", { className: "fsub" }, T("可多选"))),
-              tags.length === 0
-                ? h("div", { className: "se-set-note" }, T("标签库是空的"))
-                : h(
-                    "div",
-                    { className: "ftags" },
-                    tags.map((tag) =>
-                      h(
-                        "button",
-                        {
-                          type: "button",
-                          key: tag,
-                          className: "tagopt" + (draft.tags.includes(tag) ? " on" : ""),
-                          onClick: () => toggleTag(tag),
-                        },
-                        draft.tags.includes(tag) ? h(Icon, { name: "check", size: 10 }) : null,
-                        tag,
-                      ),
-                    ),
-                  ),
-            ),
-          ),
-          h(
-            "div",
-            { className: "ffoot" },
+        SeModal,
+        {
+          title: T("筛选"),
+          icon: "tag",
+          onClose,
+          footer: [
             h(
               "button",
               {
+                key: "reset",
                 type: "button",
                 className: "act",
                 title: T("把下面的选择恢复成默认（仍需点应用筛选生效）"),
@@ -961,17 +923,47 @@
               },
               T("重置"),
             ),
-            h("span", { className: "spacer" }),
+            h("span", { key: "sp", className: "spacer" }),
             active
               ? h(
                   "button",
-                  { type: "button", className: "act", title: T("取消筛选，立即恢复完整列表"), onClick: onClear },
+                  { key: "clear", type: "button", className: "act", title: T("取消筛选，立即恢复完整列表"), onClick: onClear },
                   T("取消筛选"),
                 )
               : null,
-            h("button", { type: "button", className: "act primary", onClick: () => onApply(draft) }, T("应用筛选")),
+            h("button", { key: "apply", type: "button", className: "act primary", onClick: () => onApply(draft) }, T("应用筛选")),
+          ],
+        },
+        [
+          selectRow(T("范围"), draft.scope, [["scope", T("当前目录")], ["all", T("全部会话")]], (next) => setDraft((previous) => ({ ...previous, scope: next }))),
+          selectRow(T("收藏"), draft.favorite, [["all", T("所有")], ["yes", T("已收藏")], ["no", T("未收藏")]], (next) => setDraft((previous) => ({ ...previous, favorite: next }))),
+          selectRow(T("归档"), draft.archived, [["all", T("所有")], ["yes", T("已归档")], ["no", T("未归档")]], (next) => setDraft((previous) => ({ ...previous, archived: next }))),
+          selectRow(T("待办"), draft.todo, [["all", T("所有")], ["yes", T("待办中")], ["no", T("非待办")]], (next) => setDraft((previous) => ({ ...previous, todo: next }))),
+          h(
+            "div",
+            { className: "frow", style: { alignItems: "flex-start" } },
+            h("label", { className: "flb" }, T("标签"), h("span", { className: "fsub" }, T("可多选"))),
+            tags.length === 0
+              ? h("div", { className: "se-set-note" }, T("标签库是空的"))
+              : h(
+                  "div",
+                  { className: "ftags" },
+                  tags.map((tag) =>
+                    h(
+                      "button",
+                      {
+                        type: "button",
+                        key: tag,
+                        className: "tagopt" + (draft.tags.includes(tag) ? " on" : ""),
+                        onClick: () => toggleTag(tag),
+                      },
+                      draft.tags.includes(tag) ? h(Icon, { name: "check", size: 10 }) : null,
+                      tag,
+                    ),
+                  ),
+                ),
           ),
-        ),
+        ],
       );
     }
 
@@ -1023,72 +1015,16 @@
       const anyOn = rows.some(([key]) => draft[key] === true);
 
       return h(
-        "div",
+        SeModal,
         {
-          className: "fmodal open",
-          role: "dialog",
-          "aria-label": T("搜索范围"),
-          onClick: (event) => {
-            if (event.target === event.currentTarget) onClose();
-          },
-        },
-        h(
-          "div",
-          { className: "fdlg" },
-          h(
-            "div",
-            { className: "fhead" },
-            h("span", { className: "fic" }, h(Icon, { name: "filter", size: 13 })),
-            h("span", { className: "ftitle" }, T("搜索范围")),
-            h("span", { className: "spacer" }),
-            h("button", { type: "button", className: "wbtn", title: T("关闭"), onClick: onClose }, h(Icon, { name: "x", size: 13 })),
-          ),
-          h(
-            "div",
-            { className: "fbody" },
-            selectRow(T("搜索位置"), draft.place ?? "all", [
-              ["all", T("所有位置")],
-              ["here", T("当前目录")],
-            ], (next) => setDraft((previous) => ({ ...previous, place: next }))),
-            h(
-              "div",
-              { className: "frow", style: { alignItems: "flex-start" } },
-              h("label", { className: "flb" }, T("搜索字段"), h("span", { className: "fsub" }, T("可多选"))),
-              h(
-                "div",
-                { className: "ftags" },
-                rows.map(([key, label, hint]) =>
-                  h(
-                    "button",
-                    {
-                      type: "button",
-                      key,
-                      className: "tagopt" + (draft[key] ? " on" : ""),
-                      title: hint,
-                      role: "checkbox",
-                      "aria-checked": draft[key] === true,
-                      onClick: () => toggle(key),
-                    },
-                    draft[key] ? h(Icon, { name: "check", size: 10 }) : null,
-                    label,
-                  ),
-                ),
-              ),
-            ),
-            h(
-              "div",
-              { className: "fsub" },
-              anyOn
-                ? T("会话内容会读取会话日志，第一次检索需要几秒建立索引")
-                : T("至少选择一项，否则搜索无法命中任何会话"),
-            ),
-          ),
-          h(
-            "div",
-            { className: "ffoot" },
+          title: T("搜索范围"),
+          icon: "filter",
+          onClose,
+          footer: [
             h(
               "button",
               {
+                key: "reset",
                 type: "button",
                 className: "act",
                 title: T("恢复默认范围（仍需点应用生效）"),
@@ -1100,6 +1036,7 @@
               ? h(
                   "button",
                   {
+                    key: "manage",
                     type: "button",
                     className: "act",
                     title: T("打开搜索索引设置，查看索引进度、重建或删除索引"),
@@ -1108,15 +1045,58 @@
                   T("搜索索引设置"),
                 )
               : null,
-            h("span", { className: "spacer" }),
-            h("button", { type: "button", className: "act", onClick: onClose }, T("取消")),
+            h("span", { key: "sp", className: "spacer" }),
+            h("button", { key: "cancel", type: "button", className: "act", onClick: onClose }, T("取消")),
             h(
               "button",
-              { type: "button", className: "act primary", disabled: !anyOn, onClick: () => onApply(draft) },
+              { key: "apply", type: "button", className: "act primary", disabled: !anyOn, onClick: () => onApply(draft) },
               T("应用"),
             ),
+          ],
+        },
+        [
+          selectRow(
+            T("搜索位置"),
+            draft.place ?? "all",
+            [
+              ["all", T("所有位置")],
+              ["here", T("当前目录")],
+            ],
+            (next) => setDraft((previous) => ({ ...previous, place: next })),
           ),
-        ),
+          h(
+            "div",
+            { className: "frow", style: { alignItems: "flex-start" } },
+            h("label", { className: "flb" }, T("搜索字段"), h("span", { className: "fsub" }, T("可多选"))),
+            h(
+              "div",
+              { className: "ftags" },
+              rows.map(([key, label, hint]) =>
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    key,
+                    className: "tagopt" + (draft[key] ? " on" : ""),
+                    title: hint,
+                    role: "checkbox",
+                    "aria-checked": draft[key] === true,
+                    onClick: () => toggle(key),
+                  },
+                  draft[key] ? h(Icon, { name: "check", size: 10 }) : null,
+                  label,
+                ),
+              ),
+            ),
+          ),
+          h(
+            "div",
+            { className: "fsub" },
+            anyOn
+              ? T("会话内容会读取会话日志，第一次检索需要几秒建立索引")
+              : T("至少选择一项，否则搜索无法命中任何会话"),
+          ),
+        ],
       );
     }
 

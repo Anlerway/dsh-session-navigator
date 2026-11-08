@@ -35,6 +35,7 @@ import {
 } from "../domain/trash.js";
 import { codedError } from "../store/sidecar.js";
 import { dropShortcutsTo } from "../domain/shortcuts.js";
+import { detachSession, flushSession, stopSession } from "./live-session.js";
 import { attachTo, detachEverywhere, registryOrNull } from "./registry.js";
 
 
@@ -70,6 +71,40 @@ async function moveDir(from, to) {
     throw error;
   }
   await rm(from, { recursive: true, force: true });
+}
+
+/**
+ * Remove a directory the host re-created at the old path.
+ *
+ * `detach()` asks the host to stop, but a second window still holding the tab
+ * can re-open the session in the same tick and let its write-behind write the log
+ * back. The bytes are already in the bin, so anything that lands there is a ghost
+ * that would resurface under 未分组 — drop it rather than leave the delete half
+ * done. A missing directory (the normal case) costs one failed `access`.
+ *
+ * @param {string} dir
+ * @returns {Promise<boolean>} whether a ghost directory was removed
+ */
+async function sweepGhostDir(dir) {
+  const there = await exists(dir).catch(() => false);
+  if (!there) return false;
+  await rm(dir, { recursive: true, force: true }).catch(() => {});
+  return true;
+}
+
+/**
+ * Whether a rename failed because something still holds the file open.
+ *
+ * Windows reports an open handle as EBUSY, EPERM or EACCES; POSIX as EBUSY. Only
+ * those are worth a detach-and-retry — a missing directory (ENOENT) is a
+ * different problem, and retrying it would just hide the real error.
+ *
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+function isBusyError(err) {
+  const code = /** @type {any} */ (err)?.code;
+  return code === "EBUSY" || code === "EPERM" || code === "EACCES";
 }
 
 /**
@@ -168,11 +203,20 @@ export async function trashSessions(api, ids) {
         continue;
       }
       const session = sessions.get(id) ?? {};
-      if (session.running === true) {
-        // Moving the log of a live session would pull the file out from under the
-        // agent that is still writing to it.
+      // A session the host still has open owns this directory as much as the bin
+      // does: its agent is still writing, and its registry row is still what DSH
+      // renders. Stop it before moving anything — a live writer either blocks the
+      // rename (Windows keeps an open handle) or re-creates its log at the path
+      // that just moved, and that leftover is the "deleted, yet listed under
+      // 未分组" row users report. Only a session that will not stop is refused.
+      const live = await stopSession(api.ctx, id);
+      if (live.stillRunning) {
         throw codedError("session-active", `${id} is running; stop it before deleting`);
       }
+      // Everything the host has buffered goes to disk now. A flush after the move
+      // would write into the directory that just left, which is the other way a
+      // deleted session reappears under 未分组.
+      await flushSession(api.ctx, id);
       const entry = trashEntryOf(
         { ...session, id, logPath: header.logPath, sizeBytes: session.sizeBytes ?? header.sizeBytes },
         { trashId: newTrashId() },
@@ -199,7 +243,16 @@ export async function trashSessions(api, ids) {
       const from = originalDirOf(claimed);
       const to = trashTargetDir(api.paths, claimed.trashId);
       try {
-        await moveDir(from, to);
+        try {
+          await moveDir(from, to);
+        } catch (err) {
+          // A handle the dispose could not close: Windows answers EBUSY/EPERM
+          // while a descriptor is still open. Let the host drop the session, then
+          // try the same rename once more before calling it a failure.
+          if (!isBusyError(err)) throw err;
+          await detachSession(api.ctx, id);
+          await moveDir(from, to);
+        }
       } catch (err) {
         await api.documents.trash
           .mutate((draft) => {
@@ -240,6 +293,12 @@ export async function trashSessions(api, ids) {
           );
         }
       }
+
+      // The bytes are in the bin and DSH no longer accounts for the session in
+      // any workspace; now tell the clients and the persistence layer to let go.
+      // Idempotent: the lock-retry path above may already have detached it.
+      await detachSession(api.ctx, id);
+      await sweepGhostDir(from);
 
       await api.documents.trash.mutate((draft) => {
         const stored = draft.entries?.[id];

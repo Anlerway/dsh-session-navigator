@@ -4,6 +4,24 @@
       // guesses at the new state locally: the host owns the tree and the
       // annotations, and a stale local copy is exactly the bug this avoids.
       /**
+       * The row ids a verb was pointed at, if its caller named any.
+       *
+       * A row menu knows exactly which row it belongs to and passes that id.
+       * The toolbar and the keyboard know nothing and pass nothing. Both call
+       * the same verbs, so the verbs take an optional target and this is where
+       * "nothing" is recognised. A bare onClick handler hands in a DOM event,
+       * which is not a target: anything that is not a non-empty id or a list of
+       * them counts as absent, never as "the selection".
+       *
+       * @param {any} wanted
+       * @returns {string[]}
+       */
+      function explicitIds(wanted) {
+        const list = Array.isArray(wanted) ? wanted : typeof wanted === "string" ? [wanted] : [];
+        return list.filter((id) => typeof id === "string" && id.length > 0);
+      }
+
+      /**
        * Say what went wrong in words the user can act on.
        *
        * The host speaks in error codes with English messages ("<id> is open in
@@ -270,20 +288,42 @@
       // session disappears from the official sidebar too. That is what a bin
       // means, and it is why every bin write is paired with an undo entry
       // (S6) — the user can always take the last step back.
+      /**
+       * The ids a verb acts on when its caller names none: the checked rows,
+       * failing those the selected row.
+       *
+       * Only the toolbar and the keyboard use this. A row menu always hands in
+       * the row it was opened on, because a verb that re-derives its target is
+       * a verb that can hit a different row than the one the user pointed at —
+       * which is exactly how 删除 on a session used to dissolve the workspace
+       * that happened to be selected and scatter its sessions into 未分组.
+       */
+      const selectionIds = useCallback(
+        () => (checked.size > 0 ? [...checked] : selected ? [selected] : []),
+        [checked, selected],
+      );
+
+      /** The sessions among the named rows, or among the selection. */
       const idsToActOn = useCallback(
-        () => (checked.size > 0 ? [...checked] : selected ? [selected] : []).filter((id) => sessionsById.has(id)),
-        [checked, selected, sessionsById],
+        (wanted) => {
+          const explicit = explicitIds(wanted);
+          return (explicit.length > 0 ? explicit : selectionIds()).filter((id) => sessionsById.has(id));
+        },
+        [selectionIds, sessionsById],
       );
 
       /** The same set, but only the container nodes in it. */
       const nodeIdsToActOn = useCallback(
-        () => (checked.size > 0 ? [...checked] : selected ? [selected] : []).filter((id) => {
-          const node = tree?.nodes?.[id];
-          // 默认工作区 is an ordinary workspace: it can be moved, pinned and
-          // deleted like any other, so it must not be filtered out of the actions.
-          return Boolean(node) && !node.fixed;
-        }),
-        [checked, selected, tree],
+        (wanted) => {
+          const explicit = explicitIds(wanted);
+          return (explicit.length > 0 ? explicit : selectionIds()).filter((id) => {
+            const node = tree?.nodes?.[id];
+            // 默认工作区 is an ordinary workspace: it can be moved, pinned and
+            // deleted like any other, so it must not be filtered out of the actions.
+            return Boolean(node) && !node.fixed;
+          });
+        },
+        [selectionIds, tree],
       );
 
       /**
@@ -295,16 +335,18 @@
        * record, and deleting one is DSH's own operation — see
        * workspaceTargets below.
        */
-      const folderTargets = useCallback(() => {
-        // Checked rows first; when nothing is checked, the selected row counts
-        // too, so 删除 on a selected folder does what the button says instead of
-        // silently deleting the folder the user happens to be standing in.
-        const ids = checked.size > 0 ? [...checked] : selected ? [selected] : [];
+      const folderTargets = useCallback((wanted) => {
+        // Named rows first, then the selection: checked rows, and when nothing
+        // is checked the selected one, so 删除 on a selected folder does what the
+        // button says instead of silently deleting the folder the user happens
+        // to be standing in.
+        const explicit = explicitIds(wanted);
+        const ids = explicit.length > 0 ? explicit : selectionIds();
         return ids.filter((id) => {
           const node = tree?.nodes?.[id];
           return Boolean(node && node.type === "folder" && node.kind === "folder" && !node.fixed);
         });
-      }, [checked, selected, tree]);
+      }, [selectionIds, tree]);
 
       /**
        * The checked workspaces, as the ids DSH's own delete expects.
@@ -315,8 +357,9 @@
        * lifts its references into 收藏 for the same reason). That is why the
        * workspace can sit behind the same 删除 as everything else.
        */
-      const workspaceTargets = useCallback(() => {
-        const ids = checked.size > 0 ? [...checked] : selected ? [selected] : [];
+      const workspaceTargets = useCallback((wanted) => {
+        const explicit = explicitIds(wanted);
+        const ids = explicit.length > 0 ? explicit : selectionIds();
         return ids
           .map((id) => tree?.nodes?.[id] ?? null)
           .filter((node) => Boolean(node) && node.type === "workspace" && !node.fixed)
@@ -325,7 +368,7 @@
             workspaceId: node.workspaceId ?? node.id,
             name: node.name ?? node.workspaceId ?? node.id,
           }));
-      }, [checked, selected, tree]);
+      }, [selectionIds, tree]);
 
       /**
        * The shortcut that puts `sessionId` in `container`, if there is one.
@@ -376,11 +419,25 @@
         [dialogs, mutate, setChecked, setHint, tree],
       );
 
-      const deleteSelection = useCallback(async () => {
-        const ids = idsToActOn();
-        const folders = folderTargets();
-        const workspaces = workspaceTargets();
-        const selectionNow = checked.size > 0 ? [...checked] : selected ? [selected] : [];
+      /**
+       * Delete what the caller names, or what is selected.
+       *
+       * Every row hands in its own id. The toolbar and the keyboard pass
+       * nothing and keep acting on the selection, which is what a command bar
+       * means. The two must not be confused: resolving a row menu through
+       * "whatever was selected" is what let 删除 on a session dissolve a
+       * workspace instead and push every session in it into 未分组.
+       *
+       * @param {string[] | string} [wanted] row ids; anything else (a DOM event
+       *   from a bare onClick: deleteSelection) counts as "no explicit target"
+       */
+      const deleteSelection = useCallback(async (wanted) => {
+        const explicit = explicitIds(wanted);
+        const named = explicit.length > 0;
+        const ids = idsToActOn(explicit);
+        const folders = folderTargets(explicit);
+        const workspaces = workspaceTargets(explicit);
+        const selectionNow = named ? explicit : selectionIds();
         // Standing in 收藏 or 待办, 删除 means "take it out of this page". The
         // payload has its own home, its own workspace and its own 回收站, so
         // there is nothing to move here and the dialog says so.
@@ -421,6 +478,13 @@
         // deletable there — deleting one removes the pointer, never the payload.
         const shortcuts = selectionNow.filter((id) => tree?.nodes?.[id]?.kind === "shortcut");
         if (ids.length === 0 && folders.length === 0 && shortcuts.length === 0 && workspaces.length === 0) {
+          // A row menu names its own row: when that row holds nothing
+          // deletable, say so. Falling back to "the folder I am standing in"
+          // would delete something the user never pointed at.
+          if (named) {
+            setHint(T("这一项没有可删除的内容"));
+            return;
+          }
           // Nothing is checked and no session is selected: 删除 applies to the
           // folder the user is standing in, which is what the button did before
           // the bin existed.
@@ -464,9 +528,14 @@
         if (folders.length > 0) doneParts.push(T("已删除 {0} 个文件夹", [folders.length]));
         if (ids.length > 0) doneParts.push(T("已移入回收站 {0} 个会话", [ids.length]));
         if (shortcuts.length > 0) doneParts.push(T("已移除 {0} 个快捷方式", [shortcuts.length]));
+        // A running session is stopped before its payload moves, so the
+        // question mentions it. Counting from the same rows the delete will
+        // act on keeps the number honest when the selection mixes both kinds.
+        const running = ids.filter((id) => sessionsById.get(id)?.running === true).length;
+        const warning = running > 0 ? " " + T("其中 {0} 个正在运行，会先中断它们。", [running]) : "";
         const confirmed = await dialogs.confirm({
           title: T("删除"),
-          message: T("删除 {0}？", [parts.join(T("，以及 "))]),
+          message: T("删除 {0}？", [parts.join(T("，以及 "))]) + warning,
           confirmLabel: T("删除"),
           danger: true,
         });
@@ -514,18 +583,20 @@
         mutate,
         removeFolder,
         scope,
-        selected,
-        checked,
+        selectionIds,
+        sessionsById,
         setChecked,
         setHint,
         shortcutFor,
         tree,
       ]);
 
-      const restoreSelection = useCallback(() => {
-        const ids = idsToActOn();
+      const restoreSelection = useCallback((wanted) => {
+        const explicit = explicitIds(wanted);
+        const named = explicit.length > 0;
+        const ids = idsToActOn(explicit);
         if (ids.length === 0) {
-          setHint(T("先选择要还原的会话"));
+          setHint(named ? T("这一项没有可还原的会话") : T("先选择要还原的会话"));
           return;
         }
         mutate(async () => {

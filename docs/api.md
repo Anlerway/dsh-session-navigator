@@ -459,14 +459,18 @@ knows about`——客户端只会送它正在显示的会话的 cwd，所以这�
 
 | 路由 | body | 返回 |
 |---|---|---|
-| `GET /datadir` | — | `{ current, recorded, fromEnv, exists, sizeBytes, contents }` |
-| `POST /datadir/inspect` | `{ target }` | `{ target, current, exists, writable, sameVolume, mode, sizeBytes, currentSizeBytes }` |
+| `GET /datadir` | — | `{ current, recorded, defaultDir, atDefault, restorable, fromEnv, exists, sizeBytes, contents }` |
+| `POST /datadir/inspect` | `{ target }` | `{ target, current, defaultDir, isDefault, exists, writable, sameVolume, mode, sizeBytes, currentSizeBytes }` |
 | `POST /datadir/migrate` | `{ target, mode? }` | `{ target, mode, steps, revision }` |
 
 `inspect` 是预检，不碰任何东西：目标必须是绝对路径、不是文件系统根、不是当前目录、可写、
 且不含另一套安装。盘符不存在（`Z:\\nope`）也是 `400 bad-request`，不是"不可写"——那台机器上根本没有那条路。
 `mode` 由是否同卷决定（同卷 `move`，跨卷 `copy`），`move` 是唯一会删旧目录的模式。
 `POST /datadir/migrate` 的 body 只带 `target`：`mode` 以预检算出来的计划为准，请求改不动它。
+
+`GET /datadir` 的 `restorable` 决定设置页要不要画「还原至默认位置」：已经在家（`atDefault`）
+或位置被 `DSH_SE_DATA_DIR` 钉住（`fromEnv`）时为 `false`。`inspect` 的 `isDefault` 表示目标
+就是默认目录——一次还原；只有这种目标允许它剩下的那个 `.location` 指针（详见 data-directory.md §6.1）。
 详见 [data-directory.md](data-directory.md)。
 
 ### 4.8 Electron 组件

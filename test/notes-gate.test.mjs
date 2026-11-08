@@ -102,13 +102,15 @@ test("nothing about the record is kept in the page", () => {
   assert.doesNotMatch(source, /notesSeenVersion|rememberNotesVersion|NOTES_SEEN_KEY/);
 });
 
-// The layer is portaled into a click-through root, and a modal nobody can
-// click reads as a frozen app. Both halves are one CSS declaration and one
-// timer away from regressing silently, so they are pinned here.
-test("the layer is not click-through, and does not land on the first frame", () => {
+// The announcement is a dialog like any other, so it is drawn by the same
+// frame — the host's Modal. Drawing its own layer again would put it back
+// outside the app's dialog tier, and firing on the first frame would race the
+// sidebar it mounts with. Both are one line away from regressing silently.
+test("the announcement is a host dialog, and does not land on the first frame", () => {
   const source = read("lib/client.js");
-  const css = source.slice(source.indexOf(".se-notes{"), source.indexOf(".se-notes-card"));
-  assert.match(css, /pointer-events:auto/);
+  const modal = source.slice(source.indexOf("function NotesModal"), source.indexOf("function NotesGate"));
+  assert.match(modal, /return h\(\s*SeModal,/, "the announcement draws its own layer again");
+  assert.match(modal, /wide: true/, "the document needs the wide frame");
   const gate = source.slice(source.indexOf("function NotesGate"), source.indexOf("// ── 关于"));
   assert.match(gate, /setTimeout\(/, "the announcement fires on the first frame again");
   assert.match(gate, /NOTES_DELAY_MS/);

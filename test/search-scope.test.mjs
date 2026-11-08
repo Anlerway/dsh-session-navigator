@@ -46,6 +46,13 @@ const { test: api } = loadClientBundle({
   react,
 });
 
+/**
+ * Render a function component the way React would: the dialog hands its frame
+ * to SeModal (which picks DSH's Modal or the local layer), so the assertions
+ * have to look through that wrapper to reach the buttons it draws.
+ */
+const renderComponent = (node) => node.type({ ...node.props, children: node.children });
+
 /** Every element in a rendered tree, depth first. */
 function elements(node, out = []) {
   if (!node || typeof node !== "object") return out;
@@ -53,6 +60,7 @@ function elements(node, out = []) {
     for (const child of node) elements(child, out);
     return out;
   }
+  if (typeof node.type === "function") return elements(renderComponent(node), out);
   if (node.type) out.push(node);
   for (const child of node.children ?? []) elements(child, out);
   return out;
@@ -61,8 +69,10 @@ function elements(node, out = []) {
 /** The text inside an element, concatenated. */
 function textOf(node) {
   if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
   if (!node || typeof node !== "object") return "";
   if (Array.isArray(node)) return node.map(textOf).join("");
+  if (typeof node.type === "function") return textOf(renderComponent(node));
   return (node.children ?? []).map(textOf).join("");
 }
 

@@ -15,7 +15,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
@@ -138,9 +138,82 @@ test("trashing skips unknown ids instead of failing the batch", async () => {
   }
 });
 
-test("a running session is refused without cancelling the rest of the batch", async () => {
+/**
+ * The host's grip on a live session, faked down to the four calls the delete
+ * makes: cancel, dispose, the agent-registry delete, flush and detach. A real
+ * session that is left attached either blocks the directory move or re-creates
+ * its log at the old path, and the second shape is the row the user then finds
+ * under 未分组.
+ *
+ * @param {{ stubborn?: boolean, calls?: string[] }} [options]
+ */
+function liveHost({ stubborn = false, calls = [] } = {}) {
+  const agent = {
+    id: "s1",
+    status: "running",
+    async cancel(reason) {
+      calls.push("cancel:" + JSON.stringify(reason));
+      if (!stubborn) agent.status = "idle";
+      else throw new Error("wedged in a tool call");
+    },
+  };
+  if (!stubborn) {
+    agent.scope = { async dispose() { calls.push("dispose"); } };
+  }
+  return {
+    agents: {
+      get: (id) => (id === "s1" ? agent : null),
+      store: { delete: (id) => calls.push("agents.delete:" + id) },
+    },
+    sessions: {
+      get: (id) => ({ id }),
+      async flush(session) {
+        calls.push("flush:" + (session?.id ?? "?"));
+      },
+      store: {
+        get: (id) => ({
+          detach() {
+            calls.push("detach:" + id);
+          },
+        }),
+      },
+    },
+  };
+}
+
+test("a session the host still holds is stopped and then trashed", async () => {
   const box = await sandbox();
   try {
+    const calls = [];
+    const host = liveHost({ calls });
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [{ id: "s1", title: "live", running: true }],
+    });
+    api.ctx = { get: (name) => host[name] };
+    const dir = await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"], "the live session goes once it is stopped");
+    assert.deepEqual(result.errors, []);
+    assert.equal(existsSync(dir), false, "its payload left the sessions tree");
+    assert.deepEqual(calls, [
+      'cancel:{"kind":"disposed"}',
+      "dispose",
+      "agents.delete:s1",
+      "flush:s1",
+      "detach:s1",
+    ], "stop, drop the registry row, flush, detach — in that order, before the move");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a session whose agent will not stop is refused without cancelling the batch", async () => {
+  const box = await sandbox();
+  try {
+    const host = liveHost({ stubborn: true });
     const api = fakeApi({
       home: box.home,
       dataDir: box.dataDir,
@@ -149,6 +222,7 @@ test("a running session is refused without cancelling the rest of the batch", as
         { id: "s2", title: "idle" },
       ],
     });
+    api.ctx = { get: (name) => host[name] };
     const live = await writeSession(box.home, "proj", "s1");
     const idle = await writeSession(box.home, "proj", "s2");
 
@@ -164,6 +238,62 @@ test("a running session is refused without cancelling the rest of the batch", as
     assert.equal(existsSync(idle), false);
     const index = await api.documents.trash.read();
     assert.deepEqual(Object.keys(index.entries), ["s2"], "a refusal leaves no entry behind");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a log the host writes back at the old path after the detach is swept", async () => {
+  const box = await sandbox();
+  try {
+    const calls = [];
+    const host = liveHost({ calls });
+    const dir = await writeSession(box.home, "proj", "s1");
+    host.sessions.store.get = (id) => ({
+      detach() {
+        calls.push("detach:" + id);
+        // A second window still holds the tab: the write-behind lands after the
+        // move, at the path that just left. Left alone, this is the row that
+        // shows up under 未分组 after a delete.
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, LOG), "{}\n");
+      },
+    });
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [{ id: "s1", title: "live", running: true }],
+    });
+    api.ctx = { get: (name) => host[name] };
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"]);
+    assert.deepEqual(result.errors, []);
+    assert.equal(calls.includes("detach:s1"), true);
+    assert.equal(existsSync(dir), false, "the ghost directory must not survive the delete");
+    const entry = (await api.documents.trash.read()).entries.s1;
+    assert.equal(existsSync(join(box.dataDir, "trash", entry.trashId, LOG)), true);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a stale running flag with no live agent does not block the delete", async () => {
+  const box = await sandbox();
+  try {
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [{ id: "s1", title: "was running", running: true }],
+    });
+    // The reader keeps the last flag it saw; the agent registry is what says
+    // whether anything is still holding the session open.
+    api.ctx = { get: (name) => (name === "agents" ? { get: () => null } : undefined) };
+    const dir = await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"]);
+    assert.equal(existsSync(dir), false);
   } finally {
     await box.cleanup();
   }

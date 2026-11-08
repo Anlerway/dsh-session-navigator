@@ -137,6 +137,12 @@ const aboutGroup = (tree) => collect(tree, byClass("se-set-grp")).find((group) =
 
 const chipLabelled = (tree, key) => collect(tree, byClass("se-set-chip")).find((chip) => textOf(chip) === key);
 
+/** The 更新说明 document body, once its dialog is up. */
+const notesBox = (tree) => collect(tree, byClass("se-notes-body"))[0];
+
+/** The dialog frame around it: the title, and the footer the chips ride in. */
+const notesFrame = (tree) => collect(tree, byClass("fmodal"))[0];
+
 test("关于 prints the build it is running", async () => {
   const { tree } = await renderSettings();
   const about = aboutGroup(tree);
@@ -249,7 +255,7 @@ test("Star opens the repository through the host", async () => {
 
 test("更新说明 is the document, read when it is opened", async () => {
   const { tree, calls, driver, api, t } = await renderSettings();
-  assert.equal(collect(tree, byClass("se-notes")).length, 0, "nothing is drawn until the row is pressed");
+  assert.equal(notesBox(tree), undefined, "nothing is drawn until the row is pressed");
   assert.ok(!calls.some((call) => /\/release-notes/.test(call.url)), "and nothing is read either");
 
   chipLabelled(tree, "setNotesOpen").props.onClick();
@@ -257,19 +263,19 @@ test("更新说明 is the document, read when it is opened", async () => {
   assert.equal(calls.filter((call) => /\/release-notes/.test(call.url)).length, 1);
 
   const after = await driver.settle(() => page(driver, api, t));
-  const layer = collect(after, byClass("se-notes"))[0];
-  assert.ok(layer, "the layer is up once the notes arrive");
+  const box = notesBox(after);
+  assert.ok(box, "the dialog is up once the notes arrive");
   // The document's own first line, which already carries the version: the
-  // dialog must not put a heading of its own above it.
-  assert.equal(textOf(collect(layer, byClass("se-notes-title"))[0]), "更新说明：V1.1.0");
-  assert.equal(collect(layer, byClass("se-notes-list")).length, 2, "one ordered list and one bulleted");
-  assert.equal(collect(layer, byClass("se-notes-rule")).length, 1);
-  assert.match(textOf(layer), /新增/);
-  assert.match(textOf(layer), /更新说明弹窗/, "**bold** keeps its text");
+  // frame is titled with it and puts no heading of its own above it.
+  assert.match(textOf(notesFrame(after)), /更新说明：V1\.1\.0/);
+  assert.equal(collect(box, byClass("se-notes-list")).length, 2, "one ordered list and one bulleted");
+  assert.equal(collect(box, byClass("se-notes-rule")).length, 1);
+  assert.match(textOf(box), /新增/);
+  assert.match(textOf(box), /更新说明弹窗/, "**bold** keeps its text");
 
-  // Star and Issue ride at the bottom, and still name a target rather than a
-  // URL — the host owns the allowlist.
-  const footChip = (key) => collect(layer, byClass("se-set-chip")).find((chip) => textOf(chip) === key);
+  // Star and Issue ride in the dialog's footer, and still name a target rather
+  // than a URL — the host owns the allowlist.
+  const footChip = (key) => collect(notesFrame(after), byClass("se-set-chip")).find((chip) => textOf(chip) === key);
   footChip("setIssueGo").props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 10));
   const opened = calls.find((call) => call.method === "POST" && call.url.endsWith("/about/open"));
@@ -284,17 +290,19 @@ test("更新说明 closes on the backdrop but not on the card, and reads again n
     return driver.settle(() => page(driver, api, t));
   };
 
+  // The frame here is the local layer: this harness lends no dialog primitives,
+  // so SeModal draws its own — and that layer must still be dismissable by a
+  // press that starts on the backdrop, never by a press that lands in the card.
   let after = await open();
   const self = {};
-  collect(after, byClass("se-notes"))[0].props.onClick({ target: self, currentTarget: self });
+  notesFrame(after).props.onMouseDown({ target: self, currentTarget: self });
   after = await driver.settle(() => page(driver, api, t));
-  assert.equal(collect(after, byClass("se-notes")).length, 0, "a press outside the card closes it");
+  assert.equal(notesBox(after), undefined, "a press outside the card closes it");
 
   after = await open();
-  const layer = collect(after, byClass("se-notes"))[0];
-  layer.props.onClick({ target: {}, currentTarget: {} });
+  notesFrame(after).props.onMouseDown({ target: {}, currentTarget: {} });
   after = await driver.settle(() => page(driver, api, t));
-  assert.equal(collect(after, byClass("se-notes")).length, 1, "a press on the card itself keeps it open");
+  assert.ok(notesBox(after), "a press on the card itself keeps it open");
 
   // Each open asks again: the file is the source of truth, and remembering the
   // parse is the host's job (by size + mtime), not the page's.
@@ -309,10 +317,10 @@ test("更新说明 says the file could not be read instead of showing an empty c
   chipLabelled(tree, "setNotesOpen").props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 10));
   const after = await driver.settle(() => page(driver, api, t));
-  const layer = collect(after, byClass("se-notes"))[0];
-  assert.ok(layer, "the layer still opens, so the failure has somewhere to show");
-  assert.match(textOf(layer), /setNotesFailed/);
-  assert.match(textOf(layer), /找不到更新说明文件/);
+  const box = notesBox(after);
+  assert.ok(box, "the dialog still opens, so the failure has somewhere to show");
+  assert.match(textOf(box), /setNotesFailed/);
+  assert.match(textOf(box), /找不到更新说明文件/);
 });
 
 /** The 危险操作 group, found by its heading. */
@@ -839,4 +847,98 @@ test("sending a borrowed runtime back offers the download again", async () => {
   );
   const after = await driver.settle(() => page(driver, api, t));
   assert.deepEqual(collect(componentGroup(after), byClass("se-set-chip")).map(textOf), ["setCompDownload", "setCompScan"]);
+});
+
+/** The 数据目录 group, wherever it sits on the page. */
+const dataGroup = (tree) => collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupData"));
+
+test("数据目录 offers 还原至默认位置 only when there is a default to go back to", async () => {
+  const away = await renderSettings({
+    dataDirInfo: {
+      current: "D:/se",
+      recorded: "D:/se",
+      defaultDir: "C:/Users/me/.dsh-session-navigator",
+      atDefault: false,
+      restorable: true,
+      fromEnv: false,
+      exists: true,
+      sizeBytes: 2048,
+      contents: [],
+    },
+  });
+  // Order matters: the restore sits in front of 更改位置, because it is the
+  // cheaper action and the one a user who moved the directory wants most.
+  assert.deepEqual(collect(dataGroup(away.tree), byClass("se-set-chip")).map(textOf), [
+    "setDataDirRestore",
+    "setDataDirChange",
+  ]);
+
+  // Already home: nothing to restore.
+  const home = await renderSettings({
+    dataDirInfo: {
+      current: "C:/Users/me/.dsh-session-navigator",
+      recorded: "C:/Users/me/.dsh-session-navigator",
+      defaultDir: "C:/Users/me/.dsh-session-navigator",
+      atDefault: true,
+      restorable: false,
+      fromEnv: false,
+      exists: true,
+      sizeBytes: 2048,
+      contents: [],
+    },
+  });
+  assert.deepEqual(collect(dataGroup(home.tree), byClass("se-set-chip")).map(textOf), ["setDataDirChange"]);
+
+  // Pinned by the environment: the button would be undone on the next start.
+  const pinned = await renderSettings({
+    dataDirInfo: {
+      current: "D:/se",
+      recorded: "D:/se",
+      defaultDir: "C:/Users/me/.dsh-session-navigator",
+      atDefault: false,
+      restorable: false,
+      fromEnv: true,
+      exists: true,
+      sizeBytes: 2048,
+      contents: [],
+    },
+  });
+  assert.deepEqual(collect(dataGroup(pinned.tree), byClass("se-set-chip")).map(textOf), ["setDataDirChange"]);
+});
+
+test("还原至默认位置 inspects the default folder and confirms it as a restore", async () => {
+  const info = {
+    current: "D:/se",
+    recorded: "D:/se",
+    defaultDir: "C:/Users/me/.dsh-session-navigator",
+    atDefault: false,
+    restorable: true,
+    fromEnv: false,
+    exists: true,
+    sizeBytes: 2048,
+    contents: [],
+  };
+  const { tree, calls, driver, api, t } = await renderSettings({ dataDirInfo: info });
+
+  chipLabelled(tree, "setDataDirRestore").props.onClick();
+  await tick();
+  // The client never builds a home path of its own; it asks the host to inspect
+  // the one the host named.
+  const inspect = calls.find((call) => call.method === "POST" && call.url.endsWith("/datadir/inspect"));
+  assert.deepEqual(inspect.body, { target: info.defaultDir });
+
+  const planned = await driver.settle(() => page(driver, api, t));
+  const group = dataGroup(planned);
+  assert.match(textOf(group), /setDataDirRestoreConfirm/, "coming home is a restore, not a migration");
+  assert.ok(textOf(group).includes(info.defaultDir), "the confirmation names the folder");
+
+  chipLabelled(group, "setDataDirRestoreGo").props.onClick();
+  await tick();
+  const migrate = calls.find((call) => call.method === "POST" && call.url.endsWith("/datadir/migrate"));
+  assert.deepEqual(migrate.body, { target: info.defaultDir, mode: "move" });
+
+  const done = await driver.settle(() => page(driver, api, t));
+  assert.match(textOf(dataGroup(done)), /setDataDirRestored/, "the note says restored, not moved");
+  // The row catches up with the host: the button is gone and the path is home.
+  assert.equal(chipLabelled(dataGroup(done), "setDataDirRestore"), undefined);
 });

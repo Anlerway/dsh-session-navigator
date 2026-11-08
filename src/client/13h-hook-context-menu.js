@@ -296,7 +296,10 @@
               label: T("删除 {0} 项", [count]),
               icon: "trash",
               danger: true,
-              run: () => deleteSelection(),
+              // The batch this item counts is the batch it deletes: the
+              // checked rows it just described, named explicitly so a
+              // selection that changes under the menu cannot redirect it.
+              run: () => deleteSelection(bulkIds),
             });
             setContextMenu({ left: x, top: y, items });
             return;
@@ -400,11 +403,11 @@
               // points at; every other verb above stays the parent's. Inside 回收站
               // the same row offers the bin's two verbs.
               if (session?.trashed) {
-                items.push({ label: T("还原"), icon: "restore", run: () => restoreSelection() });
+                items.push({ label: T("还原"), icon: "restore", run: () => restoreSelection([id]) });
                 items.push({ sep: true });
-                items.push({ label: T("永久删除"), icon: "trash", danger: true, run: () => deleteSelection() });
+                items.push({ label: T("永久删除"), icon: "trash", danger: true, run: () => deleteSelection([id]) });
               } else {
-                items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection() });
+                items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection([id]) });
               }
               items.push({ label: T("子智能体 · 随父会话操作"), disabled: true });
               setContextMenu({ left: x, top: y, items });
@@ -412,9 +415,9 @@
             }
             items.push({ label: T("重命名"), icon: "pencil", key: "F2", run: () => beginRenameAfterClick("session", id, descriptor.surface ?? "list") });
             if (session?.trashed) {
-              items.push({ label: T("还原"), icon: "restore", run: () => restoreSelection() });
+              items.push({ label: T("还原"), icon: "restore", run: () => restoreSelection([id]) });
               items.push({ sep: true });
-              items.push({ label: T("永久删除"), icon: "trash", danger: true, run: () => deleteSelection() });
+              items.push({ label: T("永久删除"), icon: "trash", danger: true, run: () => deleteSelection([id]) });
             } else {
               items.push({
                 label: session?.favorite ? T("取消收藏") : T("收藏"),
@@ -476,7 +479,7 @@
               items.push({ label: T("在文件管理器中显示"), icon: "folder", run: () => revealSessionDir(id) });
               items.push({ label: T("复制文件路径"), icon: "copy", run: () => copySessionPath(id) });
               items.push({ sep: true });
-              items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection() });
+              items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection([id]) });
             }
           } else if (kind === "workspace") {
             const pinned = Boolean(tree?.pins?.[nodeId]);
@@ -535,7 +538,7 @@
               run: () => navigate(member.openId),
             });
             items.push({ sep: true });
-            items.push({ label: T("移出{0}", [what]), icon: "x", danger: true, run: () => deleteSelection() });
+            items.push({ label: T("移出{0}", [what]), icon: "x", danger: true, run: () => deleteSelection([id]) });
           } else if (kind === "shortcut") {
             const shortcutNode = payload ?? tree?.nodes?.[id] ?? null;
             // 打开 on a pointer means the thing behind it: a bookmark to a session
@@ -561,7 +564,7 @@
               label: T("移除快捷方式"),
               icon: "x",
               danger: true,
-              run: () => deleteSelection(),
+              run: () => deleteSelection([nodeId ?? id]),
             });
           } else if (kind === "fixed") {
             const fixedId = nodeId ?? id;
@@ -724,7 +727,14 @@
           const y = Number.isFinite(event?.clientY) && event.clientY > 0 ? event.clientY : (rect?.top ?? 100) + 20;
           const rowKey = descriptor.nodeId ?? descriptor.id ?? null;
           const checkedNow = checkedRef.current;
-          if (rowKey && checkedNow.size > 0 && !checkedNow.has(rowKey) && !checkedNow.has(descriptor.id)) {
+          // The row under the pointer becomes the subject of its own menu. A
+          // checked set that does not contain it belongs to an earlier gesture:
+          // let the menu speak about this row while the verbs still resolve
+          // "the selection", and one right-click stars rows somewhere else — or,
+          // for 删除, dissolves an unrelated workspace and drops every session in
+          // it into 未分组. selectRow keeps a multi-selection that already holds
+          // the row, so membership is the test, not the size.
+          if (rowKey && !checkedNow.has(rowKey) && !checkedNow.has(descriptor.id)) {
             setChecked(new Set());
             setSelected(rowKey);
           }

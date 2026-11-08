@@ -168,6 +168,15 @@ test("binning a parent still takes every subagent below it", async () => {
 test("a running subagent is reported instead of moved", async () => {
   const { api, logs, cleanup } = await scene({ running: ["c"] });
   try {
+    // The reader's frame says "running"; the host also holds the agent, and this
+    // one will not stop. A session that cannot be stopped is refused — the
+    // delete may stop a live session, but it does not move one out from under
+    // an agent that keeps writing.
+    api.ctx = {
+      get: (name) => (name === "agents"
+        ? { get: (id) => (id === "c" ? { id, status: "running", cancel() {} } : null) }
+        : undefined),
+    };
     const result = await trash(api, { body: { ids: ["c"] }, headers: {} });
     assert.deepEqual(result.trashed, ["g"], "the idle grandchild still goes");
     assert.deepEqual(result.skipped, ["c"]);

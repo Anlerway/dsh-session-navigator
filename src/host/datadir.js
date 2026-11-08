@@ -39,6 +39,19 @@ const TRASH_DIR = "trash";
 /** Files whose presence means "this directory is already in use". */
 const OCCUPANCY_MARKERS = ["tree.v1.json", join("trash", "index.v1.json")];
 
+/**
+ * The environment whose home directory decides the default location.
+ *
+ * Production passes nothing and gets `process.env`; tests hand the api a fake
+ * environment so a restore never consults the real home directory.
+ *
+ * @param {any} api
+ * @returns {NodeJS.ProcessEnv}
+ */
+function envOf(api) {
+  return api?.env ?? process.env;
+}
+
 
 /**
  * Is this path a filesystem root (`/` or `C:\\`)? A migration to a root would
@@ -120,6 +133,10 @@ export async function inspectDataDir(api, target) {
   }
   const resolved = resolve(wanted);
   const current = resolve(api.dataDir);
+  const defaultDir = defaultDataDir(envOf(api));
+  // A target that *is* the default location is a restore, and the default
+  // location is allowed to hold the signpost a previous migration left there.
+  const isDefault = samePath(resolved, defaultDir);
 
   if (isRoot(resolved)) {
     throw codedError("bad-request", "a filesystem root cannot be the data directory");
@@ -143,8 +160,20 @@ export async function inspectDataDir(api, target) {
   // wrote, so the target has to start empty: carrying into a directory that
   // already holds unrelated files would either merge two data sets or (before
   // this check) delete the user's files when the copy failed and rolled back.
-  if (exists && (await readdir(resolved).catch(() => [])).length > 0) {
-    throw codedError("datadir-not-empty", `${resolved} is not empty`);
+  //
+  // The default directory is the one exception, and only for its own signpost:
+  // leaving for another disk keeps `.location` behind so the next start follows
+  // it, and coming back must not be refused by the very file that made the
+  // move possible. It is a pointer, not data, and the migration deletes it.
+  const present = exists ? await readdir(resolved).catch(() => []) : [];
+  const blocking = isDefault ? present.filter((name) => name !== LOCATION_FILE) : present;
+  if (blocking.length > 0) {
+    throw codedError(
+      "datadir-not-empty",
+      isDefault
+        ? `${resolved} holds data from an earlier installation; clear it before restoring`
+        : `${resolved} is not empty`,
+    );
   }
 
   const writableNow = await writable(resolved);
@@ -153,6 +182,9 @@ export async function inspectDataDir(api, target) {
   return {
     target: resolved,
     current,
+    defaultDir,
+    /** True when the target is the default location: this is a restore. */
+    isDefault,
     exists,
     writable: writableNow,
     sameVolume,
@@ -251,6 +283,15 @@ export async function migrateDataDir(api, body) {
     });
     steps.push("recorded");
 
+    // A restore lands on a directory that still carries the signpost the move
+    // away wrote, pointing at a place that is about to stop existing. The
+    // settings document is what a start reads first, so the file is only
+    // misleading — delete it and the directory stands on its own again.
+    if (plan.isDefault) {
+      await rm(join(destination, LOCATION_FILE), { force: true }).catch(() => {});
+      steps.push("signpost-cleared");
+    }
+
     // Step 6: the old directory points at the new one, and `move` then deletes it.
     //
     // The pointer is written in **both** modes, because the default directory is
@@ -264,7 +305,7 @@ export async function migrateDataDir(api, body) {
     steps.push("pointer");
 
     if (mode === "move") {
-      if (samePath(source, defaultDataDir())) {
+      if (samePath(source, defaultDataDir(envOf(api)))) {
         // Keep the default directory as a signpost: everything but the pointer
         // goes, so the next start follows it instead of starting empty.
         await pruneExcept(source, LOCATION_FILE);
@@ -316,10 +357,18 @@ async function pruneExcept(dir, keep) {
 export async function describeDataDir(api) {
   const document = await api.documents.settings.read();
   const recorded = document?.dataDir?.current ?? null;
+  const env = envOf(api);
+  const defaultDir = defaultDataDir(env);
+  const atDefault = samePath(api.dataDir, defaultDir);
+  const fromEnv = typeof env?.DSH_SE_DATA_DIR === "string" && env.DSH_SE_DATA_DIR.trim() !== "";
   return {
     current: api.dataDir,
     recorded,
-    fromEnv: typeof process.env.DSH_SE_DATA_DIR === "string" && process.env.DSH_SE_DATA_DIR.trim() !== "",
+    defaultDir,
+    atDefault,
+    /** No chip when already home, and none when an env override pins the path. */
+    restorable: !atDefault && !fromEnv,
+    fromEnv,
     exists: existsSync(api.dataDir),
     sizeBytes: await sizeOf(api.dataDir),
     contents: await listContents(api.dataDir),

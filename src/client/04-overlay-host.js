@@ -201,8 +201,14 @@
     // ── Overlay host ──────────────────────────────────────────────────────
     // The sidebar has `overflow: hidden`, so a panel rendered inside the footer
     // slot would be clipped. Render into a fixed layer appended to <body>
-    // instead. 1050 sits above DSH's 1000 backdrop tier and below its 1100
-    // tooltip tier.
+    // instead.
+    //
+    // 900 sits *below* DSH's 1000 dialog tier on purpose. Dialogs are the app's
+    // own Modal now (see dshPrimitives below), and that primitive portals to
+    // <body> with a fixed 1000: a panel parked above it would paint its own
+    // mask over the question it just asked. Everything the panel draws — the
+    // scrim, the shell, the context menu — lives inside this one stacking
+    // context, so they keep their order relative to each other either way.
     let overlayRootElement = null;
     function getOverlayRoot() {
       if (typeof document === "undefined" || !document.body) return null;
@@ -214,7 +220,7 @@
         Object.assign(element.style, {
           position: "fixed",
           inset: "0",
-          zIndex: "1050",
+          zIndex: "900",
           pointerEvents: "none",
           overflow: "visible",
         });
@@ -285,5 +291,40 @@
         return h(React.Fragment, null, ...children);
       }
       return createPortal(h(React.Fragment, null, ...children), root);
+    }
+
+    // ── DSH's own dialog primitives ───────────────────────────────────────
+    /**
+     * The app's dialog kit, when this host ships it.
+     *
+     * A question drawn by DSH — not by the plugin — brings what a lookalike
+     * cannot: the app's mask, its focus trap, its Escape handling, its stacking
+     * over every surface including this panel, and the app's own warning layout
+     * for destructive actions. `require` is the module loader's resolver and
+     * the primitives package is in its shim table
+     * (`@deepseek-ai/dsh-client-ui-primitives`), so this resolves from inside a
+     * plugin factory without a dependency of our own.
+     *
+     * Resolution happens once and the answer is cached either way. A host
+     * without the package must fall back to the plugin's local layer on *every*
+     * render rather than pay a throw per dialog, and a dialog is never allowed
+     * to take the panel down with it — a missing kit is an answer, not an
+     * error.
+     *
+     * @returns {any | null} the kit, or null when this host cannot lend one
+     */
+    let cachedPrimitives;
+    function dshPrimitives() {
+      if (cachedPrimitives !== undefined) return cachedPrimitives;
+      cachedPrimitives = null;
+      if (typeof require === "function") {
+        try {
+          const kit = require("@deepseek-ai/dsh-client-ui-primitives");
+          if (kit && typeof kit.Modal === "function") cachedPrimitives = kit;
+        } catch {
+          /* no primitives for this plugin: the local layer draws the dialog */
+        }
+      }
+      return cachedPrimitives;
     }
 

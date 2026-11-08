@@ -5,12 +5,12 @@
     // nothing; window.confirm works but it is a browser box that ignores the DSH
     // theme and blocks the renderer while it is open.
     //
-    // Every dialog goes through `useDialogs`, which resolves a promise and
-    // renders one local component. It is deliberately *not* DSH's Modal: that
-    // primitive paints at the app's dialog tier, which is below this panel, so
-    // a confirmation opened from here would land underneath the window that
-    // opened it. The local layer sits above the panel and above the context
-    // menu instead (see .fmodal in the stylesheet).
+    // Every dialog goes through `useDialogs`, which resolves a promise, and is
+    // drawn by DSH's own Modal wherever the host lends one (SeModal below). The
+    // panel's layers were moved down to z-index 900 for exactly this: the app's
+    // dialog tier is 1000, so a native question now lands *above* the window
+    // that asked instead of underneath it. The local `.fmodal` layer is the
+    // fallback for a host that exposes no primitives, not the normal path.
 
     /** A tiny imperative queue owner: one dialog at a time, promise-based. */
     /**
@@ -142,6 +142,79 @@
     }
 
     /**
+     * One dialog frame, drawn by whichever layer can draw it.
+     *
+     * Preference is the app's, then the plugin's: DSH's Modal (the app's mask,
+     * focus trap, Escape and stacking) and, only when this host lends no
+     * primitives, the local `.fmodal` layer. Both get the same title, body and
+     * footer — the frame differs, never the question. The body is wrapped in a
+     * `.se-shell` element with `display: contents` because every dialog rule in
+     * the stylesheet is written `.se-shell .frow` and the theme tokens hang off
+     * the same class: the native frame then inherits the panel's look without
+     * painting a second card.
+     *
+     * @param {{ title: string, icon?: string, wide?: boolean, description?: string,
+     *   onClose: () => void, footer?: any, children?: any, label?: string }} props
+     */
+    function SeModal({ title, icon, wide, description, onClose, footer, children, label }) {
+      const kit = dshPrimitives();
+      const Modal = kit?.Modal;
+      /** Keep the plugin's class scope without adding a box to the layout. */
+      const scope = (nodes) => h("div", { className: "se-shell", style: { display: "contents" } }, nodes);
+      if (typeof Modal === "function") {
+        return h(
+          Modal,
+          {
+            open: true,
+            onClose,
+            title,
+            closeLabel: T("关闭"),
+            description,
+            footer: footer == null ? undefined : scope(footer),
+            className: "se-dsh-dialog" + (wide ? " wide" : ""),
+          },
+          scope(h("div", { className: "se-dlg-stack" }, children)),
+        );
+      }
+      // The fallback carries its own .se-shell scope: a dialog is drawn from a
+      // mount that may sit anywhere (the sidebar entry, the settings window), so
+      // the rules and tokens cannot rely on an ancestor having one.
+      return scope(h(
+        "div",
+        {
+          className: "fmodal open",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": label ?? title,
+          onMouseDown: (event) => {
+            // Only a press that starts on the backdrop dismisses: a drag that
+            // ends outside the card must not throw the dialog away.
+            if (event.target === event.currentTarget) onClose();
+          },
+        },
+        h(
+          "div",
+          { className: wide ? "fdlg wide" : "fdlg" },
+          h(
+            "div",
+            { className: "fhead" },
+            icon ? h("span", { className: "fic" }, h(Icon, { name: icon, size: 13 })) : null,
+            h("span", { className: "ftitle" }, title),
+            h("span", { className: "spacer" }),
+            h("button", { type: "button", className: "wbtn", title: T("关闭"), onClick: onClose }, h(Icon, { name: "x", size: 13 })),
+          ),
+          h(
+            "div",
+            { className: "fbody" },
+            description ? h("p", { className: "se-dlg-msg" }, description) : null,
+            h("div", { className: "se-dlg-stack" }, children),
+          ),
+          h("div", { className: "ffoot" }, footer ?? null),
+        ),
+      ));
+    }
+
+    /**
      * The dialog itself.
      *
      * Three shapes, in order of preference:
@@ -182,100 +255,89 @@
         onSettle(true);
       };
 
-      // Every confirmation and prompt is drawn here, by the plugin, on the
-      // dialog layer of the stylesheet — never by DSH's Modal primitive. That
-      // primitive lives at the app's dialog tier, which this panel sits above,
-      // so a "higher" dialog rendered through it ends up *under* the panel that
-      // opened it. One local implementation means one predictable layer, and
-      // destructive actions get the same 我明白此操作不可撤销 acknowledgement.
-      return h(
-        "div",
-        {
-          className: "fmodal open",
-          role: "dialog",
-          "aria-modal": "true",
-          "aria-label": dialog.title,
-          onMouseDown: (event) => {
-            // Only a press that starts on the backdrop dismisses: a drag that
-            // ends outside the card (selecting text, moving the pointer) must
-            // not throw the dialog away.
-            if (event.target === event.currentTarget) close();
-          },
-        },
-        h(
-          "div",
-          { className: dialog.wide ? "fdlg wide" : "fdlg" },
-          h(
-            "div",
-            { className: "fhead" },
-            h("span", { className: "ftitle" }, dialog.title),
-            h("span", { className: "spacer" }),
-            h("button", { type: "button", className: "wbtn", title: T("关闭"), onClick: close }, h(Icon, { name: "x", size: 13 })),
-          ),
-          h(
-            "div",
-            { className: "fbody" },
-            dialog.message ? h("p", { className: "se-dlg-msg" }, dialog.message) : null,
-            // A panel brings its own body: closing is the only verb this layer
-            // still owns, and the body keeps its own buttons and state.
-            dialog.kind === "panel" ? h("div", { className: "se-dlg-body" }, dialog.render?.()) : null,
-            dialog.kind === "prompt"
-              ? h("input", {
-                  ref: promptRef,
-                  className: "se-dlg-input",
-                  value,
-                  placeholder: dialog.placeholder,
-                  maxLength: dialog.maxLength,
-                  autoFocus: true,
-                  spellCheck: false,
-                  onChange: (event) => {
-                    setValue(event.target.value);
-                    setError("");
-                  },
-                  onKeyDown: (event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      submit();
-                    }
-                  },
-                })
-              : null,
-            error ? h("p", { className: "se-dlg-err" }, error) : null,
-            dialog.acknowledge
-              ? h(
-                  "label",
-                  { className: "se-dlg-ack" },
-                  h("input", {
-                    type: "checkbox",
-                    checked: acknowledged,
-                    onChange: (event) => setAcknowledged(event.target.checked),
-                  }),
-                  h("span", null, dialog.acknowledge),
-                )
-              : null,
-          ),
-          h(
-            "div",
-            { className: "ffoot" },
-            h("span", { className: "spacer" }),
-            dialog.kind === "panel"
-              ? h("button", { type: "button", className: "act", onClick: close }, dialog.closeLabel ?? T("关闭"))
-              : [
-                  h("button", { key: "cancel", type: "button", className: "act", onClick: close }, dialog.cancelLabel),
-                  h(
-                    "button",
-                    {
-                      key: "confirm",
-                      type: "button",
-                      className: "act" + (dialog.danger ? " danger-solid" : " primary"),
-                      disabled: dialog.acknowledge ? !acknowledged : false,
-                      onClick: submit,
-                    },
-                    dialog.confirmLabel,
-                  ),
-                ],
-          ),
-        ),
-      );
-    }
+      const kit = dshPrimitives();
 
+      // A destructive confirm that insists on a tick first *is* DSH's
+      // RiskConfirmation: the warning row, the acknowledgement and the disabled
+      // 确认 are the app's own, so this borrows them instead of drawing a
+      // lookalike in the panel's colours.
+      if (dialog.acknowledge && typeof kit?.RiskConfirmation === "function") {
+        return h(kit.RiskConfirmation, {
+          open: true,
+          title: dialog.title,
+          description: dialog.message,
+          acknowledgeLabel: dialog.acknowledge,
+          cancelLabel: dialog.cancelLabel,
+          closeLabel: T("关闭"),
+          confirmLabel: dialog.confirmLabel,
+          acknowledged,
+          onAcknowledgedChange: setAcknowledged,
+          onCancel: close,
+          onConfirm: submit,
+        });
+      }
+
+      const body = [
+        dialog.message ? h("p", { key: "msg", className: "se-dlg-msg" }, dialog.message) : null,
+        // A panel brings its own body: closing is the only verb this layer
+        // still owns, and the body keeps its own buttons and state.
+        dialog.kind === "panel" ? h("div", { key: "panel", className: "se-dlg-body" }, dialog.render?.()) : null,
+        dialog.kind === "prompt"
+          ? h("input", {
+              key: "input",
+              ref: promptRef,
+              className: "se-dlg-input",
+              value,
+              placeholder: dialog.placeholder,
+              maxLength: dialog.maxLength,
+              autoFocus: true,
+              spellCheck: false,
+              onChange: (event) => {
+                setValue(event.target.value);
+                setError("");
+              },
+              onKeyDown: (event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submit();
+                }
+              },
+            })
+          : null,
+        error ? h("p", { key: "err", className: "se-dlg-err" }, error) : null,
+        // Only reachable when the host lends no RiskConfirmation: the tick row
+        // then belongs to this body, worded exactly as the app words it.
+        dialog.acknowledge
+          ? h(
+              "label",
+              { key: "ack", className: "se-dlg-ack" },
+              h("input", {
+                type: "checkbox",
+                checked: acknowledged,
+                onChange: (event) => setAcknowledged(event.target.checked),
+              }),
+              h("span", null, dialog.acknowledge),
+            )
+          : null,
+      ];
+
+      const footer =
+        dialog.kind === "panel"
+          ? h("button", { type: "button", className: "act", onClick: close }, dialog.closeLabel ?? T("关闭"))
+          : [
+              h("button", { key: "cancel", type: "button", className: "act", onClick: close }, dialog.cancelLabel),
+              h(
+                "button",
+                {
+                  key: "confirm",
+                  type: "button",
+                  className: "act" + (dialog.danger ? " danger-solid" : " primary"),
+                  disabled: dialog.acknowledge ? !acknowledged : false,
+                  onClick: submit,
+                },
+                dialog.confirmLabel,
+              ),
+            ];
+
+      return h(SeModal, { title: dialog.title, wide: dialog.wide, onClose: close, footer }, body);
+    }

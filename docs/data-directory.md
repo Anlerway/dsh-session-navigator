@@ -290,7 +290,7 @@ Electron 组件不在其中——那是安装，不是用户数据。详见 `doc
 | 3 | `copied` | `cp` 递归复制（同卷 `move` 也用 `cp`：它保留时间戳、源缺失会失败） |
 | 4 | `verified` | 校验目标可读、内容齐全 |
 | 5 | `reopened` | 关闭并重开读端，指向新目录 |
-| 6 | `recorded` | 把 `dataDir.current` 写进**新目录**的 `settings.v1.json` |
+| 6 | `recorded` | 把 `dataDir.current` 写进**新目录**的 `settings.v1.json`；还原到默认目录时，再删掉那里上一个迁移留下的 `.location`（`signpost-cleared`） |
 | 7 | `pointer` / `pruned` / `removed` | `copy` 模式在旧目录留 `.location` 指针并清空其余内容（`pruned`）；`move` 模式直接删旧目录（`removed`） |
 
 任何一步失败都走同一个回滚（`src/host/datadir.js` 的 `rollbackCopy`）：重开旧目录、失效缓存，
@@ -305,7 +305,19 @@ Electron 组件不在其中——那是安装，不是用户数据。详见 `doc
 
 - `OCCUPANCY_MARKERS = ["tree.v1.json", "trash/index.v1.json"]` 在目标里出现，说明那里是另一套安装；
 - 目标目录存在且**非空**。迁移是往目标里复制、失败时按 `carry` 写过的条目回滚，所以目标必须从空开始；
-  否则要么两套数据混在一起，要么回滚时误删用户的文件。
+  否则要么两套数据混在一起，要么回滚时误删用户的文件。唯一例外是还原到默认目录时那里的
+  `.location`——搬走时它被留下当路标，搬回来不该被它挡在门外。
+
+### 6.1.1 还原至默认位置
+
+设置页「更改位置…」旁边那个按钮做的是同一次迁移，只是目标由宿主填成 `defaultDataDir()`：
+客户端不拼家目录，测试也从不碰真实 home。区别只在预检放行上面那个指针，以及到达后删掉它——
+启动顺序是「`settings.v1.json` 的 `dataDir.current` → `.location`」，指针只是 `settings`
+缺失或不可信时的兜底；留着它，兜底就指向一个刚刚被删掉的目录。预检的 `isDefault` 就是这次还原，
+设置页据此把确认后的提示换成「已还原至默认位置」。
+
+已经在家、或位置被 `DSH_SE_DATA_DIR` 钉住时没有这个按钮：前者是无操作，后者会被环境变量
+在下次启动时推翻（`GET /datadir` 的 `atDefault` / `fromEnv`，见 api.md）。
 
 ## 7. 跨工作区移动的意图日志
 

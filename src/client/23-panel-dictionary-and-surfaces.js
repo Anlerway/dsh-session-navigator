@@ -388,7 +388,10 @@
         delete: async () => {
           const confirmed = await askConfirm({
             title: t("hdrDeleteTitle"),
-            message: t("hdrDeleteMessage"),
+            // A live session is stopped first, so the question says so. The
+            // answer is the same either way — this only stops the user from
+            // reading "移到回收站" as "nothing that is running is affected".
+            message: t(state?.running === true ? "hdrDeleteRunningMessage" : "hdrDeleteMessage"),
             confirmLabel: t("hdrDelete"),
             cancelLabel: t("hdrCancel"),
             danger: true,
@@ -494,7 +497,7 @@
       // a no-op without an id. Its `state` does not gate 删除 for a subagent — the
       // bin takes a child's own payload — so the row is offered for every session
       // and only the destructive verbs above stay the parent's.
-      useSessionActions(sessionId);
+      const { state } = useSessionActions(sessionId);
       // DSH mounts the row menu only for a session; without an id there is
       // nothing to reveal or delete, so the menu must not grow rows.
       if (!sessionId) return null;
@@ -505,7 +508,7 @@
         close();
         const confirmed = await askConfirm({
           title: t("hdrDeleteTitle"),
-          message: t("hdrDeleteMessage"),
+          message: t(state?.running === true ? "hdrDeleteRunningMessage" : "hdrDeleteMessage"),
           confirmLabel: t("hdrDelete"),
           cancelLabel: t("hdrCancel"),
           danger: true,

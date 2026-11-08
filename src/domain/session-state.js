@@ -37,10 +37,10 @@ function membershipOf(shortcuts, id, container) {
  * @param {{
  *   shortcuts?: Record<string, any> | null,
  *   trash?: { entries?: Record<string, unknown> } | null,
- *   sessions?: Array<{ id: string, archived?: boolean, trashed?: boolean, isSubagent?: boolean }> | null,
+ *   sessions?: Array<{ id: string, archived?: boolean, trashed?: boolean, isSubagent?: boolean, running?: boolean }> | null,
  * }} documents
  * @param {string} id
- * @returns {{ id: string, favorite: boolean, todo: boolean, favoriteShortcut: string | null, todoShortcut: string | null, archived: boolean, trashed: boolean, subagent: boolean }}
+ * @returns {{ id: string, favorite: boolean, todo: boolean, favoriteShortcut: string | null, todoShortcut: string | null, archived: boolean, trashed: boolean, subagent: boolean, running: boolean }}
  */
 export function sessionStateOf(documents, id) {
   const session = (documents?.sessions ?? []).find((candidate) => candidate.id === id) ?? null;
@@ -64,5 +64,10 @@ export function sessionStateOf(documents, id) {
     // header strip and the row menu have no snapshot, so the answer travels
     // with the state they already fetch.
     subagent: session?.isSubagent === true,
+    // 删除 interrupts a running session before it moves the payload, so the
+    // confirmation has to say so up front. The reader's own flag is the only
+    // definition of "running" the panel uses, and these two surfaces read the
+    // same bit rather than guessing from a timestamp.
+    running: session?.running === true,
   };
 }

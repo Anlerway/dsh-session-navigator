@@ -56,11 +56,16 @@
    Hard constraint 10 (实现粗规划.md): no backdrop-filter and no darkening.
    The panel must stay legible over a wallpaper, so it is painted with an
    opaque-ish tint of the theme surface instead of blurring what is behind it. */
+/* 900, deliberately *below* the app's 1000 dialog tier: dialogs are DSH's own
+   Modal now (SeModal in src/client/13-dialogs.js), and a panel parked on top of
+   that tier would paint its own mask over the question it just asked.
+   Everything the plugin draws sits inside this one stacking context, so the
+   scrim stays under the shell and menus stay over both. */
 .se-shell{
   position: fixed;
   inset: 0;
   margin: auto;
-  z-index: 1050;
+  z-index: 900;
   display: flex;
   flex-direction: column;
   width: min(1100px, 92vw);
@@ -112,7 +117,7 @@
 .se-scrim{
   position: fixed;
   inset: 0;
-  z-index: 1049;
+  z-index: 899;
   background: color-mix(in oklab, #000 calc(var(--se-dim, 0) * 100%), transparent);
   pointer-events: none;
 }
@@ -426,15 +431,24 @@
 .se-shell .se-dlg-err{margin:8px 0 0;font-size:12px;color:var(--sm-danger)}
 .se-shell .se-dlg-ack{display:flex;align-items:flex-start;gap:8px;margin-top:12px;font-size:12.5px;color:var(--sm-text-2);cursor:pointer}
 /* ── dialog layer ─────────────────────────────────────────────────────────
-   Dialogs are drawn by the plugin and must sit ABOVE the panel and above every
-   popover the panel opens (menus are at 9000 inside this same stacking
-   context). 9600 keeps a confirmation on top of the window that asked for it,
-   which is exactly what the retired "DSH native dialog" path got wrong: the
-   app's dialog tier is below this panel, so those confirmations appeared
-   underneath it.
+   The fallback frame. A dialog is drawn by DSH's own Modal whenever the host
+   lends its primitives (SeModal in src/client/13-dialogs.js), because the app's
+   dialog brings its mask, focus trap and its placement above every surface.
+   This local layer is what a host without primitives gets, and then it must sit
+   ABOVE the panel and above every popover the panel opens (menus are at 9000
+   inside this same stacking context).
 
    .fmodal is a full-viewport layer with its own scrim, so a dialog also dims
    the panel behind it instead of looking like another pane. */
+
+/* DSH's Modal is a 380px question box. The plugin's dialogs carry forms — four
+   filter rows, a chip cloud, a footer with three actions — so the native frame
+   is widened through the className the primitive forwards to its dialog box.
+   The body keeps the panel's metrics because SeModal wraps it in a .se-shell
+   scope; .se-dlg-stack restores the row spacing .fbody used to provide. */
+body .se-dsh-dialog{width:min(480px,100%)}
+body .se-dsh-dialog.wide{width:min(620px,100%)}
+.se-shell .se-dlg-stack{display:flex;flex-direction:column;gap:12px;min-width:0}
 .se-shell .status{flex:0 0 28px;height:28px;display:flex;align-items:center;gap:12px;padding:0 10px 0 14px; position:relative;z-index:9; border-top:1px solid var(--sm-border);font-size:11.5px;color:var(--sm-text-2); background:color-mix(in oklab, var(--sm-tint) 94%, transparent);}
 .se-shell .status .s-item{display:flex;align-items:center;gap:5px}
 .se-shell .status .s-item.clickable{cursor:pointer;border-radius:3px;padding:2px 5px;margin:-2px -5px}
@@ -653,13 +667,16 @@
 .se-shell .tagnew-go:hover{border-color:var(--sm-accent);color:var(--sm-accent)}
 
 /* ── overlay placement (must follow the ported sheet) ──────────────────── */
+/* 900 again: this block restates the shell's placement, so it has to repeat the
+   tier or it would put the panel back above DSH's dialogs (see the note on the
+   first .se-shell rule). */
 .se-shell{
   position: fixed;
   inset: 0;
   margin: auto;
   width: min(1120px, 92vw);
   height: min(720px, 86vh);
-  z-index: 1050;
+  z-index: 900;
   pointer-events: auto;
 }
 .se-shell *{box-sizing: border-box;}
@@ -866,9 +883,11 @@
 .se-footerBtn-rail{justify-content:center;padding:8px 0}
 
 /* A panel that failed to render must still leave the entry usable, so the
-   message is a small inline card rather than a full-screen takeover. */
+   message is a small inline card rather than a full-screen takeover. It sits
+   above the panel (900) and below the app's dialog tier (1000): a notice about
+   a broken panel must never cover the dialog that is explaining something else. */
 .se-crash{
-  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1051;
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:950;
   display:flex;flex-direction:column;gap:8px;width:min(420px,92vw);padding:14px 16px;
   border-radius:8px;border:1px solid var(--dsw-alias-border-l2,rgba(255,255,255,.12));
   background:var(--dsw-alias-bg-layer-1,#232324);color:var(--dsw-alias-label-primary,#f5f6f7);
@@ -960,33 +979,14 @@
 .se-set-err{font-size:12px;color:var(--sm-danger, var(--dsw-alias-state-error-primary, #f25a5a))}
 .se-set-warn{font-size:12px;color:var(--sm-text-2);padding:8px 14px}
 .se-set-foot{display:flex;align-items:center;gap:10px;min-height:18px}
-/* 更新说明 — the release-notes layer draws itself, because the settings window
-   does not mount the panel's DialogHost. Colours come from the --sm-* bridge
-   defined on .se-set above, which this layer is always a child of. */
-/* The token bridge is repeated here rather than inherited: the layer is drawn
-   inside .se-set today, but a fixed layer that only looks right while it is a
-   child of one particular group is a trap for whoever moves it later. */
-/* pointer-events: the portal root is click-through (DSH must stay usable under
-   it), so a layer drawn inside it has to opt back in or every click lands on
-   whatever is behind the modal. */
-.se-notes{position:fixed;inset:0;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:28px;background:color-mix(in oklab, #000 45%, transparent);
-  --sm-tint: var(--dsw-alias-bg-layer-1, #232324);
-  --sm-surface: var(--dsw-alias-bg-layer-2, var(--sm-tint));
-  --sm-text: var(--dsw-alias-label-primary, #f5f6f7);
-  --sm-text-2: var(--dsw-alias-label-secondary, #cfd3d6);
-  --sm-text-3: var(--dsw-alias-label-tertiary, #979da6);
-  --sm-border: var(--dsw-alias-border-l2, rgba(255,255,255,.12));
-  --sm-border-soft: var(--dsw-alias-border-l1, rgba(255,255,255,.06));
-  --sm-accent: var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary, #4176e6));
-  --sm-danger: var(--dsw-alias-state-error-primary, #f25a5a);
-  color: var(--sm-text);
-  font-family: inherit;
-  font-size: 13px}
-.se-notes-card{display:flex;flex-direction:column;width:min(660px,100%);max-height:min(78vh,720px);border:1px solid var(--sm-border);border-radius:12px;background:var(--sm-tint);box-shadow:0 24px 60px color-mix(in oklab, #000 45%, transparent);overflow:hidden}
-.se-notes-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--sm-border-soft)}
-.se-notes-title{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.se-notes-body{flex:1 1 auto;overflow:auto;padding:14px;font-size:12.5px;line-height:1.62;color:var(--sm-text-2)}
-.se-notes-body strong{color:var(--sm-text);font-weight:600}
+/* 更新说明 — the document rides DSH's Modal (SeModal), because the settings
+   window does not mount the panel's DialogHost. The frame, mask and spacing are
+   the app's; only the document's own layout is here. The body scrolls inside the
+   frame, since the dialog has no card of its own to bound it any more. Colours
+   come from the --sm-* bridge on .se-shell, which SeModal wraps around every
+   dialog body. */
+.se-shell .se-notes-body{max-height:min(52vh,460px);overflow:auto;font-size:12.5px;line-height:1.62;color:var(--sm-text-2)}
+.se-shell .se-notes-body strong{color:var(--sm-text);font-weight:600}
 .se-notes-p{margin:0 0 8px}
 .se-notes-list{margin:0 0 10px;padding-left:18px}
 .se-notes-list li{margin:0 0 4px}
@@ -996,13 +996,10 @@
 .se-notes-h4{font-size:12px}
 .se-notes-rule{height:1px;margin:12px 0;background:var(--sm-border-soft)}
 .se-notes-code{padding:0 4px;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:color-mix(in oklab, var(--sm-text) 10%, transparent)}
-.se-notes-foot{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--sm-border-soft)}
+/* Pushes 关闭 to the far end of the dialog's footer, which is a flex row. */
 .se-notes-gap{flex:1 1 auto}
-.se-notes-foot .se-set-chip{display:inline-flex;align-items:center;gap:6px}
-/* Both mounts portal this layer to the page root: over the settings window's
-   content, and over the panel, whose own menus are at 9000/9600 and which
-   itself sits at 1050 in the overlay root. */
-.se-notes{z-index:9900}
+/* The chips in that footer carry an icon, so the icon and its label share a line. */
+.se-notes-chip{display:inline-flex;align-items:center;gap:6px}
 
 /* ── pointer feedback ──────────────────────────────────────────────────────────
 

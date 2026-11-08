@@ -220,15 +220,37 @@
         }
       }, [t]);
 
+      // 还原至默认位置 rides the same inspect → plan → migrate cycle; only the
+      // target differs, and the client never builds that path itself — the home
+      // directory is the host's business.
+      const restore = useCallback(async () => {
+        const target = state.data?.defaultDir;
+        if (typeof target !== "string" || target === "") return;
+        setBusy("inspect");
+        setError("");
+        setNote("");
+        try {
+          setPlan(await apiSend("POST", "/datadir/inspect", { target }));
+        } catch (failure) {
+          setPlan(null);
+          setError(String(failure?.message ?? failure));
+        } finally {
+          setBusy("");
+        }
+      }, [state.data]);
+
       const migrate = useCallback(async () => {
         if (!plan) return;
+        const restoring = plan.isDefault === true;
         setBusy("migrate");
         setError("");
         setNote("");
         try {
           const result = await apiSend("POST", "/datadir/migrate", { target: plan.target, mode: plan.mode });
           setPlan(null);
-          setNote(t(result.mode === "move" ? "setDataDirMoved" : "setDataDirCopied"));
+          setNote(
+            t(restoring ? "setDataDirRestored" : result.mode === "move" ? "setDataDirMoved" : "setDataDirCopied"),
+          );
           await load();
           onMigrated?.();
         } catch (failure) {
@@ -241,6 +263,9 @@
 
       const data = state.data;
       const sizeText = data ? formatSize(data.sizeBytes) : "";
+      // The confirmation under the row speaks the action the user asked for:
+      // coming home is a restore, going anywhere else is a migration.
+      const restoring = plan?.isDefault === true;
 
       return h(
         "div",
@@ -251,18 +276,32 @@
           { label: t("setDataDir"), hint: t("setDataDirHint") },
           h("span", { className: "se-set-path" }, current || t("setDataDirDefault")),
           h(
-            "button",
-            {
-              type: "button",
-              className: "se-set-chip",
-              // A migration moves the directory every setting is written to, so
-              // it may not start while a settings write is still in flight: the
-              // two orders leave a settings file in the old directory and a
-              // "已迁移" hint that says it went with the rest.
-              disabled: busy !== "" || saving || state.phase === "loading",
-              onClick: choose,
-            },
-            busy === "inspect" ? t("setDataDirInspecting") : t("setDataDirChange"),
+            "div",
+            { className: "se-set-choices" },
+            // 还原至默认位置 only when there is somewhere to go back to: already
+            // at the default path, or pinned by DSH_SE_DATA_DIR, and the button
+            // would either be a no-op or a lie.
+            data?.restorable
+              ? h(
+                  "button",
+                  { type: "button", className: "se-set-chip", disabled: busy !== "" || saving, onClick: restore },
+                  t("setDataDirRestore"),
+                )
+              : null,
+            h(
+              "button",
+              {
+                type: "button",
+                className: "se-set-chip",
+                // A migration moves the directory every setting is written to, so
+                // it may not start while a settings write is still in flight: the
+                // two orders leave a settings file in the old directory and a
+                // "已迁移" hint that says it went with the rest.
+                disabled: busy !== "" || saving || state.phase === "loading",
+                onClick: choose,
+              },
+              busy === "inspect" ? t("setDataDirInspecting") : t("setDataDirChange"),
+            ),
           ),
         ),
         data
@@ -280,7 +319,7 @@
               h(
                 "div",
                 { className: "se-set-main" },
-                h("div", { className: "se-set-lbl" }, t("setDataDirConfirm")),
+                h("div", { className: "se-set-lbl" }, t(restoring ? "setDataDirRestoreConfirm" : "setDataDirConfirm")),
                 h("div", { className: "se-set-path" }, plan.target),
                 h(
                   "div",
@@ -299,7 +338,9 @@
                 h(
                   "button",
                   { type: "button", className: "se-set-chip on", disabled: busy !== "" || saving, onClick: migrate },
-                  busy === "migrate" ? t("setDataDirMoving") : t("setDataDirGo"),
+                  busy === "migrate"
+                    ? t(restoring ? "setDataDirRestoring" : "setDataDirMoving")
+                    : t(restoring ? "setDataDirRestoreGo" : "setDataDirGo"),
                 ),
               ),
             )

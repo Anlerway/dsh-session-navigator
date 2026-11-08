@@ -2,8 +2,9 @@
  * The CSS token bridge — what the stylesheet promises to define.
  *
  * Every colour in this bundle comes from a `--sm-*` variable that the token
- * bridges on `.se-shell`, `.se-set` and `.se-notes` derive from DSH's own
- * `--dsw-alias-*` palette. A name that is *read* but never *defined* is the
+ * bridges on `.se-shell` and `.se-set` derive from DSH's own `--dsw-alias-*`
+ * palette. (The notes announcement used to carry a third bridge of its own; it
+ * is a host dialog now, and rides on the `.se-shell` scope like every other.) A name that is *read* but never *defined* is the
  * quiet failure: the declaration is invalid at computed-value time, so the
  * browser falls back to whatever literal sits in the `var()` and the element
  * keeps that colour under every theme.
@@ -48,7 +49,7 @@ test("the option list of a select is painted from the theme, not a dark literal"
 
 test("the token bridges derive a raised surface from the theme", () => {
   const bridges = [...SOURCE.matchAll(/(--sm-surface\s*:[^;]+;)/g)].map((match) => match[1].replace(/\s+/g, " "));
-  assert.ok(bridges.length >= 3, "one bridge per root: .se-shell, .se-set, .se-notes");
+  assert.ok(bridges.length >= 2, "one bridge per root: .se-shell, .se-set");
   for (const line of bridges) {
     assert.match(line, /var\(--dsw-alias-bg-layer-2/, line + " reads DSH's raised-layer alias");
     assert.match(line, /var\(--sm-tint\)/, line + " falls back to the tint, which flips with the text colour");

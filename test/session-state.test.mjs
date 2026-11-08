@@ -33,6 +33,7 @@ test("a live session with no shortcuts reads as all-false", () => {
     archived: false,
     trashed: false,
     subagent: false,
+    running: false,
   });
 });
 
@@ -94,7 +95,18 @@ test("an unknown session answers all-false rather than throwing", () => {
     archived: false,
     trashed: false,
     subagent: false,
+    running: false,
   });
+});
+
+test("running travels with the state the delete confirmation reads", () => {
+  // The header strip and the row menu warn "this will be interrupted" only when
+  // the host says the session is live, and that answer has to come from the
+  // same route as the rest of the state.
+  const documents = { shortcuts: shortcuts({}), trash: trash({}), sessions: [{ id: "session-1", running: true }] };
+  assert.equal(sessionStateOf(documents, "session-1").running, true);
+  const loose = { ...documents, sessions: [{ id: "session-1", running: "yes" }] };
+  assert.equal(sessionStateOf(loose, "session-1").running, false);
 });
 
 test("subagent is the reader's own flag, and a fork is not one", () => {

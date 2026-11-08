@@ -286,9 +286,11 @@
               // 删除 means "move to the bin" for a session and "delete the
               // folder" for a folder: the selected rows decide which. It comes
               // last in this cluster so it is never adjacent to 粘贴.
+              // The bar is the one caller that means "the selection"; passing the
+              // click event itself would be an accident waiting to be a target.
               inTrash
-                ? h(Btn, { className: "cmd", icon: "restore", onClick: restoreSelection }, T("还原"))
-                : h(Btn, { className: "cmd danger", icon: "trash", iconOnly: true, title: T("删除"), onClick: deleteSelection }),
+                ? h(Btn, { className: "cmd", icon: "restore", onClick: () => restoreSelection() }, T("还原"))
+                : h(Btn, { className: "cmd danger", icon: "trash", iconOnly: true, title: T("删除"), onClick: () => deleteSelection() }),
               inTrash ? h(Btn, { className: "cmd danger", icon: "trash", onClick: emptyTrashNow }, T("清空回收站")) : null,
               inTrash ? null : h("span", { className: "cmsep" }),
               // flagMany, not toggleFlag: the bar acts on whatever is selected,

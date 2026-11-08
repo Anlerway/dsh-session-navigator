@@ -288,8 +288,12 @@ export async function renderSettings({
   componentInfo = null,
   // 界面语言: which code the document holds, so a saved choice renders as selected.
   uiLang = "auto",
+  // 数据目录: what GET /datadir answers. A case that restores leaves the stub
+  // holding the new location, the way the host would after the migration.
+  dataDirInfo = null,
 } = {}) {
   let componentState = componentInfo ?? { phase: component, version: "1.0.0", installed: component === "ready" };
+  let dataDir = dataDirInfo;
   let currentUiLang = uiLang;
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
@@ -389,6 +393,35 @@ export async function renderSettings({
           cache: { enabled: true, bytes: 0, exists: false, sessions: 0 },
           building: false,
         },
+      };
+    }
+    if (path === "/datadir") {
+      return { ok: true, result: dataDir ?? {} };
+    }
+    if (path === "/datadir/inspect") {
+      const target = call.body?.target ?? "";
+      return {
+        ok: true,
+        result: {
+          target,
+          current: dataDir?.current ?? "C:/data",
+          defaultDir: dataDir?.defaultDir ?? target,
+          isDefault: target === dataDir?.defaultDir,
+          exists: true,
+          writable: true,
+          sameVolume: true,
+          mode: "move",
+          sizeBytes: 0,
+          currentSizeBytes: dataDir?.sizeBytes ?? 0,
+        },
+      };
+    }
+    if (path === "/datadir/migrate") {
+      const target = call.body?.target ?? "";
+      if (dataDir) dataDir = { ...dataDir, current: target, recorded: target, atDefault: true, restorable: false };
+      return {
+        ok: true,
+        result: { target, mode: call.body?.mode ?? "move", steps: ["copied", "recorded", "signpost-cleared", "pointer", "removed"], revision: 6 },
       };
     }
     if (path === "/component/status") {
