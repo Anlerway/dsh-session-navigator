@@ -312,7 +312,7 @@ test("更新说明 closes on the backdrop but not on the card, and reads again n
 test("更新说明 says the file could not be read instead of showing an empty card", async () => {
   const { tree, driver, api, t } = await renderSettings({
     interpolate: true,
-    notes: { ok: false, code: "not-found", error: "找不到更新说明文件（更新说明.md / CHANGELOG.md）" },
+    notes: { ok: false, code: "not-found", error: "找不到更新说明文件（…/docs/changelog/zh.md）" },
   });
   chipLabelled(tree, "setNotesOpen").props.onClick();
   await new Promise((resolve) => setTimeout(resolve, 10));

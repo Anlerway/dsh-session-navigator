@@ -21,7 +21,7 @@
     "check:deadcode": "node scripts/check-deadcode.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check:client": "node scripts/build-client.mjs --check",
-    "prepack": "node scripts/build-client.mjs && node scripts/sync-notes.mjs"
+    "prepack": "node scripts/build-client.mjs"
   },
   "exports": {
     ".": "./src/index.js",
@@ -36,7 +36,7 @@
     "lib/client.js",
     "assets/",
     "cordis.patch.yml",
-    "CHANGELOG.md",
+    "docs/changelog/",
     "README.md",
     "README.en.md",
     "LICENSE",

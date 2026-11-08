@@ -15,6 +15,7 @@
 | [bridge-and-theme.md](bridge-and-theme.md) | 面板 ↔ 窗口的命令总线、SSE、主题同步 | 改独立窗口或配色 |
 | [component.md](component.md) | Electron 组件：状态机、镜像、校验、发布、清扫 | 改安装流程 |
 | [i18n.md](i18n.md) | 十种语言的词典、清单的几份副本、`uiLang()` 与 `aiLang()`、插件自己的界面语言（`ui.lang`）、加一门语言的步骤 | 改界面文案或加语言 |
+| [changelog/](changelog/README.md) | 十种语言的更新说明：一版一文，十份一起改，条目数由测试对齐 | 发版前后写「更新了什么」 |
 | [testing.md](testing.md) | 八十二个测试文件各钉住什么、怎么跑 | 提交之前 |
 
 ## 三条最容易被违反的约定

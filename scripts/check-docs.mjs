@@ -33,7 +33,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** Files checked in every repository, plus every docs/*.md found on disk. */
-const ROOT_FILES = ["README.md", "README.en.md", "CHANGELOG.md"];
+const ROOT_FILES = ["README.md", "README.en.md"];
 
 /**
  * The counts a document is allowed to cite, each read from the thing it counts.

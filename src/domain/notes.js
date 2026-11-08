@@ -3,7 +3,8 @@
  * draw.
  *
  * The notes are a *document*, not strings in this bundle: the maintainer edits
- * 更新说明.md, the host reads it per open, and the page draws whatever it finds.
+ * docs/changelog/<language>.md, the host reads it per open, and the page draws
+ * whatever it finds.
  * That is the whole point — rewording a release note must not need a code change,
  * and a panel that survived an update must not keep showing words that were
  * replaced after it was built.
@@ -18,6 +19,13 @@
 export const NOTES_MAX_BYTES = 200_000;
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
+
+/**
+ * The ways a release-note document introduces itself, one per language this
+ * plugin speaks. The colon is required: a body line that merely starts with
+ * "Release notes" is prose, and taking it as the title would swallow it.
+ */
+const TITLE = /^(?:更新说明|更新說明|Release notes|リリースノート|更新情報|업데이트 안내|Versionshinweise|Notes de version|Notas de la versión|Notas da versão|Примечания к выпуску)\s*[:：]/i;
 const RULE = /^(?:={3,}|-{3,}|\*{3,})$/;
 const BULLET = /^[*+-]\s+(.*)$/;
 const NUMBERED = /^\d{1,3}[.)]\s*(.*)$/;
@@ -45,9 +53,10 @@ export function notesRuns(text) {
 /**
  * Parse a release-note document.
  *
- * The first line is taken as the title when it introduces the document
- * (`更新说明：…` / `Release notes`) — the dialog prints the version it is running
- * in its own header, so repeating it as body text would read as a mistake.
+ * The first line is taken as the title when it introduces the document in one of
+ * the languages it ships in (`更新说明：…`, `Release notes: …`, `更新情報：…`) —
+ * the dialog prints the version it is running in its own header, so repeating it
+ * as body text would read as a mistake.
  *
  * @param {string} markdown
  * @returns {{ title: string, blocks: any[] }}
@@ -74,7 +83,7 @@ export function parseNotes(markdown) {
       continue;
     }
     // The document's own title, once, at the very top.
-    if (!blocks.length && !title && !paragraph && !HEADING.test(line) && /^(?:更新说明|Release notes)/i.test(line)) {
+    if (!blocks.length && !title && !paragraph && !HEADING.test(line) && TITLE.test(line)) {
       title = line;
       continue;
     }

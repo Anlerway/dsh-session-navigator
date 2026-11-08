@@ -400,10 +400,10 @@
 
     // ── 更新说明 (release notes) ────────────────────────────────────────────
     // The notes are a document, not copy in this bundle: the host reads
-    // 更新说明.md (or the CHANGELOG.md that ships with the package) and hands
-    // back blocks, so rewording a release note is a file edit, not a rebuild of
-    // this module. See src/domain/notes.js for the subset of markdown that
-    // becomes a block, and src/host/changelog.js for which file wins.
+    // docs/changelog/<language>.md (falling back to English, then Chinese) and
+    // hands back blocks, so rewording a release note is a file edit, not a
+    // rebuild of this module. See src/domain/notes.js for the subset of markdown
+    // that becomes a block, and src/host/changelog.js for which file wins.
     //
     // Drawn through SeModal rather than DialogHost: this page is mounted by the
     // settings window, where the panel's dialog host is not mounted at all. The

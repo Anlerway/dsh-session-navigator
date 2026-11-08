@@ -523,10 +523,10 @@ const ROUTES = {
   /**
    * 更新说明 — what changed since the last published version, as blocks.
    *
-   * The text comes from a document (更新说明.md in a checkout, CHANGELOG.md in
-   * the package), never from a string in this plugin's source: see
-   * src/host/changelog.js for why, and src/domain/notes.js for the small subset
-   * of markdown that becomes blocks.
+   * The text comes from a document in docs/changelog/, one file per language,
+   * chosen by the language the interface is drawn in — never from a string in
+   * this plugin's source: see src/host/changelog.js for why, and
+   * src/domain/notes.js for the small subset of markdown that becomes blocks.
    *
    * `version` rides along so the client can decide "already read this one?"
    * without a second request: the announcement fires at startup, and a startup
@@ -534,11 +534,14 @@ const ROUTES = {
    * `seen` is the other half of that decision — the version already delivered,
    * recorded here rather than in the page; see src/host/notes-seen.js for why.
    */
-  "GET /release-notes": async (api) => ({
-    ...(await readNotes()),
-    version: pluginVersion(),
-    seen: await readNotesSeen(api.paths.notesSeen),
-  }),
+  "GET /release-notes": async (api) => {
+    const settings = normalizeSettings(await api.documents.settings.read());
+    return {
+      ...(await readNotes({ language: settings.language })),
+      version: pluginVersion(),
+      seen: await readNotesSeen(api.paths.notesSeen),
+    };
+  },
 
 
   /**
