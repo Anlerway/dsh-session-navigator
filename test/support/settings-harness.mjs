@@ -164,9 +164,11 @@ export const byClass = (name) => (element) => {
 };
 
 /** The settings document the host would answer with. */
-export function settingsDocument(mode, component, uiLang = "auto") {
+export function settingsDocument(mode, component, uiLang = "auto", wallpaper = null) {
   return {
     settings: {
+      // 独立窗口美化: the panel at its default density until a case says otherwise.
+      wallpaper: wallpaper ?? { enabled: true, blur: 0, frost: 60, dim: 10, sync: true, custom: "", customName: "" },
       shell: {
         open: { mode },
         modal: { sizing: "fixed", size: "md", percent: "p70", dim: 0, closeOnBackdrop: true },
@@ -301,32 +303,61 @@ export async function renderSettings({
   // 数据目录: what GET /datadir answers. A case that restores leaves the stub
   // holding the new location, the way the host would after the migration.
   dataDirInfo = null,
+  // 独立窗口美化: what GET /settings answers for the wallpaper group.
+  wallpaper = null,
+  // 弹窗: what GET /settings answers for shell.modal (遮罩黑度 lives there).
+  modal = null,
+  // Milliseconds a settings write takes to answer, so a case can watch what a
+  // control does while its previous write is still out.
+  putDelay = 0,
 } = {}) {
   let componentState = componentInfo ?? { phase: component, version: "1.0.0", installed: component === "ready" };
   let dataDir = dataDirInfo;
   let currentUiLang = uiLang;
+  let currentWallpaper = settingsDocument(mode, component, currentUiLang, wallpaper).settings.wallpaper;
+  let currentModal = { ...settingsDocument(mode, component, currentUiLang, null).settings.shell.modal, ...(modal ?? {}) };
+  // Each write answers with the counter it wrote, the way the host does: a
+  // second write that waited for the first therefore cites the newer number,
+  // and a case can tell "waited" from "raced" by reading If-Match.
+  let settingsRevision = settingsDocument(mode, component, currentUiLang, null).revision;
+  const settingsWrite = (call) => {
+    if (call.body.ui?.lang) currentUiLang = call.body.ui.lang;
+    const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang, currentWallpaper);
+    doc.settings.shell.modal = { ...currentModal };
+    if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
+    if (call.body.shell?.modal) {
+      Object.assign(doc.settings.shell.modal, call.body.shell.modal);
+      currentModal = doc.settings.shell.modal;
+    }
+    if (call.body.wallpaper) {
+      Object.assign(doc.settings.wallpaper, call.body.wallpaper);
+      currentWallpaper = doc.settings.wallpaper;
+    }
+    if (call.body.list) Object.assign(doc.settings.list, call.body.list);
+    if (call.body.search) Object.assign(doc.settings.search, call.body.search);
+    if (call.body.summary) {
+      const patch = call.body.summary;
+      doc.settings.summary = {
+        ...doc.settings.summary,
+        ...patch,
+        fields: { ...doc.settings.summary.fields, ...(patch.fields ?? {}) },
+      };
+    }
+    settingsRevision += 1;
+    return { ok: true, result: { settings: doc.settings, revision: settingsRevision } };
+  };
   const fetchImpl = recordingFetch((call) => {
     const path = call.url.replace(/^.*?\/api/, "");
     if (path === "/settings" && call.method === "GET") {
-      return { ok: true, result: settingsDocument(mode, component, currentUiLang) };
+      const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper);
+      doc.settings.shell.modal = { ...currentModal };
+      doc.revision = settingsRevision;
+      return { ok: true, result: doc };
     }
     if (path === "/settings" && call.method === "PUT") {
-      // The stub answers with the document a real host would now hold: the
-      // patch applied, so a re-render shows the saved value.
-      if (call.body.ui?.lang) currentUiLang = call.body.ui.lang;
-      const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang);
-      if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
-      if (call.body.list) Object.assign(doc.settings.list, call.body.list);
-      if (call.body.search) Object.assign(doc.settings.search, call.body.search);
-      if (call.body.summary) {
-        const patch = call.body.summary;
-        doc.settings.summary = {
-          ...doc.settings.summary,
-          ...patch,
-          fields: { ...doc.settings.summary.fields, ...(patch.fields ?? {}) },
-        };
-      }
-      return { ok: true, result: { settings: doc.settings, revision: 5 } };
+      const answer = () => settingsWrite(call);
+      if (putDelay > 0) return new Promise((resolve) => setTimeout(() => resolve(answer()), putDelay));
+      return answer();
     }
     // AI 字段. The catalogue is what the model `<select>` and the
     // effort `<select>` are both drawn from.

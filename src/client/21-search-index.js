@@ -539,43 +539,61 @@
       }, [load]);
 
       // Every control writes immediately: there is no OK button, so a setting
-      // never sits in a half-applied state the user cannot see.
+      // never sits in a half-applied state the user cannot see. Writes queue up
+      // instead of racing, because two PUTs in flight cite the same If-Match and
+      // the loser comes back revision-conflict — which a slider shows as the
+      // number jumping back. A gesture that ends while the previous write is
+      // still out now waits for it and then sends the fresher number.
+      const writer = useRef(Promise.resolve());
+      const outstanding = useRef(0);
       const save = useCallback(
-        async (patch) => {
+        (patch) => {
+          outstanding.current += 1;
           setSaving(true);
-          setError("");
-          setNote("");
-          try {
-            const result = await apiSend("PUT", "/settings", patch);
-            setBoot((previous) =>
-              previous.data
-                ? { ...previous, data: { ...previous.data, settings: result.settings, revision: result.revision } }
-                : previous,
-            );
-            // 会话界面按钮样式 is drawn by a surface outside this page (the
-            // header strip), so the saved choice is pushed to its store now
-            // instead of waiting for the strip's next mount.
-            headerStyle.set(result.settings?.shell?.header?.style);
-            headerStyle.readAt = Date.now();
-            // 界面语言 — every label on this page comes from T(), so taking the
-            // saved choice here repaints the page in place, before the reply
-            // even finishes the state update.
-            applyUiLang(result.settings);
-            setNote(t("setSaved"));
-            return true;
-          } catch (failure) {
-            setError(String(failure?.message ?? failure));
-            // Another surface wrote settings while this page was open: the
-            // revision this page holds is dead, so every later control would
-            // 409 with the same stale If-Match. Re-read it, exactly like
-            // `mutate` does for the panel's own writes.
-            if (failure?.code === "revision-conflict") await load();
-            return false;
-          } finally {
-            setSaving(false);
-          }
+          const run = async () => {
+            setError("");
+            setNote("");
+            try {
+              const result = await apiSend("PUT", "/settings", patch);
+              setBoot((previous) =>
+                previous.data
+                  ? { ...previous, data: { ...previous.data, settings: result.settings, revision: result.revision } }
+                  : previous,
+              );
+              // 会话界面按钮样式 is drawn by a surface outside this page (the
+              // header strip), so the saved choice is pushed to its store now
+              // instead of waiting for the strip's next mount.
+              headerStyle.set(result.settings?.shell?.header?.style);
+              headerStyle.readAt = Date.now();
+              // 界面语言 — every label on this page comes from T(), so taking the
+              // saved choice here repaints the page in place, before the reply
+              // even finishes the state update.
+              applyUiLang(result.settings);
+              setNote(t("setSaved"));
+              // The saved document, so a control that keeps its own draft can see
+              // what the host actually holds instead of guessing.
+              return result.settings ?? true;
+            } catch (failure) {
+              setError(String(failure?.message ?? failure));
+              // Another surface wrote settings while this page was open: the
+              // revision this page holds is dead, so every later control would
+              // 409 with the same stale If-Match. Re-read it, exactly like
+              // `mutate` does for the panel's own writes.
+              if (failure?.code === "revision-conflict") await load();
+              return false;
+            } finally {
+              outstanding.current -= 1;
+              if (outstanding.current === 0) setSaving(false);
+            }
+          };
+          const answer = writer.current.then(run, run);
+          writer.current = answer.then(
+            () => {},
+            () => {},
+          );
+          return answer;
         },
-        [t],
+        [load, t],
       );
 
       const settings = boot.data?.settings ?? null;
@@ -646,6 +664,12 @@
             ? h("div", { className: "se-set-warn" }, t("setOpenDetachedBlocked"))
             : null,
         ),
+
+        // 独立窗口美化 — the picture under the panel. Only the detached window
+        // has one: inside DSH the panel is a layer over DSH's own surface, so
+        // the group says so instead of pretending the switch does something
+        // there.
+        h(WallpaperGroup, { t, settings, save, saving, onChanged: load }),
 
         // 列表 — the two switches the 更多 menu also toggles. They live here as
         // the full explanation; the menu is a shortcut to the same document.
@@ -836,9 +860,16 @@
           h(
             SetRow,
             { label: t("setDim"), hint: t("setDimHint") },
-            h(DimSlider, {
-              value: modal.dim,
-              disabled: saving,
+            h(RangeControl, {
+              t,
+              label: "setDim",
+              min: 0,
+              max: DIM_MAX,
+              step: 0.05,
+              suffix: "%",
+              percent: true,
+              value: Number.isFinite(modal.dim) ? modal.dim : 0,
+              fallback: 0,
               onCommit: (dim) => save({ shell: { modal: { dim } } }),
             }),
           ),

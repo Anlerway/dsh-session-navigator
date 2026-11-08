@@ -34,6 +34,7 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 ├── trash/
 │   ├── index.v1.json     回收站索引
 │   └── <trashId>/        被删会话的 payload（整个会话目录）
+├── wallpaper/            自定义壁纸（图片或视频，目录里最多一个）
 ├── component/            可选的 Electron 运行时（见 component.md）
 │   ├── state.v1.json     生命周期记录（phase、来源、借用路径）
 │   └── runtime-<stamp>/  解压后的那份 Electron，装一次不可变
@@ -102,6 +103,19 @@ C:\Users\<user>\.dsh-session-navigator   ← 本插件的
 `usage` 累加，provider 没给 `totalTokens` 时用 `input + output` 顶上。没有任何汇率或单价表——
 那需要跟着 provider 改价，而这个文件写在用户机器上。失败的尝试也记 `runs`：只统计成功会让
 累计数看起来像"总花费"，而它其实只是成功那部分的下限。
+
+## 1.2 `wallpaper/`
+
+设置页「独立窗口美化」里上传的那张图或那段视频，落在 `wallpaper/wallpaper.<ext>`，
+**目录里最多一个文件**：换一张会先清掉旧的另一种扩展名。设置文档只记文件名
+（`wallpaper.custom`）和给人看的名字（`wallpaper.customName`），归一只认
+`wallpaper.<两到五位小写扩展名>`，路径一律丢成空串。
+
+它是**用户数据，不是缓存**：
+
+- 清理缓存不碰它（那组按钮只清派生文件）；
+- 清除数据会删它，和侧车文档、回收站 payload 一样；
+- 迁移数据目录会搬它——迁移复制整棵目录树。
 
 ## 2. 定位顺序（三级回退）
 
@@ -272,8 +286,8 @@ payload 已经到位 → 升级为 ready；payload 从未离开 → 删掉这条
 清空回收站时，指向已删会话的快捷方式会一并删除——引用不能活得比目标久。
 
 **清空回收站 ≠ 清除数据。** 前者只处理回收站里的 payload（一次一个会话，可恢复的那部分仍然是
-活的），后者是设置页「危险操作」里那一个按钮：四份侧车文档（含虚拟树 `tree.v1.json`）、`trash/` 里剩下的全部 payload、
-`quarantine/` 与 `.tmp/` 一起清空（目录本身留下），删完 `invalidateMemory()` 抖掉面板的
+活的），后者是设置页「危险操作」里那一个按钮：五份侧车文档（含虚拟树 `tree.v1.json`）、`trash/` 里剩下的全部 payload、
+`quarantine/`、`.tmp/` 与上传的 `wallpaper/` 一起清空（目录本身留下），删完 `invalidateMemory()` 抖掉面板的
 memo。它不可逆，所以 host 先验用户打的字是不是 `DELETE`，再过一遍 `isUsableDataDir()`；
 Electron 组件不在其中——那是安装，不是用户数据。详见 `docs/api.md` §4.12。
 

@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 八十二个测试文件，各自钉住什么
+## 1. 八十五个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -30,8 +30,9 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/theme.test.mjs` | 104 | 主题 store 只交出窗口用的 token，且拒绝注入 |
 | `test/theme-report.test.mjs` | 132 | 面板**上报**的那一半：DSH 把调色板声明在 `body` 上、值是 `var()` 引用 |
 | `test/bridge.test.mjs` | 143 | 总线的边界：容量、30 秒时效、游标、坏订阅者 |
-| `test/settings.test.mjs` | 295 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
+| `test/settings.test.mjs` | 337 | 设置文档的默认值、合并、归一化；日期格式、大小单位、搜索索引的开关都是封闭词表。旧文档里的 `search.indexCache` 作为未知键被丢弃，不生效 |
 | `test/settings-page.test.mjs` | 850 | 设置页真实渲染：打开方式、搜索索引组（**只剩「空闲时自动建立」一个开关**、进度、重建/删除、失败文案）、AI 字段组（模型与强度都是从宿主目录画出来的 `<select>`、换模型要清掉强度、三个「生成哪几项」开关各自保存、一键补齐的三种答案：入队 / 没活干 / 被拒、累计花费是 token 不是钱）、「关于」组、危险操作组（DELETE 才亮红按钮）、显示格式、写请求的 body；Electron 组件的借用：扫描 chip 排在 install 后面、扫出来的候选行、借用走 POST，不用 PUT（借用不是设置）、借用态显示路径，不显示体积、点「断开借用」只发一次 remove |
+| `test/settings-sliders.test.mjs` | 237 | 三根滑杆（模糊度 / 磨砂度 / 壁纸暗度）各读自己的键，都是 0–100 的百分比，拖动只改读数、松手才 PUT 那一个键；拖动途中的停顿不是松手（按住时不写，否则松手那次会和中间值抢同一个 If-Match）；上一次写还没回答时下一次松手排队等它，第二次 PUT 引用的计数是第一次写回的那个（If-Match 4 → 5），迟到的回答不会把手指下的数字顶回去；滑杆旁的数值本身是输入框（键入不写、回车才发、Esc 撤回、超过上限夹到边界、清空不等于 0）；回退按钮常驻三根滑杆（默认值 0 / 60 / 10，数值已是默认时置灰，按下写的是默认值不是「减一步」）；轨道读 `assets/panel.css` 自证是固定 150 px、不用 vw、不随行拉伸；遮罩黑度用同一个控件，文档里存 0–0.8、屏上读 0–80 %，键入 25 存回 0.25 |
 | `test/settings-datadir.test.mjs` | 199 | 数据目录组：还原至默认位置只在「有默认目录、且不是环境变量钉住」时出现、点它走 inspect→migrate（不是「更改位置」）且完成文案是「已还原至默认位置」、占用大小在清理缓存与安装/卸载组件之后会重新读一次（harness 的 useEffect 现在认 deps） |
 | `test/display-format.test.mjs` | 98 | 两种日期格式与两种大小单位真正打印出来的样子：距今时间只走分钟 / 小时 / 天三档（不出现月、年、「昨天」），固定 KB 不换单位 |
 | `test/session-state.test.mjs` | 117 | DSH 自己的界面读的那一个布尔集合 |
@@ -51,7 +52,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/export.test.mjs` | 296 | 会话日志 → Markdown / JSONL：真实形状（`time`、`data.message.content`、独立 `tool/call` 事件、`source.kind`）才算数——助手回复与工具调用曾经因为读错字段整类消失；注入上下文与系统提示不进正文；压缩摘要与被替换片段**只报告、不丢弃** |
 | `test/summary-apply.test.mjs` | 103 | 直接驱动 `POST /summaries/:id/apply` 这个真实路由（用内存侧车代替磁盘）：描述**追加**在用户备注后面，不覆盖、重复点两次不会贴两遍、标签只并勾选的那几个并写进标签库、不勾等于全并、过期勾选回 `nothing-to-apply`、字段名不认识回 `bad-request`、记录里没有的字段不能应用 |
 | `test/summaries.test.mjs` | 921 | AI 字段而不联网：stub 掉 `llm` 服务，断言送进模型的**正文**（只有双方发言，思考过程与工具输出从不出现，超长时头 55% 尾 45%）、提示词只列被要的字段（关掉的字段不在契约里）、回答的解析与校验（围栏与前后废话都读得出来、缺字段算缺失、`reasoning` 块不影响正文、工具调用块旁边的文字照收、只有工具调用则重试后报 `llm/tool-only`）、“乱答重试一次且两次都记账、两次都败不落盘”、待补清单只看**描述与标签**（备注抵描述、手写标签抵标签、手改标题不算）、标签先裁到 8 字再去重、生成时先看已有标签库并把它写进提示词、`alignTags()` 把同义词归到库里已有的写法、`mergeNote()` 只追加，不覆盖、`pickTags()` 只并勾选的且过期勾选算拒绝、队列单飞与取消（已写好的保留、一条失败不拖垮整批）、重复入队只算一次、token 账本（失败的尝试也记 `runs`）、模型目录 TTL 与单 provider 失败隔离、`effort` 是适配器自己的词所以换模型就丢；每个拒绝码映射到的 HTTP 状态（401 / 409 / 413 / 422 / 429 / 501 / 未知 500） |
-| `test/detached-window.test.mjs` | 612 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案；借用那条路的三个接口：launcher 把 `appDir` 当第一个参数、Host 的 runtime thunk 带上 `appDir`、`GET /component/scan` 与 `component-borrow-invalid` → 400 |
+| `test/detached-window.test.mjs` | 621 | 独立窗口的页面、路由、冒充 DSH 的 shim，以及 `?lang=` 决定的那一半文案；借用那条路的三个接口：launcher 把 `appDir` 当第一个参数、Host 的 runtime thunk 带上 `appDir`、`GET /component/scan` 与 `component-borrow-invalid` → 400 |
+| `test/detached-wallpaper.test.mjs` | 360 | 独立窗口借来的壁纸：media token 只有问过 inventory 才存在（宿主内存里那张表，重启就失效）、image / video / Scene 三种画法（Scene 退成宿主已经渲染好的那帧）、换壁纸只能靠轮询，且读的是整个 `/wallpaper-engine/settings`（id 在 `core`、亮度在 `appearance`，一次请求要两样）、DSH 没有壁纸插件时一层都不留、`?wallpaper=0` 连请求都不发；本插件的设置各管一段（关掉连问都不问、自定义图优先、三个百分比分别落在图片 / 面板 / 黑蒙版上：模糊度只算自己那层且不与插件的模糊相加，磨砂度写进面板的 `--panel-alpha`、0 时连底栏的 tint 一起消失，壁纸暗度写进 `--se-wallpaper-dim` 由 `::after` 那层读） |
 | `test/client-launch.test.mjs` | 595 | 两个入口对着 stub 宿主跑；两条"线上才炸"的路径 |
 | `test/component-dialog.test.mjs` | 198 | 缺 Electron 组件时点开的是安装器而不是一句话：弹窗的 kind 是 panel、正文就是设置页那个 ComponentPanel（下载 chip、借用扫描都在），打开独立窗口先 settle 再收面板 |
 | `test/row-rename.test.mjs` | 185 | 列表行必须打开自己的重命名编辑器，别行的编辑器不算 |
@@ -91,7 +93,8 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/reset.test.mjs` | 213 | 清除数据：一个字都没动之前先验 `DELETE`、五份侧车与回收站本体一起删、组件与数据目录本身留下、迁移路径写回 |
 | `test/projcache.test.mjs` | 178 | 投影缓存的复用键（size + mtime）：没动过的文件不读第二遍，而**任何**改动都得被发现——最硬的一条是第二次写入等长内容并把旧 mtime 放回去，只信键的读取器仍会答出旧标题；另有 reader 单飞与清缓存；40 条记录（超过一次读 8 条的窗口）两次读出来顺序一致、每条都穿着自己的事实 |
 | `test/workspace-bands.test.mjs` | 107 | 「所有会话」按工作区切带：行落到哪个工作区（子会话跟父会话）、带序按树 DFS（含拖进用户文件夹的工作区仍留在文件夹位置）、树不认识的工作区排在已知之后、没有工作区的沉底、标题取工作区名字而视图过期时回落到 id |
-| `test/routes-contract.test.mjs` | 581 | `ROUTES` 表的契约：表项与 `src/routes/` 的键一一对应、`statusFor` 的 52 条历史映射逐字未变、没映射的码一律 500、`session-not-found` 与 `session/not-found` 两种拼写同答、`messageFor` 分语言回退、所有 4xx 信封同形、每条写路由对不能用的 body 给 4xx、抛出的码都能在表里找到 |
+| `test/routes-contract.test.mjs` | 583 | `ROUTES` 表的契约：表项与 `src/routes/` 的键一一对应、`statusFor` 的 52 条历史映射逐字未变、没映射的码一律 500、`session-not-found` 与 `session/not-found` 两种拼写同答、`messageFor` 分语言回退、所有 4xx 信封同形、每条写路由对不能用的 body 给 4xx、抛出的码都能在表里找到 |
+| `test/wallpaper.test.mjs` | 241 | 独立窗口的自定义壁纸：上传把字节直接流进 `<数据目录>/wallpaper/wallpaper.<ext>`（分两半写也要完整落盘、不留临时文件）、旧的另一种扩展名一起清掉、媒体路由答 200 与 `Range: bytes=2-5` 的 206 + `Content-Range`、非图片视频扩展名与空体被拒且目录不动、移除后目录消失且设置里的名字一起清、文件被外部删掉时答「没有壁纸」而不是 500、上传只受磁盘余量约束（余量不够抛 `disk-full` 且一个字节都不落盘） |
 | `test/check-docs.test.mjs` | 68 | 计数门禁本身要能红：汉字与数字写法读成同一个数、过期计数在两种写法下都被抓到、与仓库一致的句子放行、子集计数（「九条路由不写信封」）不被误判、`--fix` 按原句的写法改写 |
 | `test/client-bundle-drift.test.mjs` | 61 | 磁盘上的 `lib/client.js` 能从 `src/client/` 逐字节重建（改了分片忘了重建就会红）；产物仍以 `window.__ModuleLoader__.load({ id: "dsh-session-navigator"` 开头并导出 `apply`/`inject`；清单列出的分片与目录内文件一一对应；**没有分片超过 2 000 行** |
 | `test/i18n-render.test.mjs` | 350 | 十种语言各挂载一次面板：`DICTS` 键集等于 `LANGS`、`assets/i18n` 文件名同集合、每张表 `langCode` 自等且只有中文两份 `aiLang: "zh"`、十张 settings 键集相同、十张 panel 键集等于 en（zh 的值逐条等于键）、占位符多重集不丢、**每种语言的固定标签都换成自己的译文**、反向查非 zh 窗口不残留成串汉字（繁中与简体同形的 36 条豁免）、`normalizeLang` 的 `zh-CN`/`en_GB`/`pt-BR`/`zh-TW` 边界 |
@@ -100,7 +103,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/status-linger.test.mjs` | 85 | 问答状态在行上「留一会儿」的规则：已答的问题不在被页面称为 live 的行上继续压着、没说自己为什么安静的行也留、被页面整个丢掉的行同样留、留到那一轮有机会开口为止、留的期间那一轮停了就落「空闲」、邻居的提问不影响别的会话 |
 | `test/status-merge.test.mjs` | 54 | 状态表合并：每次宣告都交出一张新表、表里带着徽章要的三个字段、同一个状态重播两次行内容不变 |
 | `test/theme-tokens.test.mjs` | 50 | 样式表读的每个 `--sm-*` 变量都得由它自己定义；`<select>` 的选项列表用主题色画，不用深色字面量；token 桥接从主题推导 raised 表面 |
-| `test/render-smoke.mjs` | 1617 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；详情栏的「AI 字段」段必须紧跟在「备注」之后并带着那一枚按钮，存了字段之后要画出标题/描述/标签三行、每个标签都是**已勾选**的开关并写着「合并所选（2）」；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中）；状态点与 DSH 同一阶梯（空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中），「已中断」「异常」两个自造档位不许回来；没进过视口的会话先画成 32px 的 `.rowph` 占位、被观察器看见才换成真行，而选中的那一行与没有 `IntersectionObserver` 的环境一律照常建行 |
+| `test/render-smoke.mjs` | 1691 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；详情栏的「AI 字段」段必须紧跟在「备注」之后并带着那一枚按钮，存了字段之后要画出标题/描述/标签三行、每个标签都是**已勾选**的开关并写着「合并所选（2）」；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中）；状态点与 DSH 同一阶梯（空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中），「已中断」「异常」两个自造档位不许回来；没进过视口的会话先画成 32px 的 `.rowph` 占位、被观察器看见才换成真行，而选中的那一行与没有 `IntersectionObserver` 的环境一律照常建行 |
 
 ## 2. 为什么是这些
 

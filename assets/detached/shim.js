@@ -540,11 +540,11 @@
       const icon = typeof doc.createElementNS === "function" ? doc.createElementNS("http://www.w3.org/2000/svg", "svg") : null;
       if (icon) {
         icon.setAttribute("viewBox", "0 0 16 16");
-        icon.setAttribute("width", "12");
-        icon.setAttribute("height", "12");
+        icon.setAttribute("width", "14");
+        icon.setAttribute("height", "14");
         icon.setAttribute("fill", "none");
         icon.setAttribute("stroke", "currentColor");
-        icon.setAttribute("stroke-width", "1.2");
+        icon.setAttribute("stroke-width", "1.3");
         icon.setAttribute("aria-hidden", "true");
         for (const d of shape) {
           const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");

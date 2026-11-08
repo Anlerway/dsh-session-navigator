@@ -50,7 +50,9 @@ export function recordingFetch(respond = () => ({ ok: true, result: {} })) {
       body: init.body === undefined ? undefined : JSON.parse(String(init.body)),
     };
     calls.push(call);
-    const answer = respond(call) ?? { ok: true, result: {} };
+    // `await` on purpose: a responder may hold its answer open, which is how a
+    // test tells "the second write waited" from "the second write raced".
+    const answer = (await respond(call)) ?? { ok: true, result: {} };
     return { status: answer.status ?? 200, json: async () => answer };
   };
   fetchImpl.calls = calls;

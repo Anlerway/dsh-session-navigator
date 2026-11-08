@@ -68,6 +68,7 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 | `session/not-found` / `workspace/not-found` / `trash-not-found` | 404 | 目标不存在 |
 | `session-not-found` / `workspace-not-found` / `node-not-found` / `trash-not-found` | 404 | 同上，连字符拼写；树、注解、放置这些插件自己的路由用这一套 |
 | `component-not-installed` | 404 | Electron 组件未就绪 |
+| `wallpaper-not-found` | 404 | 媒体路由被要了一张还没上传过的自定义壁纸 |
 | `target-exists` / `session-active` / `session-corrupt` | 409 | 目标已存在 / 会话在跑 / 日志损坏 |
 | `workspace/session-active` | 409 | workspace 里还有在跑的会话 |
 | `revision-conflict` | 409 | 乐观锁失败 |
@@ -585,6 +586,55 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 
 `POST /detached/open` 在组件未 `ready` 时返回 404 `component-not-installed`。
 
+### 4.9.1 自定义壁纸
+
+独立窗口底下的那张图（见设置页「独立窗口美化」组）。
+
+| 路由 | body / query | 返回 |
+|---|---|---|
+| `GET /wallpaper` | — | `{ file: { file, name, bytes, type, modified } \| null }` |
+| `POST /wallpaper/custom` | **原始字节**，`?name=` 原始文件名 | `{ file, settings, revision }` |
+| `GET /wallpaper/media` | `Range`（可选） | 文件本身；没有壁纸时 404 `wallpaper-not-found` |
+| `DELETE /wallpaper/custom` | — | `{ file: null, settings, revision }` |
+
+上传体**不是** JSON：一个 200 MB 的视频 base64 之后是 270 MB，而 `readJsonBody` 的上限是
+8 MB。所以这条路由登记在 `src/index.js` 的 `RAW_BODY_ROUTES` 里，分发器不为它读 body，
+handler 自己 `createWriteStream` 落盘。**上传没有固定上限，边界是磁盘本身**：
+`RESERVE_BYTES`（256 MB）是写完之后必须留下的余量，不是能吃多少。`content-length`
+先预检一次，流式写入中每 32 MB 用 `statfs` 再看一眼，余量不够就抛 `disk-full`（507）
+并删掉半成品；空体是 `bad-request`。同源校验照旧在写盘之前。
+浏览器读不到剩余空间，所以设置页只按 `file.size` 记账，拦不拦由宿主说了算。
+
+文件落在 `<数据目录>/wallpaper/wallpaper.<ext>`，扩展名由 `Content-Type` 与文件名一起定，
+只收 png / jpg / webp / gif / avif / bmp 与 mp4 / m4v / webm / mov / ogv。换一张会先清掉
+目录里其它扩展名的旧文件，所以目录里永远最多一个文件。设置里只存 `wallpaper.custom`
+（文件名）与 `wallpaper.customName`（给人看的名），`normalizeSettings` 只认
+`wallpaper.<两到五位小写扩展名>` 这一种形状，路径一律丢成空串——媒体路由读哪个文件由
+设置决定，不能让手改的文档指到别处。
+
+媒体路由支持 `Range`（`bytes=a-b` / `a-` / `-后缀` 三种写法，206 + `Content-Range`），
+否则视频壁纸拖不动进度。全部 `no-store`：换了壁纸，窗口四秒内的下一次轮询就该看见。
+
+设置里的 `wallpaper` 有五项，都由窗口脚本 `assets/detached/wallpaper.js` 在每轮轮询里读：
+
+| 键 | 范围 | 含义 |
+|---|---|---|
+| `enabled` | 布尔 | 关掉就连 `/wallpaper-engine` 都不问，窗口恢复素面 |
+| `sync` | 布尔 | 关掉只留自定义那张图，不跟 wallpaper-engine 联动 |
+| `blur` | 0–100 | 图片模糊度：图片本身有多糊，`blur()` 半径 = 数值 × 0.4 px |
+| `frost` | 0–100 | 面板磨砂度：面板留下多少 tint，0 是透明玻璃，100 与没有壁纸时一样 |
+| `dim` | 0–100 | 壁纸暗度：压在图片上那层黑，0 不动，100 全黑 |
+
+三个百分比各管一层，互不代偿：`blur` 只动图片，`frost` 只动面板，`dim` 只动图片上那层黑蒙版。
+默认 `blur: 0`、`frost: 60`、`dim: 10`——图片是清晰的，面板留下六成身体，再压一层淡淡的黑：
+白字在亮图上才站得住，而画面还看得见。这三个数就是三根滑杆上「回退」写回去的值。
+
+窗口脚本把 `frost` 写进 `documentElement` 的 `--se-wallpaper-alpha`，`assets/detached/window.css`
+里 `[data-material="auto"]` 的 `--panel-alpha` 读它，底栏与右侧工具簇的 tint 也按它的三分之一
+取值，所以拉到 0 时它们一起消失；`dim` 写进 `--se-wallpaper-dim`，由 `#se-wallpaper::after`
+那层黑蒙版读取。显式选了 strong / weak / solid 的预设不受影响：那是用户自己挑的厚度（`frost`
+只对 auto 生效）。
+
 ### 4.10 静态资源
 
 | 路由 | 文件 | Content-Type |
@@ -592,6 +642,7 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 | `GET /ui` | `assets/detached/index.html` | `text/html` |
 | `GET /ui/window.css` | `assets/detached/window.css` | `text/css` |
 | `GET /ui/shim.js` | `assets/detached/shim.js` | `text/javascript` |
+| `GET /ui/wallpaper.js` | `assets/detached/wallpaper.js` | `text/javascript` |
 | `GET /ui/client.js` | `lib/client.js` | `text/javascript` |
 | `GET /ui/react.js` | `assets/vendor/react.production.min.js` | `text/javascript` |
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
@@ -724,13 +775,14 @@ host 做。仓库地址只在 `src/constants.js` 的 `REPO_URL` 写一次，API 
   `trash/index.v1.json`：**虚拟树**（文件夹、工作区摆放与顺序）、标签、备注、设置、回收站索引；
 - `trash/` 里的**净内容**。回收站是 move 不是 copy（`src/host/trash.js`），里面的目录
   曾经就是 DSH 的会话目录，删掉它们等于把这些会话永久删掉——这就是它必须被 `DELETE` 拦住的原因；
-- `quarantine/`（解析不了的文档，是用户自己的字节）与 `.tmp/`（写了一半的原子写残留）。
+- `quarantine/`（解析不了的文档，是用户自己的字节）与 `.tmp/`（写了一半的原子写残留）；
+- `wallpaper/`：上传的自定义壁纸，返回里的 `wallpaper` 那一项就是它 emptied 的结果。
 - `content-index.v1.json`：会话内容索引的缓存（§4.14）。派生文件，删了只是下次重建一次；
   返回里的 `contentIndex` 就是它那一项，`{ removed, bytes }` 与 `documents` 同形状。
 
 它**不动**的东西：
 
-- 数据目录本身和它的三个子目录——清空而不删除，否则插件下次没地方写；
+- 数据目录本身和它下面这些子目录——清空而不删除，否则插件下次没地方写；
 - DSH 自己的会话库：插件只搬过它们，没造过它们；
 - Electron 组件（`component/`、`.component-staging/`）：那是一次安装，不是用户数据。
   要清它按 `POST /cache/clear`（§4.11）。

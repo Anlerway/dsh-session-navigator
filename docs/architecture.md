@@ -286,8 +286,8 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
   「显示中文」，页面上不会印出 key。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
 
 两节都来自同一份数据文件：`assets/i18n/<code>.json`，十种语言（`zh` / `en` / `ja` / `ko` / `de` /
-`fr` / `es` / `ru` / `pt` / `zh-hant`），构建时内联进 `lib/client.js` 的 `DICTS`。`settings` 的 226 个具名键注册给
-DSH 的 locale 服务，`panel` 的 462 条以中文原文为键，`zh.json` 的值与键逐条相同。词典怎么放、
+`fr` / `es` / `ru` / `pt` / `zh-hant`），构建时内联进 `lib/client.js` 的 `DICTS`。`settings` 的 253 个具名键注册给
+DSH 的 locale 服务，`panel` 的 465 条以中文原文为键，`zh.json` 的值与键逐条相同。词典怎么放、
 清单有几份副本、加一门语言要动哪些文件，见 [i18n.md](i18n.md)。
 
 `T` 读模块级的 `panelLang`，而 `Panel` 每次渲染都从 props 的翻译器刷新它：

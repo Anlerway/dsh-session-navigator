@@ -201,6 +201,9 @@ function load(module, ctx) {
 test("the window's page loads one UI, from the Host's own origin", () => {
   const scripts = [...PAGE.matchAll(/<script src="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(scripts, [
+    // The picture the window borrows from DSH's wallpaper plugin, painted
+    // before React is even loaded so the boot splash sits on it.
+    "/session-navigator/api/ui/wallpaper.js",
     "/session-navigator/api/ui/react.js",
     "/session-navigator/api/ui/react-dom.js",
     "/session-navigator/api/ui/shim.js",
@@ -227,6 +230,7 @@ test("the Host serves the page, its stylesheet, its shim and the panel's module"
     "GET /ui",
     "GET /ui/window.css",
     "GET /ui/shim.js",
+    "GET /ui/wallpaper.js",
     "GET /ui/client.js",
     "GET /ui/react.js",
     "GET /ui/react-dom.js",
@@ -239,6 +243,7 @@ test("the Host serves the page, its stylesheet, its shim and the panel's module"
     "assets/detached/index.html",
     "assets/detached/window.css",
     "assets/detached/shim.js",
+    "assets/detached/wallpaper.js",
     "lib/client.js",
     "assets/vendor/react.production.min.js",
     "assets/vendor/react-dom.production.min.js",
@@ -347,6 +352,28 @@ test("the window draws its own caption buttons", () => {
   assert.equal(icon.tag, "svg");
   assert.equal(icon.attributes.fill, "none");
   assert.equal(icon.attributes.stroke, "currentColor");
+});
+
+test("the caption buttons fill the titlebar, so they read as its buttons and not a widget", () => {
+  const css = read("assets/detached/window.css");
+  const panel = read("assets/panel.css");
+  /** One rule's declarations, by its exact selector (first match). */
+  const ruleOf = (source, selector) => {
+    const at = source.indexOf(selector);
+    assert.notEqual(at, -1, "no rule for " + selector);
+    return source.slice(at, source.indexOf("}", at));
+  };
+  const strip = ruleOf(css, ".se-caption {");
+  const button = ruleOf(css, ".se-caption-btn {");
+  // The row they sit on is 40 px (assets/panel.css), and the buttons are the
+  // whole cell: 46×40, square, so a hover paints the strip like a caption.
+  assert.match(ruleOf(panel, ".se-shell .titlebar{"), /height:40px/, "the strip the buttons sit on");
+  assert.match(strip, /height:\s*40px/, "the caption bar is exactly that tall");
+  assert.match(strip, /align-items:\s*stretch/, "and the buttons stretch to it");
+  assert.match(button, /height:\s*100%/, "no band of wallpaper above or below the glyph");
+  assert.match(button, /width:\s*46px/);
+  assert.match(button, /border-radius:\s*0/, "one square cell, the way a system caption is");
+  assert.match(ruleOf(css, ".se-shell .titlebar {"), /padding-right:\s*138px/, "three 46 px cells, so the tabs stop exactly where they start");
 });
 
 test("each caption button drives the frame", async () => {

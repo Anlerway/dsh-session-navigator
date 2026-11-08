@@ -24,6 +24,8 @@ export const UI_ASSETS = Object.freeze({
   page: join(PLUGIN_ROOT, "..", "assets", "detached", "index.html"),
   stylesheet: join(PLUGIN_ROOT, "..", "assets", "detached", "window.css"),
   shim: join(PLUGIN_ROOT, "..", "assets", "detached", "shim.js"),
+  // The picture the window borrows from DSH's own wallpaper plugin.
+  wallpaper: join(PLUGIN_ROOT, "..", "assets", "detached", "wallpaper.js"),
   // The one file under lib/: the bundle the build writes from src/client.
   module: join(PLUGIN_ROOT, "..", "lib", "client.js"),
   react: join(PLUGIN_ROOT, "..", "assets", "vendor", "react.production.min.js"),

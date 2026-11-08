@@ -1,7 +1,7 @@
 # 开发文档
 
 这套文档是**照代码写的**，不是照设计稿写的。每一条规则都指到具体的文件与符号（函数名、常量名、
-路由键）。行号一次插入就会错，所以不写行号；计数会随代码漂，所以「八十二个测试文件」「83 条路由」
+路由键）。行号一次插入就会错，所以不写行号；计数会随代码漂，所以「八十五个测试文件」「88 条路由」
 这类数字也由 `scripts/check-docs.mjs` 现算现比，对不上就红。
 
 ## 读的顺序
@@ -9,14 +9,14 @@
 | 文档 | 讲什么 | 什么时候读 |
 |---|---|---|
 | [architecture.md](architecture.md) | 两半结构、一次请求怎么走完、读管道与缓存、硬约束 | 第一次进这个仓库 |
-| [api.md](api.md) | 83 条 HTTP 路由、信封、错误码表、乐观锁 | 改 host 或写客户端调用 |
+| [api.md](api.md) | 88 条 HTTP 路由、信封、错误码表、乐观锁 | 改 host 或写客户端调用 |
 | [data-directory.md](data-directory.md) | 数据目录布局、四份侧车、原子写、回收站、迁移 | 改存储、调试"数据不见了" |
 | [tree-and-placement.md](tree-and-placement.md) | 节点种类、R1–R5、计数、虚拟放置、快捷方式、置顶与快速访问、批量动作 | 改左侧树或拖拽 |
 | [bridge-and-theme.md](bridge-and-theme.md) | 面板 ↔ 窗口的命令总线、SSE、主题同步 | 改独立窗口或配色 |
 | [component.md](component.md) | Electron 组件：状态机、镜像、校验、发布、清扫 | 改安装流程 |
 | [i18n.md](i18n.md) | 十种语言的词典、清单的几份副本、`uiLang()` 与 `aiLang()`、插件自己的界面语言（`ui.lang`）、加一门语言的步骤 | 改界面文案或加语言 |
 | [changelog/](changelog/README.md) | 十种语言的更新说明：一版一文，十份一起改，条目数由测试对齐 | 发版前后写「更新了什么」 |
-| [testing.md](testing.md) | 八十二个测试文件各钉住什么、怎么跑 | 提交之前 |
+| [testing.md](testing.md) | 八十五个测试文件各钉住什么、怎么跑 | 提交之前 |
 
 ## 三条最容易被违反的约定
 
@@ -30,7 +30,7 @@
 
 ```
 src/
-  index.js            83 条路由的键、分发、错误映射、apply() 装配（668 行）
+  index.js            88 条路由的键、分发、错误映射、apply() 装配（709 行）
   routes/             路由表按域拆开：library / folders / layout / settings /
                       summaries / release / maintenance / sessions / tools /
                       bridge / detached / assets，外加 shared（助手）、
@@ -64,7 +64,7 @@ assets/detached/      独立窗口的页面：index.html、window.css、shim.js�
 assets/panel.css      面板样式（构建期内联）
 assets/i18n/          每种语言一份词典（构建期内联）
 assets/vendor/        自带 React 18.3.1 UMD 构建（无构建步骤的前提）
-test/                 82 个测试文件 + render-smoke
+test/                 85 个测试文件 + render-smoke
 ```
 
 `client.js` 是**刻意的**单文件产物：DSH 只给一个 `window.__ModuleLoader__.load({ id, factory })` 入口，

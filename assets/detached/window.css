@@ -85,11 +85,12 @@ body {
    strip drags. */
 .se-shell .titlebar {
   -webkit-app-region: no-drag;
-  /* The strip runs under the caption buttons — three 34px buttons and a little
-     air. Fixed rather than measured: the bar is ours, so its width is known.
-     `!important` because the panel's own stylesheet sets the same property and
-     is injected after this file. */
-  padding-right: 112px !important;
+  /* The strip runs under the caption buttons — three 46px buttons, no air on
+     either side, because they are as tall as the strip and the last one ends at
+     the window's edge. Fixed rather than measured: the bar is ours, so its width
+     is known. `!important` because the panel's own stylesheet sets the same
+     property and is injected after this file. */
+  padding-right: 138px !important;
 }
 .se-shell .titlebar .tabs {
   -webkit-app-region: drag;
@@ -102,25 +103,34 @@ body {
 /* 4. The caption buttons are page-drawn (shim.js mountCaption). They sit above
    the panel so no row can cover them, and they take the palette from the same
    custom properties the panel uses, so both themes match. */
+/* The bar is exactly the titlebar's 40 px, and the buttons fill it: the strip
+   they sit on is 40 px tall (assets/panel.css .se-shell .titlebar), so anything
+   shorter leaves a band of wallpaper above and below the glyph and the three
+   buttons read as a floating widget instead of the window's caption. */
 .se-caption {
   position: fixed;
   top: 0;
   right: 0;
   display: flex;
+  align-items: stretch;
   height: 40px;
   z-index: 2147483000;
   -webkit-app-region: no-drag;
 }
+/* 46×40 with a 14px glyph: this window has no system title bar, so these three
+   buttons are the only way to resize it and the only way out. Width and height
+   are the whole cell — square corners, so a hover paints one cell of the strip
+   the way a system caption does. */
 .se-caption-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 30px;
+  width: 46px;
+  height: 100%;
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: var(--dsw-alias-label-secondary, #a8a8a8);
   cursor: default;
@@ -147,4 +157,69 @@ html[data-theme="light"] .se-caption-close:hover {
    "在独立窗口中打开" has no meaning here: this *is* that window. */
 .se-shell .wbtns {
   display: none !important;
+}
+
+/* 5. The wallpaper the window borrows from DSH (assets/detached/wallpaper.js).
+   One layer under the panel, and nothing else: no scrim, no blur — the picture
+   is the picture, and the panel's own tint is what dims it. */
+#se-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #0b0b0c;
+}
+#se-wallpaper .se-wallpaper-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 壁纸暗度: a black veil on the picture, for one too bright to read over. It sits
+   above the media and below the panel, so it darkens the wallpaper without
+   touching the text — 0 is no veil at all. */
+#se-wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: var(--se-wallpaper-dim, 0);
+  pointer-events: none;
+}
+
+/* The panel is the window, so it sits above that layer rather than in flow. */
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* With a picture behind it the default material has something to show through:
+   the same trade the panel's "strong" preset makes over DSH's own wallpaper.
+   An explicit preset is the user's call and is left alone.
+
+   模糊度 is a percentage of tint (assets/detached/wallpaper.js): 0 is clear glass
+   over the picture, 100 is the panel a plain window always had. The fallback
+   covers the moment before the first poll. */
+html[data-se-wallpaper] .se-shell[data-material="auto"] {
+  --panel-alpha: var(--se-wallpaper-alpha, 88%);
+}
+
+/* The layer only reaches as far as the surfaces let it. The shell is a percentage
+   of tint, but the status line and the fixed toolbar cluster paint their own tint
+   on top of it at 94–96%, and two stacked near-opaque layers are 99.5% opaque:
+   measured over a picture, those two bars were the only black slabs left in the
+   window. A third of the shell's tint keeps the same density against an 88% panel
+   while leaving the picture visible, and it follows the percentage down to clear
+   glass instead of staying a slab at 0. */
+html[data-se-wallpaper] .se-shell .status,
+html[data-se-wallpaper] .se-shell .cmdfixed {
+  background: color-mix(in oklab, var(--sm-tint) calc(var(--se-wallpaper-alpha, 88%) * 34 / 100), transparent);
+}
+
+/* Nothing may sit *under* the panel and still be painted: with a picture behind,
+   the body's own colour is a hairline of black at the frame edge. */
+html[data-se-wallpaper] body {
+  background: transparent;
 }

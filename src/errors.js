@@ -119,6 +119,14 @@ export const ERROR_CODES = {
     zh: "回收站里已经没有这个会话了",
     en: "That session is no longer in the trash",
   },
+  // The media route is asked for a file that was never uploaded: a plain 404,
+  // not the 500 that `not-found` carries (that one is for a file this plugin
+  // needs for itself and could not find).
+  "wallpaper-not-found": {
+    status: 404,
+    zh: "还没有设置自定义壁纸",
+    en: "No custom wallpaper has been set",
+  },
   "component-not-installed": {
     status: 404,
     zh: "独立弹窗需要先下载Electron 组件，已改用浮窗：设置 → 会话资源管理器 → Electron 组件",

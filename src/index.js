@@ -57,6 +57,7 @@ import { maintenanceRoutes } from "./routes/maintenance.js";
 import { sessionsRoutes } from "./routes/sessions.js";
 import { toolsRoutes } from "./routes/tools.js";
 import { bridgeRoutes } from "./routes/bridge.js";
+import { wallpaperRoutes } from "./routes/wallpaper.js";
 import { detachedRoutes } from "./routes/detached.js";
 
 export const name = "dsh-session-navigator";
@@ -416,6 +417,17 @@ export function apply(ctx) {
 }
 
 /**
+ * Routes whose request body is the payload, not a JSON document.
+ *
+ * A wallpaper is a picture or a video: base64 turns 200 MB into 270 MB, the
+ * dispatcher's JSON reader caps at 8 MB, and either way the file would sit in
+ * memory twice. These routes read the socket themselves and stream it to disk,
+ * so the number in this set is the list of places where `readJsonBody` must not
+ * run — nothing else about dispatch changes.
+ */
+const RAW_BODY_ROUTES = new Set(["POST /wallpaper/custom"]);
+
+/**
  * The route table: the handlers live in src/routes/, grouped by the part of the
  * panel each serves; the keys stay "METHOD /path" without the API prefix.
  *
@@ -436,6 +448,7 @@ const ROUTES = {
   ...toolsRoutes,
   ...bridgeRoutes,
   ...detachedRoutes,
+  ...wallpaperRoutes,
 
 
   /**
@@ -498,6 +511,8 @@ const ROUTES = {
   "GET /ui/window.css": async (api, req, res) => serveAsset(res, UI_ASSETS.stylesheet, "text/css; charset=utf-8"),
 
   "GET /ui/shim.js": async (api, req, res) => serveAsset(res, UI_ASSETS.shim, "text/javascript; charset=utf-8"),
+
+  "GET /ui/wallpaper.js": async (api, req, res) => serveAsset(res, UI_ASSETS.wallpaper, "text/javascript; charset=utf-8"),
 
   "GET /ui/client.js": async (api, req, res) => serveClientModule(res),
 
@@ -653,7 +668,9 @@ async function handle(api, req, res) {
     }
     if (method !== "GET" && method !== "HEAD") {
       assertSameOrigin(req);
-      /** @type {any} */ (req).body = await readJsonBody(req);
+      if (!RAW_BODY_ROUTES.has(method + " " + route.path)) {
+        /** @type {any} */ (req).body = await readJsonBody(req);
+      }
     }
     /** @type {any} */ (req).params = params;
     const result = await matched.handler(api, req, res, route.query);

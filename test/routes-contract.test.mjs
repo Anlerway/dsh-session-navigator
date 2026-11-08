@@ -477,6 +477,7 @@ test("send, ok and fail build one envelope shape", () => {
 const NO_PROBE = new Map([
   ["GET /update", "checks GitHub for the latest release; test/update.test.mjs covers it without the network"],
   ["GET /bridge/events", "server-sent events: the answer stays open until the panel leaves, so a fake response would hang"],
+  ["POST /wallpaper/custom", "the request body *is* the file: test/wallpaper.test.mjs drives it with a real stream"],
 ]);
 
 /**
@@ -509,6 +510,7 @@ const EMPTY_BODY_IS_A_REQUEST = new Map([
   ["POST /detached/close", "a command: close the window if one is open"],
   ["DELETE /tags/:tag", "the tag is in the path; removing one nobody uses is a no-op"],
   ["DELETE /summaries/:id", "the id is in the path; dropping a record that is gone is a no-op"],
+  ["DELETE /wallpaper/custom", "the wallpaper is not in the body: removing it is one action, with no arguments to get wrong"],
 ]);
 
 /** The three bodies every write route is asked to cope with. */

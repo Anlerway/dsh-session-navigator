@@ -966,8 +966,34 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
 .se-set-input{box-sizing:border-box;flex:1 1 150px;height:26px;padding:0 8px;border-radius:5px;font:inherit;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   border:1px solid var(--sm-border);background:transparent;color:var(--sm-text);outline:none}
 .se-set-input:focus{border-color:var(--sm-danger)}
-.se-set-range{width:170px;flex:0 0 auto;accent-color:var(--sm-accent)}
-.se-set-val{width:44px;flex:0 0 auto;text-align:right;font-variant-numeric:tabular-nums;color:var(--sm-text-2)}
+/* 滑杆 — a 4 px track, accent filled up to the value, a 14 px thumb with a
+   ring, and a number beside it you can type into. The track is the pseudo
+   element's job: the native one cannot be half-coloured, and --se-fill is
+   written inline by RangeControl (each slider owns its own segment). */
+/* One length for every slider, and the length settings rows always had: the
+   track measures the same whether the row beside it is 图片模糊度 or 遮罩黑度.
+   A fixed pixel width, not vw or flex-grow — a track that grows with the window
+   turns one percentage into a different distance on every click. */
+.se-set-slider{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}
+.se-set-range{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:150px;height:20px;margin:0;background:transparent;cursor:pointer}
+.se-set-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(to right,var(--sm-accent) var(--se-fill,0%),color-mix(in oklab, var(--sm-text) 18%, transparent) var(--se-fill,0%))}
+.se-set-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;border:2px solid var(--sm-accent);background:var(--sm-surface);box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .12s ease}
+.se-set-range:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.12)}
+.se-set-range:active::-webkit-slider-thumb{transform:scale(1.18)}
+.se-set-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in oklab, var(--sm-accent) 26%, transparent)}
+.se-set-range::-moz-range-track{height:4px;border-radius:999px;background:color-mix(in oklab, var(--sm-text) 18%, transparent)}
+.se-set-range::-moz-range-progress{height:4px;border-radius:999px;background:var(--sm-accent)}
+.se-set-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;border:2px solid var(--sm-accent);background:var(--sm-surface)}
+.se-set-range:disabled{opacity:.45;cursor:default}
+.se-set-num{width:40px;height:22px;flex:0 0 auto;padding:0 4px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--sm-text-2);font:inherit;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;outline:none;-moz-appearance:textfield;appearance:textfield}
+.se-set-num:hover:not(:disabled){border-color:var(--sm-border-soft);background:color-mix(in oklab, var(--sm-text) 5%, transparent)}
+.se-set-num:focus{border-color:var(--sm-accent);background:color-mix(in oklab, var(--sm-text) 6%, transparent);color:var(--sm-text)}
+.se-set-num::-webkit-inner-spin-button,.se-set-num::-webkit-outer-spin-button{-webkit-appearance:none;appearance:none;margin:0}
+.se-set-num:disabled{opacity:.45;cursor:default}
+.se-set-unit{flex:0 0 auto;font-size:12px;color:var(--sm-text-3);white-space:pre}
+.se-set-revert{width:20px;height:20px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--sm-text-3);font:inherit;font-size:12px;line-height:1;cursor:pointer}
+.se-set-revert:hover:not(:disabled){color:var(--sm-text);background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
+.se-set-revert:disabled{opacity:.4;cursor:default}
 .se-set-switch{width:34px;height:20px;flex:0 0 auto;border-radius:10px;border:1px solid var(--sm-border);background:color-mix(in oklab, var(--sm-text) 10%, transparent);position:relative;cursor:pointer;transition:background .15s}
 .se-set-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--sm-text-2);transition:transform .15s,background .15s}
 .se-set-switch.on{background:color-mix(in oklab, var(--sm-accent) 55%, transparent)}

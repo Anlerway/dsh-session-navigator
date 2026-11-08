@@ -14,11 +14,12 @@
  *     deleting them deletes those sessions for good;
  *   - quarantine/ — documents this plugin could not parse, parked as the user's
  *     own bytes;
- *   - .tmp/ — atomic-write leftovers.
+ *   - .tmp/ — atomic-write leftovers;
+ *   - wallpaper/ — the picture uploaded for the detached window.
  *
  * It deliberately leaves alone:
  *
- *   - the data directory itself, and its three sub-directories (they are
+ *   - the data directory itself, and the sub-directories it empties (they are
  *     emptied, not removed: the plugin must still have somewhere to write);
  *   - every session DSH still owns — this plugin only ever moved them, never
  *     invented them;
@@ -167,6 +168,10 @@ export async function resetData(api, options = {}) {
   const trash = emptyDir(paths.trashDir ?? join(dataDir, "trash"));
   const quarantine = emptyDir(paths.quarantine ?? join(dataDir, "quarantine"));
   const tmp = emptyDir(paths.tmpDir ?? join(dataDir, ".tmp"));
+  // The uploaded 壁纸 is a picture the user handed this plugin, not a cache: it
+  // goes with the rest of their data, and the settings row that names it has
+  // already been cleared above with the other documents.
+  const wallpaper = emptyDir(join(dataDir, "wallpaper"));
 
   // Every list the panel painted is memoised; without this the folders and tags
   // just deleted would still answer from memory until the process restarted.
@@ -200,7 +205,8 @@ export async function resetData(api, options = {}) {
     notesSeen.bytes +
     trash.bytes +
     quarantine.bytes +
-    tmp.bytes;
+    tmp.bytes +
+    wallpaper.bytes;
 
   return {
     freedBytes,
@@ -210,6 +216,7 @@ export async function resetData(api, options = {}) {
     trash,
     quarantine,
     tmp,
+    wallpaper,
     keptLocation,
     dataDir,
     tookMs: Date.now() - started,

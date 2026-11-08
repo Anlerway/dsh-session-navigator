@@ -15,6 +15,7 @@ import {
   DATE_FORMATS,
   HEADER_STYLES,
   MAX_DIM,
+  MAX_WALLPAPER_PERCENT,
   MODAL_FIXED_SIZES,
   MODAL_PERCENT_SIZES,
   MODAL_SIZING,
@@ -292,4 +293,54 @@ test("the removed 会话内容索引缓存 switch is dropped, not honoured", () 
   const kept = normalizeSettings({ search: { indexCache: false, indexIdle: true } });
   assert.deepEqual(kept.search, { indexIdle: true });
   assert.equal("indexCache" in kept.search, false);
+});
+
+test("独立窗口美化 is on, with a sharp picture and a panel you can still read over", () => {
+  const wallpaper = defaultSettings().wallpaper;
+  assert.equal(wallpaper.enabled, true, "the window a user just opened shows the picture they already chose");
+  assert.equal(wallpaper.blur, 0, "out of the box the picture is sharp");
+  assert.equal(wallpaper.frost, 60, "the panel keeps three fifths of its body, so text stays readable");
+  assert.equal(wallpaper.dim, 10, "and a touch of shade sits under the text");
+  assert.equal(wallpaper.sync, true);
+  assert.equal(wallpaper.custom, "", "no file until one is uploaded");
+  assert.equal(wallpaper.customName, "");
+});
+
+test("模糊度, 磨砂度 and 壁纸暗度 are percentages, clamped to the slider's own range", () => {
+  for (const key of ["blur", "frost", "dim"]) {
+    assert.equal(normalizeSettings({ wallpaper: { [key]: 12 } }).wallpaper[key], 12);
+    assert.equal(normalizeSettings({ wallpaper: { [key]: -5 } }).wallpaper[key], 0, "there is nothing below " + key);
+    assert.equal(normalizeSettings({ wallpaper: { [key]: 999 } }).wallpaper[key], MAX_WALLPAPER_PERCENT);
+    assert.equal(normalizeSettings({ wallpaper: { [key]: 7.6 } }).wallpaper[key], 8, "the slider steps in whole percent");
+    assert.equal(
+      normalizeSettings({ wallpaper: { [key]: "8" } }).wallpaper[key],
+      defaultSettings().wallpaper[key],
+      "a string is not a percentage",
+    );
+  }
+  assert.equal(MAX_WALLPAPER_PERCENT, 100, "the ceiling is a whole percentage");
+});
+
+test("a custom wallpaper name is a file name the route wrote, never a path", () => {
+  const kept = normalizeSettings({ wallpaper: { custom: "wallpaper.mp4", customName: "海边.mp4" } });
+  assert.equal(kept.wallpaper.custom, "wallpaper.mp4");
+  assert.equal(kept.wallpaper.customName, "海边.mp4");
+  // A bare name is all the route ever writes. A path is not, and keeping one
+  // would let a hand-edited document point the media route at another file.
+  assert.equal(normalizeSettings({ wallpaper: { custom: "../secrets.png" } }).wallpaper.custom, "");
+  assert.equal(normalizeSettings({ wallpaper: { custom: "sub/wallpaper.png" } }).wallpaper.custom, "");
+  assert.equal(normalizeSettings({ wallpaper: { custom: "C:\\Windows\\x.png" } }).wallpaper.custom, "");
+  assert.equal(normalizeSettings({ wallpaper: { custom: 7 } }).wallpaper.custom, "");
+  assert.equal(
+    normalizeSettings({ wallpaper: { custom: "wallpaper.png", customName: "x".repeat(200) } }).wallpaper.customName.length,
+    120,
+    "the row prints this name; it is cut, not trusted",
+  );
+});
+
+test("a wallpaper patch merges without disturbing the groups around it", () => {
+  const merged = mergeSettings(defaultSettings(), { wallpaper: { blur: 10 } });
+  assert.equal(merged.wallpaper.blur, 10);
+  assert.equal(merged.wallpaper.enabled, true);
+  assert.equal(merged.shell.modal.sizing, "fixed");
 });

@@ -57,6 +57,10 @@ async function makeInstall() {
   writeFileSync(join(paths.quarantine, "tree.v1.json.corrupt-1"), "bad bytes");
   writeFileSync(join(paths.tmpDir, "tree.v1.json.42.tmp"), "half written");
 
+  // An uploaded wallpaper: the user's own picture, not a cache.
+  mkdirSync(join(dir, "wallpaper"), { recursive: true });
+  writeFileSync(join(dir, "wallpaper", "wallpaper.png"), "p".repeat(96));
+
   // The optional browser component: an install, not user data.
   mkdirSync(join(dir, "component", "download"), { recursive: true });
   writeFileSync(join(dir, "component", "download", "electron.zip.part"), "p".repeat(64));
@@ -110,6 +114,7 @@ test("DELETE takes the records, the bin's payloads, the quarantine and the tmp",
   assert.equal(existsSync(join(paths.trashDir, "s1")), false);
   assert.deepEqual(readdirSync(paths.quarantine), []);
   assert.deepEqual(readdirSync(paths.tmpDir), []);
+  assert.deepEqual(readdirSync(join(dir, "wallpaper")), [], "the uploaded picture goes with the records");
 
   for (const name of ["tree", "annotations", "settings", "summaries", "trash"]) {
     assert.equal(result.documents[name].removed, true, "reported removed: " + name);
@@ -120,6 +125,7 @@ test("DELETE takes the records, the bin's payloads, the quarantine and the tmp",
   assert.equal(result.trash.removed, 1, "the session directory behind the bin entry");
   assert.equal(result.quarantine.removed, 1);
   assert.equal(result.tmp.removed, 1);
+  assert.equal(result.wallpaper.removed, 1, "one file, and its own line in the summary");
   assert.equal(result.dataDir, dir);
 
   // Every byte claimed was either a document or a directory emptied above.
@@ -127,7 +133,8 @@ test("DELETE takes the records, the bin's payloads, the quarantine and the tmp",
     Object.values(result.documents).reduce((sum, entry) => sum + entry.bytes, 0) +
     result.trash.bytes +
     result.quarantine.bytes +
-    result.tmp.bytes;
+    result.tmp.bytes +
+    result.wallpaper.bytes;
   assert.equal(result.freedBytes, parts);
   assert.ok(result.freedBytes >= 512, "the bin payload is counted, not just the index");
 });
@@ -137,7 +144,7 @@ test("the directory itself survives, so the plugin still has somewhere to write"
   await resetData(api, { confirm: "DELETE" });
 
   assert.ok(existsSync(dir), "the data directory is not deleted");
-  for (const child of [paths.trashDir, paths.tmpDir, paths.quarantine]) {
+  for (const child of [paths.trashDir, paths.tmpDir, paths.quarantine, join(dir, "wallpaper")]) {
     assert.ok(existsSync(child), "emptied, not removed: " + child);
   }
 });

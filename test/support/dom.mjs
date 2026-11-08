@@ -65,6 +65,30 @@ class ClassList {
   }
 }
 
+/**
+ * The little of CSSStyleDeclaration the shell scripts use.
+ *
+ * Ordinary properties ("filter", "opacity") are assigned straight onto the style
+ * object, the way a browser allows; custom properties have no such shortcut, so
+ * `setProperty` / `removeProperty` record them in a map that the tests read back.
+ */
+export class Style {
+  constructor() {
+    this.custom = new Map();
+  }
+  setProperty(name, value) {
+    this.custom.set(String(name), String(value));
+  }
+  removeProperty(name) {
+    const had = this.custom.has(String(name));
+    this.custom.delete(String(name));
+    return had ? "" : "";
+  }
+  getPropertyValue(name) {
+    return this.custom.get(String(name)) ?? "";
+  }
+}
+
 export class Event {
   constructor(type, init = {}) {
     this.type = type;
@@ -102,7 +126,7 @@ export class Node {
     this.parentNode = null;
     this.listeners = new Map();
     this.classList = new ClassList(this);
-    this.style = {};
+    this.style = new Style();
     this.value = "";
     this.checked = false;
     this.selectionStart = 0;
@@ -151,6 +175,18 @@ export class Node {
     this.childNodes.push(child);
     return child;
   }
+  insertBefore(child, reference) {
+    const index = reference ? this.childNodes.indexOf(reference) : -1;
+    if (index < 0) return this.appendChild(child);
+    child.parentNode = this;
+    this.childNodes.splice(index, 0, child);
+    return child;
+  }
+  replaceChildren(...nodes) {
+    for (const node of this.childNodes) node.parentNode = null;
+    this.childNodes = [];
+    for (const node of nodes) this.appendChild(node);
+  }
   remove() {
     if (!this.parentNode) return;
     const index = this.parentNode.childNodes.indexOf(this);
@@ -159,6 +195,9 @@ export class Node {
   }
   get children() {
     return this.childNodes.filter((node) => node instanceof Node);
+  }
+  get firstChild() {
+    return this.childNodes[0] ?? null;
   }
 
   get textContent() {

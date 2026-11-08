@@ -30,6 +30,15 @@
  *     },
  *     ui:        { lang },               <- 界面语言: "auto" follows DSH, else a code
  *     dataDir:   { current },
+ *     wallpaper: {
+ *       enabled,        <- 独立窗口美化: draw a picture under the panel at all
+ *       blur,           <- 图片模糊度 as a percentage: how soft the picture is (0)
+ *       frost,          <- 面板磨砂度 as a percentage: how much tint the panel keeps (60)
+ *       dim,            <- 壁纸暗度 as a percentage: a black veil over the picture (10)
+ *       sync,           <- 跟随壁纸插件: mirror wallpaper-engine's choice
+ *       custom,         <- uploaded file's name inside <dataDir>/wallpaper/
+ *       customName,     <- the name it was uploaded under, for the row
+ *     },
  *   }
  *
  * `settings.v1.json` is written by `store/sidecar.js`, which merges a patch onto
@@ -65,6 +74,24 @@ export const MODAL_PERCENT_SIZES = Object.freeze(["p50", "p70", "p85", "p100"]);
 
 /** Upper bound for the scrim, so a wallpaper never goes black. */
 export const MAX_DIM = 0.8;
+
+/**
+ * The ceiling 模糊度, 磨砂度 and 壁纸暗度 all share: they are percentages.
+ *
+ * Each one spends its number on a different surface — the picture's blur, the
+ * panel's tint, a black veil — and 100 always means "as far as that surface
+ * goes" (a 40 px blur, an opaque panel, an unreadable picture).
+ */
+export const MAX_WALLPAPER_PERCENT = 100;
+
+/**
+ * The one shape a stored custom-wallpaper file name may take.
+ *
+ * The host names the file itself and always writes `wallpaper.<ext>`, so this
+ * is a re-read check rather than a sanitizer: anything else in the document is a
+ * hand-edited file and is dropped instead of being joined onto a path.
+ */
+export const CUSTOM_FILE = /^wallpaper\.[a-z0-9]{2,5}$/;
 
 /**
  * Where the explorer opens when it is launched from DSH's sidebar.
@@ -219,6 +246,26 @@ export function defaultSettings() {
     // 界面语言 — "auto" follows DSH (see UI_LANGS).
     ui: { lang: "auto" },
     dataDir: { current: null },
+    // 独立窗口美化 — the picture under the panel in the detached window.
+    //
+    // On out of the box: the window has always mirrored DSH's own wallpaper, and
+    // a feature that shipped and then went quiet is worse than one that is
+    // plainly on. `sync` is the same statement about the *source*: mirror
+    // wallpaper-engine's choice, or show only a picture the user uploaded.
+    wallpaper: {
+      enabled: true,
+      // Sharp picture, a panel that keeps two-thirds of its body so the text
+      // stays readable, and a touch of shade under it. These are the numbers the
+      // three sliders revert to.
+      blur: 0,
+      frost: 60,
+      dim: 10,
+      sync: true,
+      // The uploaded file's name inside `<dataDir>/wallpaper/`, and the name it
+      // was uploaded under. Empty means "nothing uploaded".
+      custom: "",
+      customName: "",
+    },
   };
 }
 
@@ -302,6 +349,13 @@ export function mergeSettings(current, patch) {
     merged.ui = {
       ...(base.ui && typeof base.ui === "object" ? base.ui : {}),
       lang: incoming.ui.lang,
+    };
+  }
+
+  if (incoming.wallpaper && typeof incoming.wallpaper === "object") {
+    merged.wallpaper = {
+      ...(base.wallpaper && typeof base.wallpaper === "object" ? base.wallpaper : {}),
+      ...incoming.wallpaper,
     };
   }
 
@@ -395,6 +449,27 @@ export function normalizeSettings(raw) {
     for (const key of ["title", "description", "tags"]) {
       if (typeof fields[key] === "boolean") out.summary.fields[key] = fields[key];
     }
+  }
+
+  // 独立窗口美化. A document written before this group existed has no such key:
+  // the defaults above are exactly what those builds did — mirror the wallpaper,
+  // the panel as solid as it always was — so an absent group changes nothing.
+  const wallpaper = raw.wallpaper && typeof raw.wallpaper === "object" ? raw.wallpaper : {};
+  if (typeof wallpaper.enabled === "boolean") out.wallpaper.enabled = wallpaper.enabled;
+  if (typeof wallpaper.sync === "boolean") out.wallpaper.sync = wallpaper.sync;
+  for (const key of ["blur", "frost", "dim"]) {
+    if (Number.isFinite(wallpaper[key])) {
+      out.wallpaper[key] = Math.min(MAX_WALLPAPER_PERCENT, Math.max(0, Math.round(wallpaper[key])));
+    }
+  }
+  // The name is written by the host, never by the client, so the pair is taken
+  // or dropped together: a name with no file would point the window at a 404.
+  if (typeof wallpaper.custom === "string" && CUSTOM_FILE.test(wallpaper.custom)) {
+    out.wallpaper.custom = wallpaper.custom;
+    out.wallpaper.customName =
+      typeof wallpaper.customName === "string" && wallpaper.customName !== ""
+        ? wallpaper.customName.slice(0, 120)
+        : wallpaper.custom;
   }
 
   // 界面语言 — the enum is the dictionary list plus "auto"; a code this build
