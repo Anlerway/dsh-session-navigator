@@ -181,5 +181,5 @@ test("every language has notes, and they cover the same ground", async () => {
     // that drops a bullet fails here rather than silently telling less.
     shapes.set(lang, parsed.blocks.filter((block) => block.kind === "list").map((list) => list.items.length).join("/"));
   }
-  assert.deepEqual([...new Set(shapes.values())], ["6/5/9/7"], "every language says the same amount");
+  assert.deepEqual([...new Set(shapes.values())], ["7/6/10/9"], "every language says the same amount");
 });

@@ -6,6 +6,7 @@ Es una versión de vista previa. Gracias a quienes instalan y usan el plugin, y 
 
 - Diez idiomas en la interfaz, ocho de ellos nuevos
 - El plugin se reestructuró y el arranque en frío es mucho más rápido
+- La ventana independiente se adapta al tema y se integra con dsh-plugin-wallpaper-engine
 - La lista no siempre se refrescaba al borrar una sesión; corregido
 - Si falta el runtime, ahora se ofrece la descarga
 - La carpeta de datos puede volver a la predeterminada
@@ -20,6 +21,7 @@ Novedades
 - Si falta el componente de Electron, se ofrece la descarga en el acto
 - Ajustes › Carpeta de datos: cambiar de ubicación y volver a la predeterminada
 - Las notas de la versión también están traducidas
+- «Ventana independiente»: seguir el fondo de dsh-plugin-wallpaper-engine o subir una imagen propia; desenfoque, vidrio esmerilado y oscurecimiento
 
 Mejoras
 
@@ -29,9 +31,10 @@ Mejoras
 - Cabecera y estadísticas de la sesión en caché por versión de archivo
 - La indexación cede el hilo principal cada 150 ms y limita el texto por sesión
 - El resaltado al pasar el ratón responde al instante
-- Borrar caché cubre dos elementos más: manifiesto de sesiones e índice de contenido
+- Vaciar la caché incluye ahora el manifiesto de sesiones, el contenido de las sesiones, la caché de Chromium y el índice
 - Los diálogos usan los nativos de DSH
 - Algunos textos revisados
+- Los doce grupos de la página de ajustes están ordenados por uso
 
 Correcciones
 
@@ -42,3 +45,5 @@ Correcciones
 - Los márgenes del menú de fila no coincidían con los del menú del host
 - El runtime se mostraba como Electron
 - El progreso de descarga del componente ahora empieza al hacer clic
+- Un panel al 100 % ya no tapa la barra de título
+- Los tres botones de arriba a la derecha de la ventana independiente son más grandes

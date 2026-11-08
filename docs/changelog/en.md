@@ -6,6 +6,7 @@ This is a preview release. Thanks to everyone who installs and uses the plugin, 
 
 - Ten interface languages, eight of them new
 - The plugin was refactored, and cold start got much faster
+- The detached window follows the theme and pairs with dsh-plugin-wallpaper-engine
 - Deleting a session sometimes failed to refresh the list; fixed
 - A missing runtime now offers the download right away
 - The data folder can go back to its default location
@@ -20,6 +21,7 @@ New
 - A missing Electron component now offers the download right away
 - Settings › Data folder: move it, or restore the default location
 - Release notes are translated too
+- A beautify group for the detached window: mirror dsh-plugin-wallpaper-engine's wallpaper or upload your own picture; blur, frost and dim
 
 Improved
 
@@ -29,9 +31,10 @@ Improved
 - Session header and stats cached per file version
 - Indexing yields the main thread every 150 ms and caps the text of one session
 - Hover highlight responds immediately
-- Cache clearing covers two more items: session manifest and content index
+- Cache clearing now covers the session manifest, session content, Chromium cache and index
 - Dialogs now use DSH's native dialogs
 - Some wording was cleaned up
+- The settings page's twelve groups are ordered by purpose
 
 Fixed
 
@@ -42,3 +45,5 @@ Fixed
 - Row menu spacing did not match the host menu
 - The runtime was labelled Electron
 - Component download progress now starts on click instead of after the response
+- A 100% panel no longer covers the titlebar
+- The three buttons at the top right of the detached window are larger
