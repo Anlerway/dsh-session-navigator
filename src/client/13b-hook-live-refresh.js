@@ -55,6 +55,11 @@
           // panel is open, and the next launch must read the new answer.
           const mode = data?.settings?.shell?.open?.mode;
           if (mode === "panel" || mode === "detached") openMode.mode = mode;
+          // And 入口位置: a settings write while the panel was closed still
+          // has to reach the footer the moment the panel next loads.
+          const entry = data?.settings?.shell?.entry?.mode;
+          if (entry) entryMode.set(entry);
+          entryStyle.set(data?.settings?.shell?.entry?.style);
           setBoot({ phase: "ready", data, error: null });
         } catch (error) {
           setBoot({ phase: "error", data: null, error: String(error?.message ?? error) });

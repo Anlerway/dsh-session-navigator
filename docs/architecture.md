@@ -258,7 +258,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
 
 | 插槽 | id | order | 组件 | 作用 |
 |---|---|---|---|---|
-| `sidebar.footer.action` | `session-navigator-footer` | 40 | `FooterAction` | 侧栏底部入口，开/关浮窗 |
+| `sidebar.footer.action` | `session-navigator-footer` | 40 | `FooterAction` | 入口位置（`shell.entry.mode`）、物理效果（`shell.entry.physics`）与悬浮球样式（`shell.entry.style`，folder / deepseek / chatgpt / claude / grok 五张头像）：侧栏底部按钮、悬浮球或两个都要；球默认停在屏幕右侧中间，64px 圆、可拖动、可抛出：物理开时只有以足够初速抛出才按 dsh-pet 的 1400 px/s² 重力下落、0.78 弹性撞边、只有地面摩擦，松手不扔则停在原处；物理关时抛不出去，松手即停。位置记在浏览器里，再点一下能把它接住；显式 corner-shape:round 抵消宿主全局的 superellipse，系统要求减少动态效果时仍然保留抛掷（只省略挤压）；挂在独立的固定层（z-index 2147483000，层本身 pointer-events:none、只有球接收指针），浮窗打开时也负责关回去 |
 | `settings.section` | `session-navigator` | 510 | `SettingsSection` | 设置页分组（label 是 thunk，跟随语言）；组序 打开方式 → 显示 → 会话界面 → 列表 → 搜索索引 → AI 字段 → 浮窗 → 独立窗口美化 → Electron 组件 → 数据目录 → 关于 → 危险操作 |
 | `settings.onboarding` | `session-navigator-opener` | 900 | 匿名 | 只为拿到 `openSection` 后立即 `complete()`，不留 UI |
 | `conversation.session.header.actions` | `session-navigator-header` | 60 | `SessionHeaderActions` | 会话标题栏五个按钮（样式跟随设置 `shell.header.style`） |
@@ -288,7 +288,7 @@ if (!isUsableDataDir(dataDir)) throw codedError("reset-refused", "…");        
   「显示中文」，页面上不会印出 key。插值统一 `{0}` / `{1}`，和设置页的 `{size}` 风格互不干扰。
 
 两节都来自同一份数据文件：`assets/i18n/<code>.json`，十种语言（`zh` / `en` / `ja` / `ko` / `de` /
-`fr` / `es` / `ru` / `pt` / `zh-hant`），构建时内联进 `lib/client.js` 的 `DICTS`。`settings` 的 253 个具名键注册给
+`fr` / `es` / `ru` / `pt` / `zh-hant`），构建时内联进 `lib/client.js` 的 `DICTS`。`settings` 的 269 个具名键注册给
 DSH 的 locale 服务，`panel` 的 465 条以中文原文为键，`zh.json` 的值与键逐条相同。词典怎么放、
 清单有几份副本、加一门语言要动哪些文件，见 [i18n.md](i18n.md)。
 

@@ -12,6 +12,98 @@
      */
     const openMode = { mode: "panel", readAt: 0 };
 
+    // Kept in step with ENTRY_MODES in src/domain/settings.js. The client
+    // bundle cannot import the domain module, so the three words are repeated
+    // here — the same way OPEN_MODES is repeated at its use site.
+    const ENTRY_MODES = ["sidebar", "ball", "both"];
+
+    // Kept in step with BALL_STYLES in src/domain/settings.js. These names are
+    // also file stems under assets/ball, so the client can build the URL
+    // without carrying a table of routes.
+    const BALL_STYLES = ["folder", "deepseek", "chatgpt", "claude", "grok"];
+
+    /**
+     * 入口位置, shared by the sidebar footer and the settings page.
+     *
+     * The footer mounts outside the panel and never sees `/bootstrap`, so it
+     * asks `GET /settings` once on mount — the same small document the launch
+     * path already reads — and caches the answer here. A change made in the
+     * settings window reaches the footer through `set`, which is how the ball
+     * appears without a reload. `readAt` keeps a remount (DSH rebuilds its
+     * sidebar footer on layout switches) from paying a request each time.
+     */
+    const entryMode = {
+      mode: "sidebar",
+      readAt: 0,
+      listeners: new Set(),
+      subscribe(listener) {
+        entryMode.listeners.add(listener);
+        return () => entryMode.listeners.delete(listener);
+      },
+      snapshot() {
+        return entryMode.mode;
+      },
+      set(next) {
+        const mode = ENTRY_MODES.includes(next) ? next : "sidebar";
+        if (mode === entryMode.mode) return;
+        entryMode.mode = mode;
+        for (const listener of entryMode.listeners) listener();
+      },
+    };
+
+    /**
+     * 物理效果, shared by the settings page and the mounted ball.
+     *
+     * The same GET /settings document carries it, so the ball learns whether it
+     * should fall the moment the footer reads 入口位置. Kept apart from
+     * entryMode because the two change independently: moving the entry does not
+     * decide how the ball moves, and switching gravity off must not hide it.
+     */
+    const entryPhysics = {
+      on: true,
+      listeners: new Set(),
+      subscribe(listener) {
+        entryPhysics.listeners.add(listener);
+        return () => entryPhysics.listeners.delete(listener);
+      },
+      snapshot() {
+        return entryPhysics.on;
+      },
+      set(next) {
+        // An older host answers without the key; absence is not "off".
+        if (typeof next !== "boolean" || next === entryPhysics.on) return;
+        entryPhysics.on = next;
+        for (const listener of entryPhysics.listeners) listener();
+      },
+    };
+
+    /**
+     * 悬浮球样式, shared by the settings page and the mounted ball.
+     *
+     * The ball lives in the footer, outside the settings page, so the chosen
+     * face has to reach it through a store rather than through props. An
+     * absent key (an older host) leaves the last choice alone; an unknown
+     * string is treated as folder, which is the one image always served.
+     */
+    const entryStyle = {
+      style: "folder",
+      listeners: new Set(),
+      subscribe(listener) {
+        entryStyle.listeners.add(listener);
+        return () => entryStyle.listeners.delete(listener);
+      },
+      snapshot() {
+        return entryStyle.style;
+      },
+      set(next) {
+        if (next === undefined || next === null) return;
+        const style = BALL_STYLES.includes(next) ? next : "folder";
+        if (style === entryStyle.style) return;
+        entryStyle.style = style;
+        for (const listener of entryStyle.listeners) listener();
+      },
+    };
+
     /**
      * 会话界面按钮样式, shared by every mount of the header strip.
      *
@@ -324,11 +416,44 @@
         // panel launch, without a second round trip.
         headerStyle.set(payload?.settings?.shell?.header?.style);
         headerStyle.readAt = Date.now();
+        // The same document carries 入口位置, but only once the host knows the
+        // key: an older build answers without it, and that absence must not
+        // wipe a choice this session already made.
+        const entry = payload?.settings?.shell?.entry?.mode;
+        if (entry) entryMode.set(entry);
+        entryPhysics.set(payload?.settings?.shell?.entry?.physics);
+        entryStyle.set(payload?.settings?.shell?.entry?.style);
+        entryMode.readAt = Date.now();
         openMode.readAt = Date.now();
       } catch {
         /* unreachable host: 浮窗 is the answer that always works */
       }
       return openMode.mode;
+    }
+
+    /**
+     * Re-read 入口位置 for the footer and its floating ball.
+     *
+     * Called once when the footer mounts: the first paint must already know
+     * which shape to draw, and the store's default is 左下角. A failed read
+     * keeps 左下角, which cannot fail; later changes arrive through `set` from
+     * the settings page, so this is not polled.
+     *
+     * @returns {Promise<string>} the shape the footer should draw
+     */
+    async function refreshEntryMode() {
+      if (Date.now() - entryMode.readAt < 5000) return entryMode.snapshot();
+      try {
+        const payload = await apiGet("/settings");
+        const entry = payload?.settings?.shell?.entry?.mode;
+        if (entry) entryMode.set(entry);
+        entryPhysics.set(payload?.settings?.shell?.entry?.physics);
+        entryStyle.set(payload?.settings?.shell?.entry?.style);
+        entryMode.readAt = Date.now();
+      } catch {
+        /* keep the last known choice: 左下角 is the answer that always works */
+      }
+      return entryMode.snapshot();
     }
 
     /**

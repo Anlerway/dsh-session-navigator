@@ -237,6 +237,11 @@ test("the Host serves the page, its stylesheet, its shim and the panel's module"
     "GET /ui/react.js",
     "GET /ui/react-dom.js",
     "GET /ui/icon.png",
+    "GET /ui/ball-folder.png",
+    "GET /ui/ball-deepseek.png",
+    "GET /ui/ball-chatgpt.png",
+    "GET /ui/ball-claude.png",
+    "GET /ui/ball-grok.png",
   ]) {
     assert.ok(HOST.includes(`"${route}"`), `route ${route} is registered`);
   }
@@ -250,6 +255,11 @@ test("the Host serves the page, its stylesheet, its shim and the panel's module"
     "assets/vendor/react.production.min.js",
     "assets/vendor/react-dom.production.min.js",
     "assets/icon.png",
+    "assets/ball/folder.png",
+    "assets/ball/deepseek.png",
+    "assets/ball/chatgpt.png",
+    "assets/ball/claude.png",
+    "assets/ball/grok.png",
   ]) {
     assert.ok(existsSync(here(file)), `${file} exists`);
   }

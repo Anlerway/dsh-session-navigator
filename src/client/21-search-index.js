@@ -528,6 +528,12 @@
           // 界面语言 — the page itself is drawn in the language it is choosing,
           // and this is the read that tells it which one that is.
           applyUiLang(data?.settings);
+          // 入口位置 — opening settings is also a moment to reconcile the footer
+          // with the document, in case another window wrote it last.
+          entryMode.set(data?.settings?.shell?.entry?.mode);
+          entryPhysics.set(data?.settings?.shell?.entry?.physics);
+          entryStyle.set(data?.settings?.shell?.entry?.style);
+          entryMode.readAt = Date.now();
           setBoot({ phase: "ready", data, error: null });
         } catch (failure) {
           setBoot({ phase: "error", data: null, error: String(failure?.message ?? failure) });
@@ -565,6 +571,12 @@
               // instead of waiting for the strip's next mount.
               headerStyle.set(result.settings?.shell?.header?.style);
               headerStyle.readAt = Date.now();
+              // 入口位置 — drawn by the footer, also outside this page, so the
+              // ball appears or disappears the moment the pick lands.
+              entryMode.set(result.settings?.shell?.entry?.mode);
+              entryPhysics.set(result.settings?.shell?.entry?.physics);
+              entryStyle.set(result.settings?.shell?.entry?.style);
+              entryMode.readAt = Date.now();
               // 界面语言 — every label on this page comes from T(), so taking the
               // saved choice here repaints the page in place, before the reply
               // even finishes the state update.
@@ -626,6 +638,15 @@
       // 会话界面按钮样式 — `auto` on a document that predates the key, which is
       // exactly what those builds did.
       const headerChoice = shell.header?.style === "icon" ? "icon" : "auto";
+      // 入口位置 — absent on a document written before the key existed; the
+      // sidebar footer is what those builds had, so it is what is shown.
+      const entryChoice = ENTRY_MODES.includes(shell.entry?.mode) ? shell.entry.mode : "sidebar";
+      // 物理效果 — on unless the document says otherwise: a ball that falls is
+      // the behaviour the control was built around, not an opt-in extra.
+      const physicsChoice = shell.entry?.physics !== false;
+      // 悬浮球样式 — five known faces; anything else (an old document, a
+      // hand-edited file) shows the folder, which is the image always served.
+      const ballChoice = BALL_STYLES.includes(shell.entry?.style) ? shell.entry.style : "folder";
       // 界面语言 — "auto" when the document says so (or predates the key); a
       // code this build cannot draw normalizes to "" and shows 跟随 DSH, which is
       // what the panel is actually doing in that case.
@@ -663,6 +684,54 @@
           openChoice === "detached" && !componentReady
             ? h("div", { className: "se-set-warn" }, t("setOpenDetachedBlocked"))
             : null,
+          // 入口位置 — where the launcher is drawn, not where it opens. The ball
+          // is a second surface for the same press, so it belongs beside 默认打开
+          // 方式 rather than in 显示.
+          h(
+            SetRow,
+            { label: t("setEntry"), hint: t("setEntryHint") },
+            h(SetChips, {
+              value: entryChoice,
+              disabled: saving,
+              options: [
+                { value: "sidebar", label: t("setEntrySidebar") },
+                { value: "ball", label: t("setEntryBall") },
+                { value: "both", label: t("setEntryBoth") },
+              ],
+              onPick: (mode) => save({ shell: { entry: { mode } } }),
+            }),
+          ),
+          // 物理效果 — the ball's behaviour, not its address. It sits under
+          // 入口位置 because it only means anything while a ball is drawn.
+          h(
+            SetRow,
+            { label: t("setEntryPhysics"), hint: t("setEntryPhysicsHint") },
+            h(SetSwitch, {
+              on: physicsChoice,
+              disabled: saving,
+              title: t("setEntryPhysics"),
+              onToggle: (physics) => save({ shell: { entry: { physics } } }),
+            }),
+          ),
+          // 悬浮球样式 — what the ball is made of. Stacked because five 58px
+          // faces and their names do not fit beside a hint, and the pictures are
+          // the point: a chip row of file names would make the user read.
+          h(
+            SetRow,
+            { label: t("setBallStyle"), hint: t("setBallStyleHint"), stack: true },
+            h(SetBallStyles, {
+              value: ballChoice,
+              disabled: saving,
+              options: [
+                { value: "folder", label: t("setBallStyleFolder") },
+                { value: "deepseek", label: t("setBallStyleDeepseek") },
+                { value: "chatgpt", label: t("setBallStyleChatgpt") },
+                { value: "claude", label: t("setBallStyleClaude") },
+                { value: "grok", label: t("setBallStyleGrok") },
+              ].map((option) => ({ ...option, src: ballArt(option.value) })),
+              onPick: (style) => save({ shell: { entry: { style } } }),
+            }),
+          ),
         ),
 
         // 显示 — how a row spells what it already knows: a timestamp and a size.

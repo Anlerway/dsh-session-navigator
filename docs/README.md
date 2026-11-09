@@ -1,7 +1,7 @@
 # 开发文档
 
 这套文档是**照代码写的**，不是照设计稿写的。每一条规则都指到具体的文件与符号（函数名、常量名、
-路由键）。行号一次插入就会错，所以不写行号；计数会随代码漂，所以「八十五个测试文件」「88 条路由」
+路由键）。行号一次插入就会错，所以不写行号；计数会随代码漂，所以「八十五个测试文件」「93 条路由」
 这类数字也由 `scripts/check-docs.mjs` 现算现比，对不上就红。
 
 ## 读的顺序
@@ -9,7 +9,7 @@
 | 文档 | 讲什么 | 什么时候读 |
 |---|---|---|
 | [architecture.md](architecture.md) | 两半结构、一次请求怎么走完、读管道与缓存、硬约束 | 第一次进这个仓库 |
-| [api.md](api.md) | 88 条 HTTP 路由、信封、错误码表、乐观锁 | 改 host 或写客户端调用 |
+| [api.md](api.md) | 93 条 HTTP 路由、信封、错误码表、乐观锁 | 改 host 或写客户端调用 |
 | [data-directory.md](data-directory.md) | 数据目录布局、四份侧车、原子写、回收站、迁移 | 改存储、调试"数据不见了" |
 | [tree-and-placement.md](tree-and-placement.md) | 节点种类、R1–R5、计数、虚拟放置、快捷方式、置顶与快速访问、批量动作 | 改左侧树或拖拽 |
 | [bridge-and-theme.md](bridge-and-theme.md) | 面板 ↔ 窗口的命令总线、SSE、主题同步 | 改独立窗口或配色 |
@@ -30,7 +30,7 @@
 
 ```
 src/
-  index.js            88 条路由的键、分发、错误映射、apply() 装配（709 行）
+  index.js            93 条路由的键、分发、错误映射、apply() 装配（729 行）
   routes/             路由表按域拆开：library / folders / layout / settings /
                       summaries / release / maintenance / sessions / tools /
                       bridge / detached / assets，外加 shared（助手）、

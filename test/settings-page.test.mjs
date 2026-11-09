@@ -126,6 +126,91 @@ test("会话界面 offers 自动 and 仅显示图标, and saves the pick alone",
   assert.match(afterChips[1].props.className, /\bon\b/, "仅显示图标 is now the chosen chip");
 });
 
+test("入口位置 offers 左下角 / 悬浮球 / 全部, and saves the pick alone", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({ mode: "panel", component: "absent" });
+  const openGroup = (rendered) =>
+    collect(rendered, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupOpen"));
+  assert.ok(openGroup(tree), "the group is on the page");
+
+  const chips = collect(openGroup(tree), byClass("se-set-chip"));
+  // The two launch modes stay first: 入口位置 says where the launcher is
+  // drawn, not where it opens, so it follows them in the same group.
+  assert.deepEqual(chips.map(textOf), ["setOpenPanel", "setOpenDetached", "setEntrySidebar", "setEntryBall", "setEntryBoth"]);
+  assert.match(chips[2].props.className, /\bon\b/, "左下角 is the shape an upgraded install already has");
+
+  chips[3].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const write = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  assert.ok(write, "the click writes immediately");
+  // Only this key: the launch mode and the modal group are not echoed back.
+  assert.deepEqual(write.body, { shell: { entry: { mode: "ball" } } });
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const afterChips = collect(openGroup(after), byClass("se-set-chip"));
+  assert.match(afterChips[3].props.className, /\bon\b/, "悬浮球 is now the chosen chip");
+  assert.doesNotMatch(afterChips[2].props.className, /\bon\b/);
+
+  // 物理效果 sits in the same group and is on unless the document says no.
+  const switches = collect(openGroup(after), byClass("se-set-switch"));
+  assert.equal(switches.length, 1);
+  assert.match(switches[0].props.className, /\bon\b/, "gravity ships on");
+  assert.match(textOf(openGroup(after)), /setEntryPhysics/);
+  switches[0].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(
+    calls.filter((call) => call.method === "PUT" && call.url.endsWith("/settings")).at(-1).body,
+    { shell: { entry: { physics: false } } },
+    "switching physics off writes only that key",
+  );
+  const off = await driver.settle(() => page(driver, api, t));
+  const offSwitch = collect(openGroup(off), byClass("se-set-switch"))[0];
+  assert.doesNotMatch(offSwitch.props.className, /\bon\b/, "and the switch follows the answer");
+});
+
+test("a document that already chose 全部 renders both entry shapes", async () => {
+  const { tree, driver, api, t } = await renderSettings({ mode: "panel", component: "absent", entry: "both" });
+  const chips = collect(
+    collect(tree, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupOpen")),
+    byClass("se-set-chip"),
+  );
+  assert.match(chips[4].props.className, /\bon\b/, "全部 is what the document says");
+  assert.doesNotMatch(chips[2].props.className, /\bon\b/);
+  assert.doesNotMatch(chips[3].props.className, /\bon\b/);
+});
+
+test("悬浮球样式 offers five faces, and saves the pick alone", async () => {
+  const { tree, calls, driver, api, t } = await renderSettings({ mode: "panel", component: "absent", entry: "ball" });
+  const openGroup = (rendered) =>
+    collect(rendered, byClass("se-set-grp")).find((group) => textOf(group).includes("setGroupOpen"));
+  const faces = collect(openGroup(tree), byClass("se-set-ball"));
+  assert.deepEqual(faces.map(textOf), [
+    "setBallStyleFolder",
+    "setBallStyleDeepseek",
+    "setBallStyleChatgpt",
+    "setBallStyleClaude",
+    "setBallStyleGrok",
+  ]);
+  assert.match(faces[0].props.className, /\bon\b/, "the folder is the face an upgraded install shows");
+  assert.equal(faces[0].props["aria-pressed"], true);
+  assert.equal(faces[0].children[0].type, "img");
+  assert.match(faces[0].children[0].props.src, /\/ui\/ball-folder\.png$/);
+
+  const row = collect(openGroup(tree), byClass("se-set-row")).find((candidate) =>
+    textOf(candidate).includes("setBallStyleHint"),
+  );
+  assert.match(row.props.className, /se-set-row-stack/);
+  faces[3].props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const write = calls.find((call) => call.method === "PUT" && call.url.endsWith("/settings"));
+  assert.ok(write, "the click writes immediately");
+  assert.deepEqual(write.body, { shell: { entry: { style: "claude" } } });
+
+  const after = await driver.settle(() => page(driver, api, t));
+  const afterFaces = collect(openGroup(after), byClass("se-set-ball"));
+  assert.match(afterFaces[3].props.className, /\bon\b/, "Claude is now the chosen face");
+  assert.doesNotMatch(afterFaces[0].props.className, /\bon\b/);
+});
+
 test("显示 offers 详细日期 / 距今时间 and 自动转换 / 固定 KB, each saved alone", async () => {
   const { tree, calls, driver, api, t } = await renderSettings({ mode: "panel", component: "absent" });
   const groups = collect(tree, byClass("se-set-grp"));

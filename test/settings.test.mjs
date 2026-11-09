@@ -12,7 +12,9 @@ import { homedir } from "node:os";
 import { join, parse } from "node:path";
 
 import {
+  BALL_STYLES,
   DATE_FORMATS,
+  ENTRY_MODES,
   HEADER_STYLES,
   MAX_DIM,
   MAX_WALLPAPER_PERCENT,
@@ -101,6 +103,73 @@ test("a header-style patch merges without disturbing its siblings", () => {  con
   // A later patch that only touches 打开方式 keeps the saved button style.
   const again = mergeSettings(merged, { shell: { open: { mode: "detached" } } });
   assert.equal(again.shell.header.style, "icon");
+});
+
+test("入口位置 is a closed vocabulary of three, defaulting to the sidebar footer", () => {
+  assert.deepEqual([...ENTRY_MODES], ["sidebar", "ball", "both"]);
+  // A document written before the key existed keeps the entry where it always
+  // was: an upgrade must not grow a second button nobody asked for.
+  assert.equal(defaultSettings().shell.entry.mode, "sidebar");
+  assert.equal(normalizeSettings({}).shell.entry.mode, "sidebar");
+  assert.equal(normalizeSettings({ shell: { entry: {} } }).shell.entry.mode, "sidebar");
+  for (const mode of ENTRY_MODES) {
+    assert.equal(normalizeSettings({ shell: { entry: { mode } } }).shell.entry.mode, mode);
+  }
+  // Anything else falls back rather than reaching the footer as an unknown
+  // string that matches none of its three shapes.
+  for (const bad of ["floating", "corner", "", true, 2]) {
+    assert.equal(normalizeSettings({ shell: { entry: { mode: bad } } }).shell.entry.mode, "sidebar");
+  }
+});
+
+test("an entry patch merges without disturbing the launch mode", () => {
+  const merged = mergeSettings(defaultSettings(), { shell: { entry: { mode: "both" } } });
+  assert.equal(merged.shell.entry.mode, "both");
+  assert.equal(merged.shell.open.mode, "panel");
+  assert.equal(merged.shell.header.style, "auto");
+  // And a later patch about the strip does not drop the chosen entry shape.
+  const again = mergeSettings(merged, { shell: { header: { style: "icon" } } });
+  assert.equal(again.shell.entry.mode, "both");
+});
+
+test("物理效果 is on by default and travels independently of 入口位置", () => {
+  assert.equal(defaultSettings().shell.entry.physics, true);
+  assert.equal(normalizeSettings({}).shell.entry.physics, true);
+  assert.equal(normalizeSettings({ shell: { entry: { physics: false } } }).shell.entry.physics, false);
+  // A hand-edited document may not invent a third state.
+  for (const bad of ["off", 0, 1, null]) {
+    assert.equal(normalizeSettings({ shell: { entry: { physics: bad } } }).shell.entry.physics, true);
+  }
+  const moved = mergeSettings(defaultSettings(), { shell: { entry: { mode: "ball" } } });
+  assert.equal(moved.shell.entry.mode, "ball");
+  assert.equal(moved.shell.entry.physics, true, "moving the entry does not switch physics off");
+  const still = mergeSettings(moved, { shell: { entry: { physics: false } } });
+  assert.equal(still.shell.entry.mode, "ball", "switching physics off does not move the entry");
+  assert.equal(still.shell.entry.physics, false);
+});
+
+test("悬浮球样式 is a closed vocabulary of five, defaulting to the folder", () => {
+  assert.deepEqual([...BALL_STYLES], ["folder", "deepseek", "chatgpt", "claude", "grok"]);
+  // An older document has no style key; the folder is the mark those builds
+  // already drew, so an upgrade does not silently change the ball's face.
+  assert.equal(defaultSettings().shell.entry.style, "folder");
+  assert.equal(normalizeSettings({}).shell.entry.style, "folder");
+  assert.equal(normalizeSettings({ shell: { entry: {} } }).shell.entry.style, "folder");
+  for (const style of BALL_STYLES) {
+    assert.equal(normalizeSettings({ shell: { entry: { style } } }).shell.entry.style, style);
+  }
+  // A hand-edited file must not ask the route for an image that is not served.
+  for (const bad of ["folder.png", "gpt", "", true, 2]) {
+    assert.equal(normalizeSettings({ shell: { entry: { style: bad } } }).shell.entry.style, "folder");
+  }
+  const merged = mergeSettings(defaultSettings(), { shell: { entry: { style: "grok" } } });
+  assert.equal(merged.shell.entry.style, "grok");
+  // The three entry keys change independently: picking a face does not move the
+  // entry or switch physics off, and moving the entry keeps the face.
+  assert.equal(merged.shell.entry.mode, "sidebar");
+  assert.equal(merged.shell.entry.physics, true);
+  const moved = mergeSettings(merged, { shell: { entry: { mode: "ball" } } });
+  assert.equal(moved.shell.entry.style, "grok");
 });
 
 test("折叠子智能体 and 过滤空会话 are switches, both on by default", () => {

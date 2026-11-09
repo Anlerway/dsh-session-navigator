@@ -10,6 +10,7 @@
  *     shell: {
  *       open:   { mode },                 <- 默认打开方式: 浮窗 or 独立弹窗
  *       header: { style },                <- 会话界面按钮样式: 自动 or 仅显示图标
+ *       entry:  { mode, physics },       <- 入口位置: 左下角 or 悬浮球 or 全部; 物理效果
  *       modal:  { sizing, size, percent, dim, closeOnBackdrop },
  *       window: { alwaysOnTop, bounds },   <- geometry of 独立窗口
  *     },
@@ -119,6 +120,38 @@ export const OPEN_MODES = Object.freeze(["panel", "detached"]);
 export const HEADER_STYLES = Object.freeze(["auto", "icon"]);
 
 /**
+ * Where the launcher lives.
+ *
+ *   sidebar — 左下角: DSH's sidebar footer, the entry every build has had.
+ *   ball    — 悬浮球: a round button parked halfway down the right edge,
+ *             for a sidebar that is collapsed, crowded by other plugins,
+ *             or simply not where the eye goes. It can be dragged anywhere
+ *             and thrown; the landing spot belongs to this browser.
+ *   both    — 全部: both shapes at once, so the entry is wherever the user
+ *             reaches first.
+ *
+ * 左下角 is the default because it is the shipped behaviour: a settings
+ * file written before this key existed must not sprout a button nobody
+ * asked for. The ball stays on top while the panel is open, so the same
+ * control can also close what it opened.
+ */
+export const ENTRY_MODES = Object.freeze(["sidebar", "ball", "both"]);
+
+/**
+ * What the floating ball is made of.
+ *
+ *   folder   — the shipped blue folder, the least surprising choice.
+ *   deepseek — the blue-haired maid already used by the desktop surfaces.
+ *   chatgpt  — the white-haired dragon girl.
+ *   claude   — the orange-haired maid with a sunflower.
+ *   grok     — the blonde devil with an axe.
+ *
+ * The names are also the file stems under assets/ball; the route table serves
+ * one fixed file per stem, so an unknown value can only fall back to folder.
+ */
+export const BALL_STYLES = Object.freeze(["folder", "deepseek", "chatgpt", "claude", "grok"]);
+
+/**
  * How a row spells its timestamp.
  *
  *   date     — 详细日期: the clock time itself (`10-18 06:55`).
@@ -175,6 +208,11 @@ export function defaultSettings() {
       // 会话界面按钮样式 — words until the strip runs out of room (see
       // HEADER_STYLES); the old responsive behaviour is the default.
       header: { style: "auto" },
+      // 入口位置 — the sidebar footer, where the entry has always been (see
+      // ENTRY_MODES). 物理效果 is on by default: a thrown ball falls, bounces
+      // and settles, which is what a ball is expected to do. The ball wears the
+      // folder until the user picks another face (see BALL_STYLES).
+      entry: { mode: "sidebar", physics: true, style: "folder" },
       modal: {
         sizing: "fixed",
         size: "md",
@@ -300,6 +338,12 @@ export function mergeSettings(current, patch) {
         ...incoming.shell.header,
       };
     }
+    if (incoming.shell.entry && typeof incoming.shell.entry === "object") {
+      shell.entry = {
+        ...(shell.entry && typeof shell.entry === "object" ? shell.entry : {}),
+        ...incoming.shell.entry,
+      };
+    }
     if (incoming.shell.modal && typeof incoming.shell.modal === "object") {
       shell.modal = {
         ...(shell.modal && typeof shell.modal === "object" ? shell.modal : {}),
@@ -389,6 +433,15 @@ export function normalizeSettings(raw) {
 
   const header = shell.header && typeof shell.header === "object" ? shell.header : {};
   if (HEADER_STYLES.includes(header.style)) out.shell.header.style = header.style;
+
+  const entry = shell.entry && typeof shell.entry === "object" ? shell.entry : {};
+  if (ENTRY_MODES.includes(entry.mode)) out.shell.entry.mode = entry.mode;
+  // 物理效果 — only a real boolean turns gravity off; a hand-edited string
+  // falls back to the default instead of disabling the one playful control.
+  if (typeof entry.physics === "boolean") out.shell.entry.physics = entry.physics;
+  // 悬浮球样式 — the stems are a closed set; a hand-edited value falls back to
+  // the folder rather than asking the route for an image that does not exist.
+  if (BALL_STYLES.includes(entry.style)) out.shell.entry.style = entry.style;
 
   const modal = shell.modal && typeof shell.modal === "object" ? shell.modal : {};
   if (MODAL_SIZING.includes(modal.sizing)) out.shell.modal.sizing = modal.sizing;

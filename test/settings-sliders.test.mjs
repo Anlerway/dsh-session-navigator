@@ -235,3 +235,45 @@ test("the track is one fixed length, the one settings rows always had", async ()
   assert.doesNotMatch(rule, /vw\b/, "no viewport units: a track that grows with the window makes one percent a different distance");
   assert.doesNotMatch(rule, /flex:(?!0 0 auto)/, "and it never stretches with the row");
 });
+
+test("the ball starts halfway down the right edge and crops its face to a circle", async () => {
+  const css = await readFile(new URL("../assets/panel.css", import.meta.url), "utf8");
+  const start = css.indexOf("\n.se-ball{");
+  assert.ok(start > 0, "the ball rule is gone");
+  const rule = css.slice(start, css.indexOf("\n}", start));
+  for (const part of ["right:22px", "bottom:auto", "top:max(8px,calc(50% - 32px))", "border-radius:50%;corner-shape:round"]) assert.ok(rule.includes(part), part);
+  assert.match(css, /\.se-ball-face\{[^}]*border-radius:50%;corner-shape:round/);
+});
+
+// DSH paints corner-shape:superellipse(1.5) onto every element, which turns a
+// border-radius:50% control into a rounded square. These are the surfaces that
+// must stay circles or pills; cards keep the host's shape on purpose.
+test("the host's squircle never squares off a round control", async () => {
+  const css = await readFile(new URL("../assets/panel.css", import.meta.url), "utf8");
+  const rules = [
+    ".se-shell .dot",
+    ".se-shell .status .s-progress .s-progress-track",
+    ".se-shell .status .s-progress .s-progress-fill",
+    ".se-shell .taglib-del",
+    ".se-shell .tagnew-go",
+    ".se-hdrNote",
+    ".se-ball",
+    ".se-ball-face",
+    ".se-set-ball img",
+    ".se-set-progress",
+    ".se-set-progress-fill",
+    ".se-set-range::-webkit-slider-runnable-track",
+    ".se-set-range::-webkit-slider-thumb",
+    ".se-set-range::-moz-range-track",
+    ".se-set-range::-moz-range-progress",
+    ".se-set-range::-moz-range-thumb",
+    ".se-set-switch",
+    ".se-set-switch::after",
+  ];
+  for (const selector of rules) {
+    const start = css.indexOf(selector + "{");
+    assert.notEqual(start, -1, selector + " must still exist");
+    const body = css.slice(start, css.indexOf("}", start));
+    assert.match(body, /corner-shape:round/, selector + " must opt out of the host's superellipse");
+  }
+});

@@ -164,7 +164,7 @@ export const byClass = (name) => (element) => {
 };
 
 /** The settings document the host would answer with. */
-export function settingsDocument(mode, component, uiLang = "auto", wallpaper = null) {
+export function settingsDocument(mode, component, uiLang = "auto", wallpaper = null, entry = "sidebar", entryPhysics = true, entryStyle = "folder") {
   return {
     settings: {
       // 独立窗口美化: the panel at its default density until a case says otherwise.
@@ -174,6 +174,10 @@ export function settingsDocument(mode, component, uiLang = "auto", wallpaper = n
         modal: { sizing: "fixed", size: "md", percent: "p70", dim: 0, closeOnBackdrop: true },
         window: { alwaysOnTop: false, bounds: null },
         header: { style: "auto" },
+        // 入口位置: the sidebar footer, the shape an upgraded install keeps;
+        // 物理效果 ships on, because a ball that falls is the built-in feel;
+        // 悬浮球样式 defaults to the folder, the mark an upgrade already shows.
+        entry: { mode: entry, physics: entryPhysics, style: entryStyle },
       },
       list: { autoCollapse: false, showArchived: true },
       // 搜索索引: the index cache is on and the idle build is off, the
@@ -307,6 +311,13 @@ export async function renderSettings({
   wallpaper = null,
   // 弹窗: what GET /settings answers for shell.modal (遮罩黑度 lives there).
   modal = null,
+  // 入口位置: what GET /settings answers for shell.entry, so a case can open
+  // the page on an install that already chose the ball.
+  entry = "sidebar",
+  // 物理效果: whether the ball falls, so a case can render the switch off.
+  entryPhysics = true,
+  // 悬浮球样式: which face the page should show as selected.
+  entryStyle = "folder",
   // Milliseconds a settings write takes to answer, so a case can watch what a
   // control does while its previous write is still out.
   putDelay = 0,
@@ -315,6 +326,9 @@ export async function renderSettings({
   let dataDir = dataDirInfo;
   let currentUiLang = uiLang;
   let currentWallpaper = settingsDocument(mode, component, currentUiLang, wallpaper).settings.wallpaper;
+  let currentEntry = entry;
+  let currentEntryPhysics = entryPhysics;
+  let currentEntryStyle = entryStyle;
   let currentModal = { ...settingsDocument(mode, component, currentUiLang, null).settings.shell.modal, ...(modal ?? {}) };
   // Each write answers with the counter it wrote, the way the host does: a
   // second write that waited for the first therefore cites the newer number,
@@ -322,7 +336,10 @@ export async function renderSettings({
   let settingsRevision = settingsDocument(mode, component, currentUiLang, null).revision;
   const settingsWrite = (call) => {
     if (call.body.ui?.lang) currentUiLang = call.body.ui.lang;
-    const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang, currentWallpaper);
+    if (call.body.shell?.entry?.mode) currentEntry = call.body.shell.entry.mode;
+    if (typeof call.body.shell?.entry?.physics === "boolean") currentEntryPhysics = call.body.shell.entry.physics;
+    if (call.body.shell?.entry?.style) currentEntryStyle = call.body.shell.entry.style;
+    const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle);
     doc.settings.shell.modal = { ...currentModal };
     if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
     if (call.body.shell?.modal) {
@@ -351,7 +368,7 @@ export async function renderSettings({
     // matches paths, so the query stays on `call.url` for assertions only.
     const path = call.url.replace(/^.*?\/api/, "").split("?")[0];
     if (path === "/settings" && call.method === "GET") {
-      const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper);
+      const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle);
       doc.settings.shell.modal = { ...currentModal };
       doc.revision = settingsRevision;
       return { ok: true, result: doc };

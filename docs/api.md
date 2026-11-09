@@ -647,6 +647,11 @@ handler 自己 `createWriteStream` 落盘。**上传没有固定上限，边界�
 | `GET /ui/react.js` | `assets/vendor/react.production.min.js` | `text/javascript` |
 | `GET /ui/react-dom.js` | `assets/vendor/react-dom.production.min.js` | `text/javascript` |
 | `GET /ui/icon.png` | `assets/icon.png` | `image/png` |
+| `GET /ui/ball-folder.png` | `assets/ball/folder.png` | `image/png` |
+| `GET /ui/ball-deepseek.png` | `assets/ball/deepseek.png` | `image/png` |
+| `GET /ui/ball-chatgpt.png` | `assets/ball/chatgpt.png` | `image/png` |
+| `GET /ui/ball-claude.png` | `assets/ball/claude.png` | `image/png` |
+| `GET /ui/ball-grok.png` | `assets/ball/grok.png` | `image/png` |
 
 路径是**常量**，不由请求决定读哪个文件，因此没有穿越面（`src/index.js` 的 `UI_ASSETS`）。
 全部 `no-store`：面板和窗口必须跑同一份代码，缓存一份旧的正是这套安排要消除的漂移。

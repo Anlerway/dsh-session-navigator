@@ -33,6 +33,13 @@ export const UI_ASSETS = Object.freeze({
   // The window's tab and taskbar icon, and the same file package.json names as
   // the plugin's own icon: one folder mark, drawn once.
   icon: join(PLUGIN_ROOT, "..", "assets", "icon.png"),
+  // 悬浮球样式 — one fixed file per face, never a path from the request. The
+  // client builds the URL from the same five stems it stores in settings.
+  ballFolder: join(PLUGIN_ROOT, "..", "assets", "ball", "folder.png"),
+  ballDeepseek: join(PLUGIN_ROOT, "..", "assets", "ball", "deepseek.png"),
+  ballChatgpt: join(PLUGIN_ROOT, "..", "assets", "ball", "chatgpt.png"),
+  ballClaude: join(PLUGIN_ROOT, "..", "assets", "ball", "claude.png"),
+  ballGrok: join(PLUGIN_ROOT, "..", "assets", "ball", "grok.png"),
 });
 
 /**

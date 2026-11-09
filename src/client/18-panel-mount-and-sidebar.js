@@ -543,7 +543,388 @@
       }
     }
 
-    // ── Sidebar footer entry ───────────────────────────────────────────────
+    // ── Sidebar footer entry + 悬浮球 ──────────────────────────────────────
+    /**
+     * The plugin's own mark: a folder, because the explorer is a folder-shaped
+     * place. Three rules read as a generic "menu" and were indistinguishable
+     * from DSH's own list controls.
+     */
+    function entryGlyph(size) {
+      return h("svg", {
+        viewBox: "0 0 16 16",
+        width: size,
+        height: size,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 1.4,
+        "aria-hidden": "true",
+        style: { flex: "0 0 auto", display: "block" },
+      },
+        h("path", { d: "M2 4.4h4l1.2 1.6H14V13H2z", strokeLinejoin: "round" }),
+      );
+    }
+
+    /**
+     * The face of the floating ball. Names are file stems, and the route table
+     * serves exactly these five; normalising here means a stale store value can
+     * never turn into a 404 image in the corner.
+     */
+    function ballArt(style) {
+      const face = BALL_STYLES.includes(style) ? style : "folder";
+      return API + "/ui/ball-" + face + ".png";
+    }
+
+    // ── 悬浮球的位置 ────────────────────────────────────────────────────────
+    // The ball is a real ball: it can be thrown anywhere in the window. Where it
+    // lands is view state, not a preference — it belongs to this browser, so it
+    // lives in localStorage instead of the settings document (a second window
+    // must not inherit a spot that only makes sense on this screen).
+    const BALL_SIZE = 64;
+    const BALL_GAP = 8;
+    const BALL_SPOT_KEY = "session-navigator.ball-spot";
+    // The feel follows dsh-pet 0.3.8 (src/shared/physics.ts): gravity pulls the
+    // ball down, walls keep 78% of its speed, and only the floor rubs off
+    // horizontal motion. There is no air drag — the old 4.2/s exponential bleed
+    // was what made a throw feel like it was pushing through treacle. State is
+    // in the browser's own units, pixels and milliseconds.
+    const BALL_GRAVITY = 0.0014;          // px/ms² (dsh-pet 1400 px/s²)
+    const BALL_RESTITUTION = 0.78;        // dsh-pet RESTITUTION
+    const BALL_GROUND_FRICTION = 0.0025;  // per ms (dsh-pet 2.5/s)
+    const BALL_REST_VY = 0.04;            // px/ms (dsh-pet 40 px/s)
+    const BALL_REST_VX = 0.015;           // px/ms (dsh-pet 15 px/s)
+    const BALL_MAX_STEP = 50;             // ms (dsh-pet MAX_STEP_DT)
+    // A release is measured over the last 150ms, never from one pointermove; a
+    // pause before letting go is a placement, and a slow drag does not throw.
+    const BALL_VELOCITY_WINDOW = 150;     // ms (dsh-pet RELEASE_WINDOW_MS)
+    const BALL_VELOCITY_SPAN = 20;        // ms (dsh-pet MIN_SPAN_MS)
+    const BALL_SEGMENT_MIN = 8;           // ms (dsh-pet SEG_MIN_DT_MS)
+    const BALL_PEAK_WEIGHT = 0.5;         // dsh-pet PEAK_WEIGHT
+    const BALL_ACCEL_REF = 8000;          // px/s² (dsh-pet ACCEL_REF)
+    const BALL_ACCEL_GAIN = 0.6;          // dsh-pet ACCEL_GAIN_MAX
+    const BALL_THROW_MIN = 500;           // px/s (dsh-pet DEAD_ZONE_SPEED)
+    const BALL_MAX_SPEED = 3600;          // px/s (dsh-pet MAX_THROW_SPEED)
+    let ballSpot = readBallSpot();
+    let ballThrown = false;
+    let ballCaught = false;
+    let glideFrame = 0;
+    let glideStop = null;
+
+    function viewportSize() {
+      if (typeof window === "undefined") return { width: 0, height: 0 };
+      return { width: window.innerWidth || 0, height: window.innerHeight || 0 };
+    }
+
+    /**
+     * Keep the whole ball on screen. A viewport of zero means there is no layout
+     * to clamp against (unit tests, SSR), so the raw spot is returned unchanged.
+     */
+    function clampBall(left, top, width, height) {
+      if (!(width > 0) || !(height > 0)) return { left, top };
+      return {
+        left: Math.min(Math.max(BALL_GAP, left), Math.max(BALL_GAP, width - BALL_SIZE - BALL_GAP)),
+        top: Math.min(Math.max(BALL_GAP, top), Math.max(BALL_GAP, height - BALL_SIZE - BALL_GAP)),
+      };
+    }
+
+    /**
+     * The speed of the gesture, not of the last pointermove. A fast drag often
+     * ends with a one-pixel correction; reading only the last segment would
+     * throw that away and make the ball feel dead. The window, the peak weight
+     * and the acceleration gain are dsh-pet's, so a brisk flick carries the
+     * same springy weight as its pet. A pause before release leaves one sample
+     * in the window and therefore no throw at all.
+     */
+    function throwVelocity(samples, now) {
+      const recent = samples.filter((sample) => sample.at >= now - BALL_VELOCITY_WINDOW);
+      if (recent.length < 2) return { vx: 0, vy: 0 };
+      const first = recent[0];
+      const last = recent[recent.length - 1];
+      const span = Math.max(BALL_VELOCITY_SPAN, last.at - first.at);
+      const baseVx = ((last.x - first.x) / span) * 1000;
+      const baseVy = ((last.y - first.y) / span) * 1000;
+      const baseSpeed = Math.hypot(baseVx, baseVy);
+      if (baseSpeed < 1e-6) return { vx: 0, vy: 0 };
+      // Segment speeds catch a flick whose displacement is concentrated in a
+      // short slice of the window; the last segment's acceleration adds up to
+      // 60% to a throw that was still speeding up when the finger lifted.
+      const segments = [];
+      let px = first.x;
+      let py = first.y;
+      let pt = first.at;
+      for (const sample of recent.slice(1)) {
+        const dt = sample.at - pt;
+        if (dt < BALL_SEGMENT_MIN) continue;
+        segments.push({ speed: (Math.hypot(sample.x - px, sample.y - py) / dt) * 1000, at: sample.at });
+        px = sample.x;
+        py = sample.y;
+        pt = sample.at;
+      }
+      const peakSpeed = segments.length ? Math.max(...segments.map((segment) => segment.speed)) : baseSpeed;
+      let accel = 0;
+      if (segments.length >= 2) {
+        const firstSegment = segments[0];
+        const lastSegment = segments[segments.length - 1];
+        accel = (lastSegment.speed - firstSegment.speed) / Math.max((lastSegment.at - firstSegment.at) / 1000, BALL_VELOCITY_SPAN / 1000);
+      }
+      const gain = 1 + Math.min(Math.max(accel, 0) / BALL_ACCEL_REF, 1) * BALL_ACCEL_GAIN;
+      const beforeClamp = ((1 - BALL_PEAK_WEIGHT) * baseSpeed + BALL_PEAK_WEIGHT * peakSpeed) * gain;
+      const speed = softClampSpeed(beforeClamp);
+      if (speed < BALL_THROW_MIN) return { vx: 0, vy: 0 };
+      return { vx: (baseVx / baseSpeed) * speed / 1000, vy: (baseVy / baseSpeed) * speed / 1000 };
+    }
+
+    /** dsh-pet's soft ceiling: every speed stays distinct, none reaches the cap. */
+    function softClampSpeed(speed) {
+      if (!(speed > 0)) return 0;
+      return BALL_MAX_SPEED * (1 - Math.exp(-speed / BALL_MAX_SPEED));
+    }
+
+    /**
+     * One tick of the thrown ball: gravity, move, then the four edges. Pure so
+     * the tests can throw it without a DOM, a timer or a frame. `bounced` is
+     * true for a real impact worth squashing; `atRest` says the ball is on the
+     * floor and slow enough that the frame loop can stop.
+     */
+    function ballStep(state, dt, view) {
+      const step = Math.min(Math.max(dt, 0), BALL_MAX_STEP);
+      let vx = state.vx;
+      let vy = state.vy + BALL_GRAVITY * step;
+      let left = state.left + vx * step;
+      let top = state.top + vy * step;
+      const maxLeft = Math.max(BALL_GAP, view.width - BALL_SIZE - BALL_GAP);
+      const maxTop = Math.max(BALL_GAP, view.height - BALL_SIZE - BALL_GAP);
+      let bounced = false;
+      if (left < BALL_GAP) {
+        left = BALL_GAP;
+        bounced = Math.abs(vx) > 0.12;
+        vx = Math.abs(vx) * BALL_RESTITUTION;
+      } else if (left > maxLeft) {
+        left = maxLeft;
+        bounced = Math.abs(vx) > 0.12;
+        vx = -Math.abs(vx) * BALL_RESTITUTION;
+      }
+      if (top < BALL_GAP) {
+        top = BALL_GAP;
+        bounced = bounced || Math.abs(vy) > 0.12;
+        vy = Math.abs(vy) * BALL_RESTITUTION;
+      } else if (top >= maxTop) {
+        top = maxTop;
+        const impact = Math.abs(vy);
+        // Only the floor rubs: a ball skidding along it slows, then stops.
+        vx *= Math.max(0, 1 - BALL_GROUND_FRICTION * step);
+        if (impact < BALL_REST_VY) vy = 0;
+        else vy = -impact * BALL_RESTITUTION;
+        bounced = bounced || impact > 0.12;
+      }
+      const speed = Math.hypot(vx, vy);
+      const atRest =
+        (top >= maxTop - 1 && Math.abs(vy) < 0.001 && Math.abs(vx) < BALL_REST_VX)
+        || (bounced && speed < BALL_REST_VY && Math.abs(vy) < 0.001);
+      return { left, top, vx, vy, bounced, atRest };
+    }
+
+    function readBallSpot() {
+      try {
+        const raw = globalThis.localStorage?.getItem(BALL_SPOT_KEY);
+        if (!raw) return null;
+        const spot = JSON.parse(raw);
+        if (!Number.isFinite(spot?.left) || !Number.isFinite(spot?.top)) return null;
+        const view = viewportSize();
+        return clampBall(spot.left, spot.top, view.width, view.height);
+      } catch {
+        return null;
+      }
+    }
+
+    function saveBallSpot(spot) {
+      try {
+        globalThis.localStorage?.setItem(BALL_SPOT_KEY, JSON.stringify(spot));
+      } catch {
+        // Forgetting where the ball was is cheaper than breaking the click;
+        // storage can be full or switched off entirely.
+      }
+    }
+
+    function ballStyle() {
+      // The layer is click-through on purpose; this is the opt-in that makes
+      // the ball itself hittable even if the stylesheet loads late.
+      const base = { pointerEvents: "auto" };
+      if (!ballSpot) return base;
+      // A window that shrank after the throw would otherwise leave the ball
+      // outside the viewport; the render path re-clamps for free.
+      const view = viewportSize();
+      ballSpot = clampBall(ballSpot.left, ballSpot.top, view.width, view.height);
+      return {
+        ...base,
+        left: ballSpot.left + "px",
+        top: ballSpot.top + "px",
+        right: "auto",
+        bottom: "auto",
+      };
+    }
+
+    /**
+     * Stop a ball that is still flying. Returns whether there was anything to
+     * stop, so a press on a moving ball can be read as catching it rather than
+     * as a click that opens the panel.
+     */
+    function stopGlide(persist, node) {
+      if (!glideFrame && !glideStop) return false;
+      if (glideFrame && typeof cancelAnimationFrame === "function") cancelAnimationFrame(glideFrame);
+      glideFrame = 0;
+      glideStop = null;
+      if (node?.style) node.style.transform = "";
+      if (persist && ballSpot) saveBallSpot(ballSpot);
+      return true;
+    }
+
+    /**
+     * Throw: keep moving after the pointer lets go, then let gravity pull the
+     * ball down, bounce it off the edges with restitution, rub speed off along
+     * the floor, and squash a little on impact. The spot is saved at release and
+     * again when the ball settles, so a reload mid-flight puts it back on screen
+     * instead of leaving it in the air.
+     */
+    function glideBall(node, vx, vy) {
+      // A throw is the control's own feedback, not decoration: reduced motion
+      // still gets the flight, only the squash below is optional. Zero speed is
+      // a placement, not a throw: leave the ball hovering and start no frames.
+      if (!(Math.hypot(vx, vy) >= BALL_THROW_MIN / 1000)) return;
+      if (!ballSpot || typeof requestAnimationFrame !== "function") return;
+      const view = viewportSize();
+      if (!(view.width > 0) || !(view.height > 0)) return;
+      let state = { left: ballSpot.left, top: ballSpot.top, vx, vy };
+      let last = performance.now();
+      const write = () => {
+        ballSpot = { left: Math.round(state.left), top: Math.round(state.top) };
+        if (node.style) {
+          node.style.left = ballSpot.left + "px";
+          node.style.top = ballSpot.top + "px";
+          node.style.right = "auto";
+          node.style.bottom = "auto";
+        }
+      };
+      const squash = (sx) => {
+        if (typeof node.animate !== "function") return;
+        if (typeof globalThis.matchMedia === "function"
+          && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        node.animate(
+          [{ transform: "scale(" + sx + "," + (2 - sx).toFixed(2) + ")" }, { transform: "scale(1)" }],
+          { duration: 180, easing: "ease-out" },
+        );
+      };
+      const settle = () => {
+        glideFrame = 0;
+        glideStop = null;
+        write();
+        saveBallSpot(ballSpot);
+        if (node.style) node.style.transform = "";
+        squash(1.06);
+      };
+      const step = (now) => {
+        // The setting can change while the ball is in the air; a switch that
+        // says "no physics" must stop the flight, not wait for it to land.
+        if (!entryPhysics.on) { stopGlide(true, node); return; }
+        const dt = Math.min(BALL_MAX_STEP, Math.max(0, now - last));
+        last = now;
+        const next = ballStep(state, dt, view);
+        state = { left: next.left, top: next.top, vx: next.vx, vy: next.vy };
+        write();
+        if (next.bounced) squash(1.1);
+        if (next.atRest) { settle(); return; }
+        glideFrame = requestAnimationFrame(step);
+      };
+      glideStop = settle;
+      glideFrame = requestAnimationFrame(step);
+    }
+
+    /**
+     * Drag, in one piece of geometry: pointerdown remembers the corner, pointermove
+     * turns the delta into a clamped left/top, pointerup writes it down. A press
+     * that travelled less than 4px is still a click — that threshold is what lets
+     * one button both open the panel and be thrown across the window.
+     */
+    function dragBall(event) {
+      if (event.button !== 0) return;
+      const node = event.currentTarget;
+      if (!node || typeof node.addEventListener !== "function") return;
+      // A flying ball stops under the finger; the click that trails this press
+      // belongs to the catch, not to opening the panel.
+      if (stopGlide(true, node)) ballCaught = true;
+      const rect = node.getBoundingClientRect?.() ?? { left: 0, top: 0 };
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+      const samples = [{ x: startX, y: startY, at: performance.now() }];
+
+      const onMove = (move) => {
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) < 4) return;
+        moved = true;
+        samples.push({ x: move.clientX, y: move.clientY, at: performance.now() });
+        if (samples.length > 16) samples.shift();
+        if (node.classList) node.classList.add("dragging");
+        const view = viewportSize();
+        ballSpot = clampBall(rect.left + dx, rect.top + dy, view.width, view.height);
+        if (node.style) {
+          node.style.left = ballSpot.left + "px";
+          node.style.top = ballSpot.top + "px";
+          node.style.right = "auto";
+          node.style.bottom = "auto";
+        }
+      };
+
+      const finish = () => {
+        node.removeEventListener("pointermove", onMove);
+        node.removeEventListener("pointerup", finish);
+        node.removeEventListener("pointercancel", finish);
+        if (node.classList) node.classList.remove("dragging");
+        if (moved) {
+          ballThrown = true;
+          ballCaught = false;
+          // Remember where the hand let go even if the ball keeps flying: a
+          // reload in mid-air should not resurrect the previous window's spot.
+          saveBallSpot(ballSpot);
+          if (entryPhysics.on) {
+            const { vx, vy } = throwVelocity(samples, performance.now());
+            // A placement is not a throw. Below the threshold the ball simply
+            // hovers where the hand left it; only real speed starts physics.
+            if (vx || vy) glideBall(node, vx, vy);
+          }
+          // The click that follows this pointerup belongs to the throw. Clear the
+          // flag afterwards so the next press is a plain click again.
+          setTimeout(() => { ballThrown = false; }, 0);
+        }
+      };
+
+      node.addEventListener("pointermove", onMove);
+      node.addEventListener("pointerup", finish);
+      node.addEventListener("pointercancel", finish);
+      // No preventDefault here: cancelling pointerdown can swallow the click
+      // that a throw-less press still owes the button. touch-action:none and
+      // user-select:none already keep the gesture from scrolling or selecting.
+      node.setPointerCapture?.(event.pointerId);
+    }
+
+
+    // A resize does not necessarily re-render the footer, so the mounted ball is
+    // moved by hand. The listener reads ballSpot, never the DOM, to find out
+    // whether the user has dragged at all.
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener("resize", () => {
+        if (!ballSpot) return;
+        const node = globalThis.document?.querySelector?.(".se-ball");
+        stopGlide(false, node);
+        const view = viewportSize();
+        ballSpot = clampBall(ballSpot.left, ballSpot.top, view.width, view.height);
+        if (node?.style) {
+          node.style.left = ballSpot.left + "px";
+          node.style.top = ballSpot.top + "px";
+        }
+      });
+    }
+
     function FooterAction(props) {
       const t = typeof props.t === "function" ? props.t : identityT;
       const open = useSyncExternalStore(
@@ -551,43 +932,103 @@
         panelStore.getSnapshot,
         panelStore.getSnapshot,
       );
+      const entry = useSyncExternalStore(
+        entryMode.subscribe,
+        entryMode.snapshot,
+        entryMode.snapshot,
+      );
+      const physics = useSyncExternalStore(
+        entryPhysics.subscribe,
+        entryPhysics.snapshot,
+        entryPhysics.snapshot,
+      );
+      const art = useSyncExternalStore(
+        entryStyle.subscribe,
+        entryStyle.snapshot,
+        entryStyle.snapshot,
+      );
+      // 入口位置 is read once, on the first mount: the footer is the first
+      // surface DSH draws, and the store's default (左下角) is only a guess
+      // until the host answers. Later changes arrive through the settings page,
+      // which writes the same store — so this is not polled.
+      useEffect(() => {
+        void refreshEntryMode();
+      }, []);
       const wide = props.wide !== false;
+      // The ball stays on top while the panel is open: it is the one control that
+      // must never be buried, so it is also allowed to close what it opened.
+      const showButton = entry !== "ball";
+      const showBall = entry !== "sidebar";
+      // 物理效果 off, or the ball hidden by another entry mode, has to stop a
+      // flight already in progress. A ball that is merely sitting in the air
+      // stays there: placement and throwing are different gestures.
+      useEffect(() => {
+        const node = globalThis.document?.querySelector?.(".se-ball") ?? null;
+        if (!physics || !showBall) stopGlide(true, node);
+      }, [physics, showBall]);
       return h(React.Fragment, null,
-        h("button", {
-          type: "button",
-          className: "se-footerBtn" + (wide ? "" : " se-footerBtn-rail"),
-          title: wide ? undefined : t("footerLabel"),
-          "aria-label": t("footerLabel"),
-          "aria-expanded": open,
-          // 默认打开方式 decides where a *launch* lands — the same setting the
-          // 更多 menu would honour — but the button still takes back what it
-          // opened: one control must not leave two windows in front of the user
-          // with no obvious way to tell which one is live.
-          onClick: () => {
-            if (open) {
-              panelStore.set(false, "user");
-              return;
-            }
-            void launchExplorer();
-          },
-        },
-          h("svg", {
-            viewBox: "0 0 16 16",
-            width: wide ? 14 : 18,
-            height: wide ? 14 : 18,
-            fill: "none",
-            stroke: "currentColor",
-            strokeWidth: 1.4,
-            "aria-hidden": "true",
-            style: { flex: "0 0 auto", display: "block" },
-          },
-            // The plugin's own mark: a folder, because the explorer is a
-            // folder-shaped place. Three rules read as a generic "menu" and
-            // were indistinguishable from DSH's own list controls.
-            h("path", { d: "M2 4.4h4l1.2 1.6H14V13H2z", strokeLinejoin: "round" }),
-          ),
-          wide ? h("span", { className: "se-footerBtn-label" }, t("footerLabel")) : null,
-        ),
+        showButton
+          ? h("button", {
+              type: "button",
+              className: "se-footerBtn" + (wide ? "" : " se-footerBtn-rail"),
+              title: wide ? undefined : t("footerLabel"),
+              "aria-label": t("footerLabel"),
+              "aria-expanded": open,
+              // 默认打开方式 decides where a *launch* lands — the same setting the
+              // 更多 menu would honour — but the button still takes back what it
+              // opened: one control must not leave two windows in front of the user
+              // with no obvious way to tell which one is live.
+              onClick: () => {
+                if (open) {
+                  panelStore.set(false, "user");
+                  return;
+                }
+                void launchExplorer();
+              },
+            },
+            entryGlyph(wide ? 14 : 18),
+            wide ? h("span", { className: "se-footerBtn-label" }, t("footerLabel")) : null,
+          )
+          : null,
+        showBall
+          ? portalBall(
+              h("button", {
+                type: "button",
+                className: "se-ball",
+                style: ballStyle(),
+                "data-style": art,
+                title: t("footerLabel"),
+                "aria-label": t("footerLabel"),
+                "aria-expanded": open,
+                onPointerDown: dragBall,
+                onClick: () => {
+                  // Catching a flying ball and landing a throw are both
+                  // gestures, not presses: neither may open the panel.
+                  if (ballCaught) {
+                    ballCaught = false;
+                    return;
+                  }
+                  if (ballThrown) {
+                    ballThrown = false;
+                    return;
+                  }
+                  if (open) {
+                    panelStore.set(false, "user");
+                    return;
+                  }
+                  void launchExplorer();
+                },
+              },
+              h("img", {
+                className: "se-ball-face",
+                src: ballArt(art),
+                alt: "",
+                "aria-hidden": "true",
+                draggable: false,
+              }),
+              ),
+            )
+          : null,
         open ? h(PanelBoundary, null, h(Panel, { t })) : null,
         // 更新说明: mounted with the entry, so an announcement lands when
         // DSH starts rather than waiting for the panel to be opened. It portals

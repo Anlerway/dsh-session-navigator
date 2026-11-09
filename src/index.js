@@ -544,6 +544,16 @@ const ROUTES = {
 
   "GET /ui/icon.png": async (api, req, res) => serveAsset(res, UI_ASSETS.icon, "image/png"),
 
+  "GET /ui/ball-folder.png": async (api, req, res) => serveAsset(res, UI_ASSETS.ballFolder, "image/png"),
+
+  "GET /ui/ball-deepseek.png": async (api, req, res) => serveAsset(res, UI_ASSETS.ballDeepseek, "image/png"),
+
+  "GET /ui/ball-chatgpt.png": async (api, req, res) => serveAsset(res, UI_ASSETS.ballChatgpt, "image/png"),
+
+  "GET /ui/ball-claude.png": async (api, req, res) => serveAsset(res, UI_ASSETS.ballClaude, "image/png"),
+
+  "GET /ui/ball-grok.png": async (api, req, res) => serveAsset(res, UI_ASSETS.ballGrok, "image/png"),
+
 
   /**
    * 更新说明 — what changed since the last published version, as blocks.

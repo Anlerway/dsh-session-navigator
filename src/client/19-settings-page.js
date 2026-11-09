@@ -120,10 +120,10 @@
       }
     }
 
-    function SetRow({ label, hint, children }) {
+    function SetRow({ label, hint, children, stack }) {
       return h(
         "div",
-        { className: "se-set-row" },
+        { className: "se-set-row" + (stack ? " se-set-row-stack" : "") },
         h(
           "div",
           { className: "se-set-main" },
@@ -149,6 +149,31 @@
               disabled: disabled === true || option.disabled === true,
               onClick: () => onPick(option.value),
             },
+            option.label,
+          ),
+        ),
+      );
+    }
+
+    // A face picker, not a chip row: the choice is a picture, and five words in
+    // a row would make the user read the file names to know what they get.
+    function SetBallStyles({ options, value, onPick, disabled }) {
+      return h(
+        "div",
+        { className: "se-set-balls" },
+        options.map((option) =>
+          h(
+            "button",
+            {
+              key: option.value,
+              type: "button",
+              className: "se-set-ball" + (option.value === value ? " on" : ""),
+              "aria-pressed": option.value === value,
+              title: option.label,
+              disabled: disabled === true,
+              onClick: () => onPick(option.value),
+            },
+            h("img", { src: option.src, alt: "", "aria-hidden": "true", draggable: false }),
             option.label,
           ),
         ),

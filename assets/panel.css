@@ -4,6 +4,10 @@
    those names is aliased onto a DSH alias token here, so the ported rules
    below never hardcode a colour and follow the live theme (including a
    third-party theme plugin that republishes the alias layer). */
+/* DSH paints corner-shape:superellipse(1.5) onto every element, so a plain
+   border-radius:50% renders as a rounded square. Every control that is meant to
+   be a circle or a pill opts back out with corner-shape:round; cards and inputs
+   keep the host's shape on purpose. */
 /* A panel loaded before an update keeps running the old module until the page
    reloads, and every symptom of that looks like a bug in the new code. This bar
    is the difference between "stale" and "broken". */
@@ -334,7 +338,7 @@
 .se-shell .row:hover .chk-bound,.se-shell .row.sel .chk-bound{opacity:1;color:var(--sm-accent)}
 .se-shell .row.bound-row .nm{color:var(--sm-text-2)}
 .se-shell .st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--sm-text-2)}
-.se-shell .dot{width:7px;height:7px;border-radius:50%;background:var(--sm-text-3)}
+.se-shell .dot{width:7px;height:7px;border-radius:50%;corner-shape:round;background:var(--sm-text-3)}
 .se-shell .dot.run{background:#5b8def;box-shadow:0 0 0 3px rgba(91,141,239,.16)}
 .se-shell .dot.warn{background:#e0a44a;box-shadow:0 0 0 3px rgba(224,164,74,.16)}
 .se-shell .dot.done{background:#3ecf8e;box-shadow:0 0 0 3px rgba(62,207,142,.16)}
@@ -480,8 +484,8 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
 /* 总结进度: 批处理在状态栏最右端留一条进度条, 点一下停止.
    总数未知时走不确定动画, 不假装知道自己走到哪. */
 .se-shell .status .s-progress{display:flex;align-items:center;gap:6px;height:16px;cursor:pointer;flex:0 0 auto;border-radius:3px}
-.se-shell .status .s-progress .s-progress-track{position:relative;width:84px;flex:0 0 84px;height:5px;border-radius:999px;overflow:hidden;background:color-mix(in oklab, var(--sm-text) 15%, transparent)}
-.se-shell .status .s-progress .s-progress-fill{position:absolute;top:0;bottom:0;left:0;width:0;border-radius:999px;background:var(--sm-accent);transition:width 220ms ease}
+.se-shell .status .s-progress .s-progress-track{position:relative;width:84px;flex:0 0 84px;height:5px;border-radius:999px;corner-shape:round;overflow:hidden;background:color-mix(in oklab, var(--sm-text) 15%, transparent)}
+.se-shell .status .s-progress .s-progress-fill{position:absolute;top:0;bottom:0;left:0;width:0;border-radius:999px;corner-shape:round;background:var(--sm-accent);transition:width 220ms ease}
 .se-shell .status .s-progress.indeterminate .s-progress-fill{width:38%;animation:se-summary-slide 1.2s ease-in-out infinite}
 .se-shell .status .s-progress.failed .s-progress-fill{background:var(--sm-danger, #c0392b)}
 .se-shell .status .s-progress .s-progress-label{flex:0 0 auto;white-space:nowrap;color:var(--sm-text-2)}
@@ -675,14 +679,14 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
 .se-shell .det-sep{color:var(--sm-text-3);margin:0 2px}
 .se-shell .tagadd.on{border-style:solid;border-color:var(--sm-accent);color:var(--sm-accent)}
 .se-shell .tagempty{flex:0 0 100%;font-size:11px;color:var(--sm-text-3);padding:2px 2px 4px}
-.se-shell .taglib-del{display:grid;place-items:center;width:12px;height:12px;margin-left:1px;border-radius:50%;opacity:.45;cursor:pointer}
+.se-shell .taglib-del{display:grid;place-items:center;width:12px;height:12px;margin-left:1px;border-radius:50%;corner-shape:round;opacity:.45;cursor:pointer}
 .se-shell .taglib-del:hover{opacity:1;background:color-mix(in oklab,var(--sm-danger) 26%,transparent);color:var(--sm-danger)}
 .se-shell .tagnewrow{flex:0 0 100%;display:flex;align-items:center;gap:5px;margin-top:2px;padding-top:7px;
   border-top:1px dashed var(--sm-border-soft)}
 .se-shell .tagnew{flex:1;min-width:0;font:inherit;font-size:11.5px;padding:4px 8px;border-radius:10px;
   background:color-mix(in oklab,var(--sm-text) 6%,transparent);border:1px solid var(--sm-border);color:var(--sm-text);outline:none}
 .se-shell .tagnew:focus{border-color:var(--sm-accent)}
-.se-shell .tagnew-go{flex:0 0 22px;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;
+.se-shell .tagnew-go{flex:0 0 22px;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;corner-shape:round;
   border:1px solid var(--sm-border);background:transparent;color:var(--sm-text-2);cursor:pointer}
 .se-shell .tagnew-go:hover{border-color:var(--sm-accent);color:var(--sm-accent)}
 
@@ -783,7 +787,7 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
   border-color:#e5484d;background:color-mix(in srgb, #e5484d 24%, transparent);color:#ff8085;
 }
 .se-hdrNote{
-  display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;
+  display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;corner-shape:round;
   font-size:11.5px;color:var(--dsw-alias-label-secondary, #cfd3d6);
   background:var(--dsw-alias-fill-l2, rgba(255,255,255,.07));
 }
@@ -921,6 +925,46 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
   background:transparent;color:inherit;font:inherit;font-size:12px}
 .se-crash .act:hover{background:color-mix(in oklab,currentColor 10%,transparent)}
 .se-footerBtn-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── 悬浮球 ───────────────────────────────────────────────────────────────
+   The footer slot lives inside DSH's sidebar, which clips its own subtree, so
+   the ball is portalled to the page root and never inherits .se-shell's token
+   bridge: every colour is read here with a fallback.
+   It is a ball before it is a button: a round crop of the chosen face, one
+   inner rim and one contact shadow, no border. A rim made it read as a rounded
+   square, and the harness-wide corner-shape:superellipse would do the same, so
+   both this button and its image opt back into a true circle.
+   It lives in its own fixed layer (src/client/04-overlay-host.js: getBallRoot),
+   not in the panel's overlay root: that one is pointer-events:none and parked
+   at 900, which made the ball visible but deaf to clicks and drags. Own layer
+   sits at 2147483000 (the tier dsh-pet uses), and this rule opts the ball back
+   into hit testing — without pointer-events:auto the click-through wrapper
+   swallows every press.
+   The default is halfway down the right edge; once dragged, the inline left/top
+   written by src/client/18 wins over right/top. */
+.se-ball{
+  position:fixed;right:22px;bottom:auto;top:max(8px,calc(50% - 32px));z-index:1;pointer-events:auto;
+  width:64px;height:64px;padding:0;border:0;border-radius:50%;corner-shape:round;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  background:#fff;
+  box-shadow:0 10px 24px rgba(0,0,0,.42),0 0 0 1px rgba(0,0,0,.18);
+  cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+  transition:transform 120ms ease,box-shadow 120ms ease;
+}
+.se-ball::after{
+  content:"";position:absolute;inset:0;border-radius:50%;corner-shape:round;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.14),inset 0 -8px 14px rgba(0,0,0,.10);
+  pointer-events:none;
+}
+.se-ball-face{
+  width:100%;height:100%;display:block;object-fit:cover;
+  border-radius:50%;corner-shape:round;
+  pointer-events:none;user-select:none;-webkit-user-drag:none;
+}
+.se-ball:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 14px 32px rgba(0,0,0,.48),0 0 0 1px rgba(0,0,0,.18)}
+.se-ball:active,.se-ball.dragging{cursor:grabbing;transform:scale(.95)}
+.se-ball.dragging{transition:none;box-shadow:0 6px 16px rgba(0,0,0,.38),0 0 0 1px rgba(0,0,0,.18)}
+@media (prefers-reduced-motion: reduce){.se-ball{transition:none}.se-ball:hover{transform:none}}
 /* ── settings page ────────────────────────────────────────────────────────
    This page mounts inside the DSH settings window, not inside .se-shell, so
    it carries its own copy of the token bridge and none of the shell rules.
@@ -958,12 +1002,24 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
 .se-set-chip:hover:not(:disabled){background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text)}
 .se-set-chip.on{background:color-mix(in oklab, var(--sm-accent) 16%, transparent);border-color:color-mix(in oklab, var(--sm-accent) 42%, transparent);color:var(--sm-accent)}
 .se-set-chip:disabled{opacity:.4;cursor:default}
+/* 悬浮球样式 — five faces, pictures rather than words. The row stacks because
+   five 58px cells plus labels do not fit beside a hint at this page's width;
+   stacking keeps the faces on one line and the label above them readable. */
+.se-set-row-stack{flex-direction:column;align-items:stretch;gap:10px}
+.se-set-balls{display:flex;gap:8px;flex-wrap:wrap}
+.se-set-ball{width:58px;padding:5px 2px 4px;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--sm-text-2);font:inherit;font-size:11px;line-height:1.3;cursor:pointer}
+.se-set-ball:hover:not(:disabled){background:color-mix(in oklab, var(--sm-text) 8%, transparent);color:var(--sm-text)}
+.se-set-ball img{width:44px;height:44px;display:block;object-fit:cover;border-radius:50%;corner-shape:round;background:#fff}
+.se-set-ball.on{border-color:color-mix(in oklab, var(--sm-accent) 42%, transparent);background:color-mix(in oklab, var(--sm-accent) 16%, transparent);color:var(--sm-accent)}
+.se-set-ball.on img{box-shadow:0 0 0 2px var(--sm-accent)}
+.se-set-ball:focus-visible{outline:2px solid var(--sm-accent);outline-offset:1px}
+.se-set-ball:disabled{opacity:.4;cursor:default}
 /* A download's bar: the same track/fill pair as the status bar, sized for a
    settings row. Drawn by hand rather than with <progress> so an unknown total
    runs the same indeterminate sweep instead of the platform's own animation,
    and so the settings page and the panel dialog cannot look different. */
-.se-set-progress{position:relative;width:100%;height:5px;margin:3px 0 8px;border-radius:999px;overflow:hidden;background:color-mix(in oklab, var(--sm-text) 15%, transparent)}
-.se-set-progress-fill{position:absolute;top:0;bottom:0;left:0;width:0;border-radius:999px;background:var(--sm-accent);transition:width 240ms ease}
+.se-set-progress{position:relative;width:100%;height:5px;margin:3px 0 8px;border-radius:999px;corner-shape:round;overflow:hidden;background:color-mix(in oklab, var(--sm-text) 15%, transparent)}
+.se-set-progress-fill{position:absolute;top:0;bottom:0;left:0;width:0;border-radius:999px;corner-shape:round;background:var(--sm-accent);transition:width 240ms ease}
 .se-set-progress.indeterminate .se-set-progress-fill{width:38%;animation:se-summary-slide 1.2s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){.se-set-progress-fill{transition:none}.se-set-progress.indeterminate .se-set-progress-fill{animation:none;left:0;width:100%;opacity:.4}}
 /* 下拉框 — the model list. The closed control is ours; the option list is drawn
@@ -996,14 +1052,14 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
    turns one percentage into a different distance on every click. */
 .se-set-slider{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}
 .se-set-range{-webkit-appearance:none;appearance:none;flex:0 0 auto;width:150px;height:20px;margin:0;background:transparent;cursor:pointer}
-.se-set-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(to right,var(--sm-accent) var(--se-fill,0%),color-mix(in oklab, var(--sm-text) 18%, transparent) var(--se-fill,0%))}
-.se-set-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;border:2px solid var(--sm-accent);background:var(--sm-surface);box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .12s ease}
+.se-set-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;corner-shape:round;background:linear-gradient(to right,var(--sm-accent) var(--se-fill,0%),color-mix(in oklab, var(--sm-text) 18%, transparent) var(--se-fill,0%))}
+.se-set-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;corner-shape:round;border:2px solid var(--sm-accent);background:var(--sm-surface);box-shadow:0 1px 3px rgba(0,0,0,.28);transition:transform .12s ease}
 .se-set-range:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.12)}
 .se-set-range:active::-webkit-slider-thumb{transform:scale(1.18)}
 .se-set-range:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 4px color-mix(in oklab, var(--sm-accent) 26%, transparent)}
-.se-set-range::-moz-range-track{height:4px;border-radius:999px;background:color-mix(in oklab, var(--sm-text) 18%, transparent)}
-.se-set-range::-moz-range-progress{height:4px;border-radius:999px;background:var(--sm-accent)}
-.se-set-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;border:2px solid var(--sm-accent);background:var(--sm-surface)}
+.se-set-range::-moz-range-track{height:4px;border-radius:999px;corner-shape:round;background:color-mix(in oklab, var(--sm-text) 18%, transparent)}
+.se-set-range::-moz-range-progress{height:4px;border-radius:999px;corner-shape:round;background:var(--sm-accent)}
+.se-set-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;corner-shape:round;border:2px solid var(--sm-accent);background:var(--sm-surface)}
 .se-set-range:disabled{opacity:.45;cursor:default}
 .se-set-num{width:40px;height:22px;flex:0 0 auto;padding:0 4px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--sm-text-2);font:inherit;font-size:12px;font-variant-numeric:tabular-nums;text-align:right;outline:none;-moz-appearance:textfield;appearance:textfield}
 .se-set-num:hover:not(:disabled){border-color:var(--sm-border-soft);background:color-mix(in oklab, var(--sm-text) 5%, transparent)}
@@ -1014,8 +1070,8 @@ body .se-dsh-dialog.wide{width:min(620px,100%)}
 .se-set-revert{width:20px;height:20px;flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--sm-text-3);font:inherit;font-size:12px;line-height:1;cursor:pointer}
 .se-set-revert:hover:not(:disabled){color:var(--sm-text);background:color-mix(in oklab, var(--sm-text) 8%, transparent)}
 .se-set-revert:disabled{opacity:.4;cursor:default}
-.se-set-switch{width:34px;height:20px;flex:0 0 auto;border-radius:10px;border:1px solid var(--sm-border);background:color-mix(in oklab, var(--sm-text) 10%, transparent);position:relative;cursor:pointer;transition:background .15s}
-.se-set-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--sm-text-2);transition:transform .15s,background .15s}
+.se-set-switch{width:34px;height:20px;flex:0 0 auto;border-radius:10px;corner-shape:round;border:1px solid var(--sm-border);background:color-mix(in oklab, var(--sm-text) 10%, transparent);position:relative;cursor:pointer;transition:background .15s}
+.se-set-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;corner-shape:round;background:var(--sm-text-2);transition:transform .15s,background .15s}
 .se-set-switch.on{background:color-mix(in oklab, var(--sm-accent) 55%, transparent)}
 .se-set-switch.on::after{transform:translateX(14px);background:#fff}
 .se-set-switch:disabled{opacity:.4;cursor:default}

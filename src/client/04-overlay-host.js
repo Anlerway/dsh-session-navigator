@@ -212,7 +212,7 @@
     let overlayRootElement = null;
     function getOverlayRoot() {
       if (typeof document === "undefined" || !document.body) return null;
-      const alive = overlayRootElement && document.body.contains(overlayRootElement);
+      const alive = overlayRootElement && document.body.contains?.(overlayRootElement);
       let element = alive ? overlayRootElement : document.getElementById("dsh-session-navigator-overlay-root");
       if (!element) {
         element = document.createElement("div");
@@ -265,6 +265,46 @@
       }
       cachedCreatePortal = candidates[0] ?? null;
       return cachedCreatePortal;
+    }
+
+    let ballRootElement = null;
+    /**
+     * The ball cannot live in the panel's overlay root: that root is a
+     * click-through layer (`pointer-events: none`) parked at 900 so the panel
+     * never steals presses from DSH, and a child inherits the click-through
+     * unless every part of it opts back in. It also cannot beat DSH's own
+     * dialogs from inside a 900 context, no matter what z-index the button
+     * carries.
+     *
+     * So the ball gets its own fixed layer with the tier dsh-pet uses for its
+     * floating chrome (2147483000). The layer itself stays click-through; the
+     * ball is the one element that sets pointer-events: auto.
+     */
+    function getBallRoot() {
+      if (typeof document === "undefined" || !document.body) return null;
+      const alive = ballRootElement && document.body.contains?.(ballRootElement);
+      let element = alive ? ballRootElement : document.getElementById("dsh-session-navigator-ball-root");
+      if (!element) {
+        element = document.createElement("div");
+        element.id = "dsh-session-navigator-ball-root";
+        Object.assign(element.style, {
+          position: "fixed",
+          inset: "0",
+          zIndex: "2147483000",
+          pointerEvents: "none",
+          overflow: "visible",
+        });
+        document.body.appendChild(element);
+      }
+      ballRootElement = element;
+      return ballRootElement;
+    }
+
+    function portalBall(node) {
+      const root = getBallRoot();
+      const createPortal = getPortalFn();
+      if (!root || typeof createPortal !== "function") return node;
+      return createPortal(node, root);
     }
 
     function portal(node) {
