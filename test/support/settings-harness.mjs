@@ -164,7 +164,7 @@ export const byClass = (name) => (element) => {
 };
 
 /** The settings document the host would answer with. */
-export function settingsDocument(mode, component, uiLang = "auto", wallpaper = null, entry = "sidebar", entryPhysics = true, entryStyle = "folder") {
+export function settingsDocument(mode, component, uiLang = "auto", wallpaper = null, entry = "sidebar", entryPhysics = true, entryStyle = "folder", gpu = true) {
   return {
     settings: {
       // 独立窗口美化: the panel at its default density until a case says otherwise.
@@ -172,7 +172,7 @@ export function settingsDocument(mode, component, uiLang = "auto", wallpaper = n
       shell: {
         open: { mode },
         modal: { sizing: "fixed", size: "md", percent: "p70", dim: 0, closeOnBackdrop: true },
-        window: { alwaysOnTop: false, bounds: null },
+        window: { gpu, alwaysOnTop: false, bounds: null },
         header: { style: "auto" },
         // 入口位置: the sidebar footer, the shape an upgraded install keeps;
         // 物理效果 ships on, because a ball that falls is the built-in feel;
@@ -318,6 +318,9 @@ export async function renderSettings({
   entryPhysics = true,
   // 悬浮球样式: which face the page should show as selected.
   entryStyle = "folder",
+  // GPU 加速: whether the detached window may use hardware acceleration, so a
+  // case can render the switch off or watch it turn itself off.
+  gpu = true,
   // Milliseconds a settings write takes to answer, so a case can watch what a
   // control does while its previous write is still out.
   putDelay = 0,
@@ -329,6 +332,7 @@ export async function renderSettings({
   let currentEntry = entry;
   let currentEntryPhysics = entryPhysics;
   let currentEntryStyle = entryStyle;
+  let currentGpu = gpu;
   let currentModal = { ...settingsDocument(mode, component, currentUiLang, null).settings.shell.modal, ...(modal ?? {}) };
   // Each write answers with the counter it wrote, the way the host does: a
   // second write that waited for the first therefore cites the newer number,
@@ -339,7 +343,8 @@ export async function renderSettings({
     if (call.body.shell?.entry?.mode) currentEntry = call.body.shell.entry.mode;
     if (typeof call.body.shell?.entry?.physics === "boolean") currentEntryPhysics = call.body.shell.entry.physics;
     if (call.body.shell?.entry?.style) currentEntryStyle = call.body.shell.entry.style;
-    const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle);
+    if (typeof call.body.shell?.window?.gpu === "boolean") currentGpu = call.body.shell.window.gpu;
+    const doc = settingsDocument(call.body.shell?.open?.mode ?? mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle, currentGpu);
     doc.settings.shell.modal = { ...currentModal };
     if (call.body.shell?.header) doc.settings.shell.header = call.body.shell.header;
     if (call.body.shell?.modal) {
@@ -368,7 +373,7 @@ export async function renderSettings({
     // matches paths, so the query stays on `call.url` for assertions only.
     const path = call.url.replace(/^.*?\/api/, "").split("?")[0];
     if (path === "/settings" && call.method === "GET") {
-      const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle);
+      const doc = settingsDocument(mode, component, currentUiLang, currentWallpaper, currentEntry, currentEntryPhysics, currentEntryStyle, currentGpu);
       doc.settings.shell.modal = { ...currentModal };
       doc.revision = settingsRevision;
       return { ok: true, result: doc };

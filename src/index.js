@@ -20,7 +20,7 @@ import { getService, capabilities as probeCapabilities } from "./capabilities.js
 import { componentManagerFor } from "./component/manager.js";
 import { createDetachedController } from "./detached/launcher.js";
 import { tagVocabulary } from "./domain/annotations.js";
-import { normalizeSettings } from "./domain/settings.js";
+import { mergeSettings, normalizeSettings } from "./domain/settings.js";
 import { dshHome } from "./dsh/home.js";
 import { statusFor } from "./errors.js";
 import { createBridge } from "./host/bridge.js";
@@ -114,6 +114,27 @@ export function apply(ctx) {
   // The live palette, pushed by the panel and read by the detached window.
   const theme = createThemeStore();
 
+  /**
+   * A GPU Chromium could not use is a fact about this machine, not a
+   * preference. Remember it so the next launch does not start a GPU process
+   * that will fall back to software anyway; the settings page keeps the switch
+   * as the user's override for a driver that has since been fixed.
+   *
+   * @param {{ reason?: string }} report
+   */
+  const rememberGpuUnavailable = async (report) => {
+    try {
+      const current = normalizeSettings(await documents.settings.read());
+      if (current.shell.window.gpu === false) return;
+      await documents.settings.mutate((draft) => {
+        Object.assign(draft, mergeSettings(draft, { shell: { window: { gpu: false } } }));
+      });
+      log(ctx, "warn", `detached: GPU unavailable (${report?.reason ?? "unknown"}); software rendering from the next launch`);
+    } catch (error) {
+      log(ctx, "warn", `detached: could not remember the GPU fallback: ${error?.message ?? error}`);
+    }
+  };
+
   const detachedFor = () => {
     if (detached) return detached;
     detached = createDetachedController({
@@ -138,6 +159,10 @@ export function apply(ctx) {
         };
       },
       webPort: () => (typeof webServer.port === "number" ? webServer.port : Number(process.env.DSH_WEB_PORT ?? 0)),
+      hardwareAcceleration: async () => normalizeSettings(await documents.settings.read()).shell.window.gpu !== false,
+      onGpu: (report) => {
+        if (report?.available === false) void rememberGpuUnavailable(report);
+      },
       /**
        * Window → Host reports are forwarded to the panel as bridge commands.
        *
@@ -432,8 +457,9 @@ export function apply(ctx) {
  * A wallpaper is a picture or a video: base64 turns 200 MB into 270 MB, the
  * dispatcher's JSON reader caps at 8 MB, and either way the file would sit in
  * memory twice. These routes read the socket themselves and stream it to disk,
- * so the number in this set is the list of places where `readJsonBody` must not
- * run — nothing else about dispatch changes.
+ * so this set is both the list of places where `readJsonBody` must not run and
+ * the list of writes whose content type is the file's, not JSON. The same-origin
+ * guard treats them accordingly; everything else about dispatch is unchanged.
  */
 const RAW_BODY_ROUTES = new Set(["POST /wallpaper/custom"]);
 
@@ -687,8 +713,9 @@ async function handle(api, req, res) {
       throw codedError("migration-in-progress", "a data directory migration is running");
     }
     if (method !== "GET" && method !== "HEAD") {
-      assertSameOrigin(req);
-      if (!RAW_BODY_ROUTES.has(method + " " + route.path)) {
+      const rawBody = RAW_BODY_ROUTES.has(method + " " + route.path);
+      assertSameOrigin(req, rawBody);
+      if (!rawBody) {
         /** @type {any} */ (req).body = await readJsonBody(req);
       }
     }

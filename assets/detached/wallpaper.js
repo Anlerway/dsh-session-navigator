@@ -25,10 +25,13 @@
  * changes. This plugin's own routes follow the same rule, so the poll reads both
  * documents; a settings write from 设置 lands within a few seconds.
  *
- * What this deliberately is not: the plugin's glass, its parallax offsets, or a
- * frame-synced video. Those live in the other document's custom properties and
- * in its render loop; a copy that guessed at them would drift. A picture at the
- * same crop is what "the window shows my wallpaper" means.
+ * What this deliberately is not: the plugin's glass or its parallax offsets.
+ * Those live in the other document's custom properties and in its render loop;
+ * a copy that guessed at them would drift. A video is different: the decoder is
+ * allowed to run at its own rate, but this window only paints it into a canvas
+ * at VIDEO_FPS, so a 60 or 120 fps clip does not make the whole window repaint
+ * at that rate. A picture at the same crop is what "the window shows my
+ * wallpaper" means.
  */
 (function () {
   "use strict";
@@ -66,6 +69,19 @@
   /** How often the chosen wallpaper is re-read. One small JSON, not a stream. */
   const POLL_MS = 4000;
 
+  /**
+   * The frame budget for a video wallpaper.
+   *
+   * A wallpaper is motion, not a game: 30 fps is enough to read as video, and
+   * drawing into a canvas at that rate keeps a 60 or 120 fps clip from asking
+   * the window to composite every frame the decoder produces.
+   */
+  const VIDEO_FPS = 30;
+  const VIDEO_FRAME_MS = 1000 / VIDEO_FPS;
+
+  /** The highest device pixel ratio worth copying; beyond 2× the extra pixels are invisible. */
+  const VIDEO_DPR_MAX = 2;
+
   /** The inventory is a full directory scan; it is reused for this long. */
   const INVENTORY_TTL_MS = 30000;
 
@@ -102,6 +118,20 @@
 
   /** The last look, recomputed from settings so a re-render keeps crop and filters. */
   let appearance = null;
+
+  /** Stops the last video's frame pump and releases its decoder. */
+  let stopFrames = null;
+
+  function stopVideoFrames() {
+    const stop = stopFrames;
+    stopFrames = null;
+    if (typeof stop !== "function") return;
+    try {
+      stop();
+    } catch {
+      /* a decoder that is already gone has nothing to release */
+    }
+  }
 
   function number(value, fallback) {
     return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -177,8 +207,24 @@
 
   const radiusFor = (look) => (look.blur / MAX_PERCENT) * MAX_RADIUS;
 
+  /**
+   * A filter list, or "none".
+   *
+   * blur(0px) is not a no-op to the compositor: it still gives the layer an
+   * offscreen filter pass that Chromium repeats whenever the canvas below it
+   * changes. The wallpaper engine avoids a permanent blur(0px) for the same
+   * reason, so a default look leaves the layer on the plain compositor path.
+   */
+  function filterOf(radius, brightness, contrast, saturate) {
+    const parts = [];
+    if (radius > 0) parts.push("blur(" + radius + "px)");
+    if (brightness !== 100) parts.push("brightness(" + brightness + "%)");
+    if (contrast !== 100) parts.push("contrast(" + contrast + "%)");
+    if (saturate !== 100) parts.push("saturate(" + saturate + "%)");
+    return parts.length > 0 ? parts.join(" ") : "none";
+  }
+
   function styleFor(settings, look) {
-    const radius = radiusFor(look);
     const brightness = number(settings.backgroundBrightness, 100);
     const contrast = number(settings.backgroundContrast, 100);
     const saturate = number(settings.backgroundSaturate, 100);
@@ -186,8 +232,7 @@
     return {
       fit: settings.objectFit === "contain" ? "contain" : "cover",
       flip: settings.flip === true,
-      filter:
-        "blur(" + radius + "px) brightness(" + brightness + "%) contrast(" + contrast + "%) saturate(" + saturate + "%)",
+      filter: filterOf(radiusFor(look), brightness, contrast, saturate),
       // The plugin's key is how *transparent* the wallpaper is (0–90), inverted
       // against its own opacity variable the same way its stylesheet does.
       opacity: Math.max(0, Math.min(1, (100 - hidden) / 100)),
@@ -204,7 +249,7 @@
     return {
       fit: "cover",
       flip: false,
-      filter: "blur(" + radiusFor(look) + "px)",
+      filter: filterOf(radiusFor(look), 100, 100, 100),
       opacity: 1,
       glass: look.frost,
       dim: look.dim,
@@ -228,23 +273,266 @@
   }
 
   /**
-   * A picture, a muted looping video, or the frame the plugin already rendered.
+   * A video, drawn into a canvas at VIDEO_FPS, or a still.
+   *
+   * The video element stays in the layer as an invisible source: a detached
+   * element still decodes, but keeping it here makes that true on every engine
+   * and gives the canvas a frame to copy. The canvas is the element the window
+   * actually paints, so object-fit and flip apply to it exactly as they did to
+   * the video before.
    *
    * Scene and web wallpapers are shown as their still (frameUrl / preview) on
    * purpose: a live Scene needs WebGL, and the window asks Electron to run
    * without it. A still that always draws beats a canvas that cannot.
    */
-  function elementFor(entry) {
-    if (entry.type === "video" && entry.media) {
-      const video = document.createElement("video");
+  function videoFor(entry) {
+    const video = document.createElement("video");
+    video.className = "se-wallpaper-source";
+    video.muted = true;
+    video.loop = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.setAttribute("preload", "auto");
+    video.setAttribute("disablepictureinpicture", "");
+    video.setAttribute("disableremoteplayback", "");
+
+    const canvas = document.createElement("canvas");
+    canvas.className = "se-wallpaper-media";
+    canvas.width = 16;
+    canvas.height = 9;
+    const context = typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
+    if (!context) {
+      // A window without a 2D canvas can still show the clip; it just cannot
+      // cap it. The video is the media element in that fallback.
+      stopFrames = () => {
+        try {
+          video.pause();
+        } catch {
+          /* nothing to stop */
+        }
+      };
       video.className = "se-wallpaper-media";
       video.setAttribute("src", entry.media);
-      video.muted = true;
-      video.loop = true;
-      video.autoplay = true;
-      video.playsInline = true;
+      const played = typeof video.play === "function" ? video.play() : null;
+      if (played && typeof played.catch === "function") played.catch(() => {});
       return video;
     }
+
+    let frameHandle = null;
+    let frameKind = "";
+    let running = false;
+    let stopped = false;
+    let lastPaintAt = 0;
+    let resizeObserver = null;
+
+    const clock = () => {
+      const perf = globalThis.performance;
+      return perf && typeof perf.now === "function" ? perf.now() : Date.now();
+    };
+    const deviceScale = () => {
+      const value = Number(globalThis.devicePixelRatio);
+      return Number.isFinite(value) && value > 1 ? Math.min(value, VIDEO_DPR_MAX) : 1;
+    };
+
+    /**
+     * The canvas bitmap is the window's pixels, never the clip's. A 4K clip on
+     * a 1080p window used to copy 8.3 million pixels thirty times a second;
+     * capping at the displayed size (and at 2× DPR) copies a quarter of that.
+     * When there is no layout yet (a hidden window, a test DOM), the native
+     * size is the only honest answer.
+     */
+    function sizeCanvas() {
+      const vw = Number(video.videoWidth) || 0;
+      const vh = Number(video.videoHeight) || 0;
+      if (!vw || !vh) return false;
+      const shownWidth = Number(canvas.clientWidth) || 0;
+      const shownHeight = Number(canvas.clientHeight) || 0;
+      const scale = deviceScale();
+      let cw = vw;
+      let ch = vh;
+      if (shownWidth > 0 && shownHeight > 0) {
+        cw = Math.max(1, Math.min(vw, Math.round(shownWidth * scale)));
+        ch = Math.max(1, Math.min(vh, Math.round(shownHeight * scale)));
+      } else if (shownWidth > 0) {
+        cw = Math.max(1, Math.min(vw, Math.round(shownWidth * scale)));
+        ch = Math.max(1, Math.round((cw * vh) / vw));
+      } else if (shownHeight > 0) {
+        ch = Math.max(1, Math.min(vh, Math.round(shownHeight * scale)));
+        cw = Math.max(1, Math.round((ch * vw) / vh));
+      }
+      if (canvas.width === cw && canvas.height === ch) return false;
+      canvas.width = cw;
+      canvas.height = ch;
+      return true;
+    }
+
+    function paint() {
+      if (stopped) return;
+      const vw = Number(video.videoWidth) || 0;
+      const vh = Number(video.videoHeight) || 0;
+      if (video.readyState < 2 || !vw || !vh) return;
+      sizeCanvas();
+      const cw = canvas.width;
+      const ch = canvas.height;
+      // object-fit is done here because the bitmap now has the window's
+      // aspect, not the clip's. CSS object-fit would have nothing left to crop.
+      const fit = appearance && appearance.fit === "contain" ? "contain" : "cover";
+      const scale = fit === "contain" ? Math.min(cw / vw, ch / vh) : Math.max(cw / vw, ch / vh);
+      const dw = vw * scale;
+      const dh = vh * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+      try {
+        if (typeof context.clearRect === "function") context.clearRect(0, 0, cw, ch);
+        context.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh);
+      } catch {
+        // The next frame may be decodable; one bad frame is not a reason to
+        // stop the pump.
+      }
+    }
+
+    function stopPump() {
+      running = false;
+      if (frameKind === "rvfc" && typeof video.cancelVideoFrameCallback === "function") {
+        try {
+          video.cancelVideoFrameCallback(frameHandle);
+        } catch {
+          /* a callback that already ran is not cancellable */
+        }
+      } else if (frameKind === "raf" && typeof globalThis.cancelAnimationFrame === "function") {
+        try {
+          globalThis.cancelAnimationFrame(frameHandle);
+        } catch {
+          /* ignore */
+        }
+      } else if (frameKind === "timer") {
+        clearInterval(frameHandle);
+      }
+      frameHandle = null;
+      frameKind = "";
+    }
+
+    /**
+     * One painted frame per video frame, capped at VIDEO_FPS. requestVideoFrame-
+     * Callback is the important half: a paused, hidden or finished clip produces
+     * no callbacks, so the window does no work at all. rAF and setInterval are
+     * only fallbacks for engines that lack it.
+     */
+    function tick(now) {
+      if (!running || stopped) return;
+      const at = Number(now);
+      const stamp = Number.isFinite(at) ? at : clock();
+      if (frameKind === "timer" || lastPaintAt === 0 || stamp - lastPaintAt >= VIDEO_FRAME_MS - 1) {
+        // setInterval already *is* the budget; the other two schedulers tick at
+        // the display or decode rate and have to skip frames themselves.
+        lastPaintAt = stamp;
+        paint();
+      }
+      if (frameKind !== "timer") schedule();
+    }
+
+    function schedule() {
+      if (!running || stopped) return;
+      if (typeof video.requestVideoFrameCallback === "function") {
+        frameKind = "rvfc";
+        frameHandle = video.requestVideoFrameCallback(tick);
+        return;
+      }
+      if (typeof globalThis.requestAnimationFrame === "function") {
+        frameKind = "raf";
+        frameHandle = globalThis.requestAnimationFrame(tick);
+        return;
+      }
+      frameKind = "timer";
+      frameHandle = setInterval(() => tick(clock()), VIDEO_FRAME_MS);
+    }
+
+    function start() {
+      if (running || stopped || document.hidden) return;
+      running = true;
+      lastPaintAt = 0;
+      paint();
+      lastPaintAt = clock();
+      schedule();
+    }
+
+    function onResize() {
+      if (sizeCanvas()) paint();
+    }
+    function onPause() {
+      stopPump();
+    }
+    function onVisible() {
+      if (document.hidden) {
+        stopPump();
+        try {
+          video.pause();
+        } catch {
+          /* a video that is already gone has nothing to pause */
+        }
+        return;
+      }
+      const played = typeof video.play === "function" ? video.play() : null;
+      if (played && typeof played.catch === "function") played.catch(() => {});
+      start();
+    }
+
+    video.addEventListener("loadeddata", start);
+    video.addEventListener("playing", start);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("ended", onPause);
+    if (typeof document.addEventListener === "function") {
+      document.addEventListener("visibilitychange", onVisible);
+    }
+    if (typeof globalThis.ResizeObserver === "function") {
+      resizeObserver = new globalThis.ResizeObserver(onResize);
+      resizeObserver.observe(canvas);
+    }
+    if (typeof globalThis.addEventListener === "function") {
+      globalThis.addEventListener("resize", onResize);
+    }
+    stopFrames = () => {
+      stopped = true;
+      stopPump();
+      try {
+        resizeObserver?.disconnect?.();
+      } catch {
+        /* ignore */
+      }
+      try {
+        globalThis.removeEventListener?.("resize", onResize);
+      } catch {
+        /* ignore */
+      }
+      try {
+        document.removeEventListener?.("visibilitychange", onVisible);
+      } catch {
+        /* ignore */
+      }
+      try {
+        video.pause();
+      } catch {
+        /* ignore */
+      }
+      try {
+        video.removeAttribute("src");
+      } catch {
+        /* ignore */
+      }
+      try {
+        video.load?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    video.setAttribute("src", entry.media);
+    const played = typeof video.play === "function" ? video.play() : null;
+    if (played && typeof played.catch === "function") played.catch(() => {});
+    return [video, canvas];
+  }
+
+  function elementFor(entry) {
+    if (entry.type === "video" && entry.media) return videoFor(entry);
     const still = entry.type === "image" ? entry.media || entry.preview : entry.frameUrl || entry.preview;
     if (!still) return null;
     const image = document.createElement("img");
@@ -255,6 +543,7 @@
   }
 
   function clear() {
+    stopVideoFrames();
     shown = "";
     appearance = null;
     layer.replaceChildren();
@@ -268,12 +557,13 @@
   }
 
   function show(entry) {
+    stopVideoFrames();
     const media = elementFor(entry);
     if (!media) {
       clear();
       return;
     }
-    layer.replaceChildren(media);
+    layer.replaceChildren(...(Array.isArray(media) ? media : [media]));
     if (!layer.parentNode) document.body.insertBefore(layer, document.body.firstChild);
     document.documentElement.setAttribute("data-se-wallpaper", entry.type || "image");
     applyAppearance();

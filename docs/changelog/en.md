@@ -1,13 +1,14 @@
-Release notes: V1.2.0-Alpha-V2
+Release notes: V1.2.0
 
 Highlights
 
-This is a preview release. Thanks to everyone who installs and uses the plugin, and for your patience between versions; bug reports and suggestions are always welcome.
+This is the official 1.2.0 release. Thanks to everyone who installs and uses the plugin, and for your patience between versions; bug reports and suggestions are always welcome.
 
 - A floating ball entry: drag it, throw it, watch it bounce; five styles, chosen in Settings › Entry settings
 - Ten interface languages, eight of them new
 - The plugin was refactored, and cold start got much faster
 - The detached window follows the theme and pairs with dsh-plugin-wallpaper-engine
+- The detached window can use GPU-accelerated rendering, on by default and turned off automatically when unsupported
 - Deleting a session sometimes failed to refresh the list; fixed
 - A missing runtime now offers the download right away
 - The data folder can go back to its default location
@@ -24,6 +25,7 @@ New
 - Settings › Data folder: move it, or restore the default location
 - Release notes are translated too
 - A beautify group for the detached window: mirror dsh-plugin-wallpaper-engine's wallpaper or upload your own picture; blur, frost and dim
+- A GPU-accelerated rendering mode for the detached window: on by default, can be turned off in Settings › Detached window, and falls back to software rendering when the graphics card or driver cannot support it
 
 Improved
 

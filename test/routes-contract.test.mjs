@@ -29,7 +29,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -570,6 +570,46 @@ test("every read route answers a placeholder id without a server fault", async (
     }
     assertEnvelope(key, answer);
     assert.ok(answer.status < 500, key + ": status " + answer.status + " for a placeholder id");
+  }
+});
+
+test("a raw upload is a media write, not a JSON write", async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+  const call = async ({ type, site, bytes = png }) => {
+    const res = fakeRes();
+    /** @type {any} */
+    const req = {
+      url: API_PREFIX + "/wallpaper/custom?name=a.png",
+      method: "POST",
+      headers: type === undefined ? {} : { "content-type": type },
+      async *[Symbol.asyncIterator]() {
+        yield bytes;
+      },
+    };
+    if (site) req.headers["sec-fetch-site"] = site;
+    await handle(probeApi(), req, res);
+    return { status: res.statusCode, json: JSON.parse(res.bodyText()) };
+  };
+
+  try {
+    // The file's own type is not application/json, and it is the body. The old
+    // guard refused this before the route could read a byte.
+    const good = await call({ type: "image/png" });
+    assert.equal(good.status, 200, JSON.stringify(good.json));
+    assert.equal(good.json.ok, true);
+    assert.equal(good.json.result.file.type, "image/png");
+
+    // A cross-site form can send text/plain without a preflight; it must not
+    // become a file. The same-origin check still answers first.
+    const form = await call({ type: "text/plain" });
+    assert.equal(form.status, 415);
+    assert.equal(form.json.code, "unsupported-media-type");
+
+    const crossSite = await call({ type: "image/png", site: "cross-site" });
+    assert.equal(crossSite.status, 403);
+    assert.equal(crossSite.json.code, "cross-site");
+  } finally {
+    rmSync(join(DATA_DIR, "wallpaper"), { recursive: true, force: true });
   }
 });
 

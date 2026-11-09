@@ -1,13 +1,14 @@
-Notes de version : V1.2.0-Alpha-V2
+Notes de version : V1.2.0
 
 Principaux changements
 
-Cette version est une version d'aperçu. Merci à celles et ceux qui installent et utilisent le plugin, et merci de votre patience au fil des versions ; les signalements de bugs et les suggestions sont les bienvenus.
+Ceci est la version officielle 1.2.0. Merci à celles et ceux qui installent et utilisent le plugin, et merci de votre patience au fil des versions ; les signalements de bugs et les suggestions sont les bienvenus.
 
 - Une entrée en boule flottante : à traîner, à lancer, elle rebondit ; cinq styles, à choisir dans Réglages › Options d’entrée
 - Dix langues dans l'interface, dont huit nouvelles
 - Le plugin a été restructuré, le démarrage à froid est bien plus rapide
 - La fenêtre détachée suit le thème et s'associe à dsh-plugin-wallpaper-engine
+- La fenêtre détachée peut être rendue avec l'accélération GPU, activée par défaut et coupée automatiquement si elle n'est pas prise en charge
 - La liste ne se rafraîchissait pas toujours après une suppression ; corrigé
 - Sans runtime, le téléchargement est maintenant proposé
 - Le dossier de données peut revenir à son emplacement par défaut
@@ -24,6 +25,7 @@ Nouveautés
 - Réglages › Dossier de données : changer d'emplacement, revenir à l'emplacement par défaut
 - Les notes de version sont traduites elles aussi
 - « Fenêtre détachée » : reprendre le fond d'écran de dsh-plugin-wallpaper-engine ou téléverser sa propre image ; flou, verre dépoli, assombrissement
+- Un mode de rendu accéléré par GPU pour la fenêtre détachée : activé par défaut, désactivable dans Réglages › Fenêtre détachée ; sans prise en charge par la carte graphique ou le pilote, retour automatique au rendu logiciel
 
 Améliorations
 

@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Rétablir la valeur par défaut",
     "setGroupWallpaper": "Fenêtre détachée",
+    "setWindowGpu": "Accélération GPU",
+    "setWindowGpuHint": "Activée par défaut ; s'applique à la prochaine ouverture et bascule sur le rendu logiciel si le GPU est inutilisable.",
     "setWallpaperOn": "Fond d'écran",
     "setWallpaperOnHint": "Désactivé, la fenêtre n'affiche plus de fond",
     "setWallpaperBlur": "Flou de l'image",

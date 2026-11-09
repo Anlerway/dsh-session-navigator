@@ -12,7 +12,7 @@
  *       header: { style },                <- 会话界面按钮样式: 自动 or 仅显示图标
  *       entry:  { mode, physics },       <- 入口位置: 左下角 or 悬浮球 or 全部; 物理效果
  *       modal:  { sizing, size, percent, dim, closeOnBackdrop },
- *       window: { alwaysOnTop, bounds },   <- geometry of 独立窗口
+ *       window: { gpu, alwaysOnTop, bounds }, <- rendering and geometry of 独立窗口
  *     },
  *     list: {
  *       autoCollapse,   <- 自动折叠: fold a container after entering it
@@ -220,9 +220,9 @@ export function defaultSettings() {
         dim: 0,
         closeOnBackdrop: true,
       },
-      // Remembered geometry of 独立窗口. null means "never placed yet": the
-      // client then centres it once and records where it landed.
-      window: { alwaysOnTop: false, bounds: null },
+      // 独立窗口的渲染与几何。gpu 默认开启，显卡或驱动不支持时由 helper 回报、
+      // Host 落成 false；bounds 为 null 表示"从未摆过"，客户端居中一次后记下。
+      window: { gpu: true, alwaysOnTop: false, bounds: null },
     },
     // 归档 = 视觉降权, never hidden (hard constraint 3), so the default keeps
     // showing it; folding a container is a convenience, not a behaviour.
@@ -458,6 +458,7 @@ export function normalizeSettings(raw) {
   if (typeof modal.closeOnBackdrop === "boolean") out.shell.modal.closeOnBackdrop = modal.closeOnBackdrop;
 
   const windowOptions = shell.window && typeof shell.window === "object" ? shell.window : {};
+  if (typeof windowOptions.gpu === "boolean") out.shell.window.gpu = windowOptions.gpu;
   if (typeof windowOptions.alwaysOnTop === "boolean") out.shell.window.alwaysOnTop = windowOptions.alwaysOnTop;
   // An earlier document stores bounds on `modal.bounds`; fold them in so a user
   // keeps the position of their window.

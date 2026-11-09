@@ -346,6 +346,12 @@ test("入口位置 decides which shapes the footer draws, and the ball stays on 
   api.entryMode.set("nonsense");
   assert.equal(api.entryMode.mode, "sidebar");
   assert.deepEqual(shapes(), ["se-footerBtn"]);
+
+  // 全部 in the detached window: hostBridge says this document is the window.
+  const detached = loadClientBundle({ document: makeDom().document, expose: EXPOSE });
+  detached.bundle.apply(makeHost({ hostBridge: { request: async () => null } }));
+  detached.test.entryMode.set("both");
+  assert.deepEqual(buttonsIn(detached.test.FooterAction({ t: (key) => key, wide: true })).map((node) => node.props.className).filter((name) => name === "se-ball"), []);
 });
 
 /** A button node the drag handlers can talk to, without a DOM library. */

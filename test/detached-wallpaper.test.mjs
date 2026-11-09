@@ -69,6 +69,7 @@ async function boot({ settings, wallpapers, search = "", later = [], own = OWN, 
   document.readyState = "complete";
   const asked = [];
   const timers = [];
+  const intervals = [];
   let answered = 0;
   const fetch = async (url) => {
     asked.push(String(url));
@@ -94,6 +95,7 @@ async function boot({ settings, wallpapers, search = "", later = [], own = OWN, 
   const location = { search };
   const setInterval = (fn, ms) => {
     timers.push(fn);
+    intervals.push(ms);
     return timers.length;
   };
   new Function("document", "location", "fetch", "setInterval", SCRIPT)(
@@ -105,7 +107,7 @@ async function boot({ settings, wallpapers, search = "", later = [], own = OWN, 
   // One turn for the promise chain of the first poll.
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return { document, asked, timers };
+  return { document, asked, timers, intervals };
 }
 
 /** Run one more poll of the asset and let its promise chain settle. */
@@ -151,14 +153,100 @@ test("a video wallpaper loops, muted, and sizes itself the same way", async () =
     wallpapers: [VIDEO],
   });
 
-  const video = document.getElementById("se-wallpaper").querySelector("video");
-  assert.ok(video, "the picture is a <video>");
+  const layer = document.getElementById("se-wallpaper");
+  assert.equal(layer.style.filter, "none", "a default look keeps the layer off the filter path");
+  const video = layer.querySelector("video");
+  assert.ok(video, "the clip is the source");
+  assert.equal(video.className, "se-wallpaper-source", "the source itself is not painted");
   assert.equal(video.getAttribute("src"), VIDEO.media);
   assert.equal(video.muted, true);
   assert.equal(video.loop, true);
   assert.equal(video.autoplay, true);
-  assert.equal(video.style.objectFit, "contain");
-  assert.equal(video.style.transform, "scaleX(-1)", "flipped the way the plugin flips it");
+
+  const canvas = layer.querySelector("canvas");
+  assert.ok(canvas, "the painted element is a canvas");
+  assert.equal(canvas.className, "se-wallpaper-media");
+  assert.equal(canvas.style.objectFit, "contain");
+  assert.equal(canvas.style.transform, "scaleX(-1)", "flipped the way the plugin flips it");
+});
+
+test("a video wallpaper paints at a fixed frame budget, not the clip's own cadence", async () => {
+  const { document, timers, intervals } = await boot({
+    settings: { id: "up-2", objectFit: "cover" },
+    wallpapers: [VIDEO],
+  });
+  const canvas = document.getElementById("se-wallpaper").querySelector("canvas");
+  const video = document.getElementById("se-wallpaper").querySelector("video");
+  assert.ok(canvas && video, "the layer holds a source and a canvas");
+
+  // A decoded frame reports its dimensions; the pump copies it at that size and
+  // lets CSS object-fit do the crop, exactly as it did for the video element.
+  video.readyState = 2;
+  video.videoWidth = 1920;
+  video.videoHeight = 1080;
+  video.dispatchEvent({ type: "loadeddata" });
+  assert.equal(canvas.width, 1920);
+  assert.equal(canvas.height, 1080);
+
+  const frame = intervals.findIndex((ms) => ms > 30 && ms < 40);
+  assert.notEqual(frame, -1, "the pump asks for roughly one frame every 33 ms");
+
+  const paints = canvas.draws;
+  timers[frame]();
+  assert.equal(canvas.draws, paints + 1, "one tick paints one frame, never a burst");
+});
+
+test("a 4K clip is painted at the window's pixels, not the clip's", async () => {
+  const { document } = await boot({ settings: { id: "up-2" }, wallpapers: [VIDEO] });
+  const canvas = document.getElementById("se-wallpaper").querySelector("canvas");
+  const video = document.getElementById("se-wallpaper").querySelector("video");
+  const hadDpr = Object.prototype.hasOwnProperty.call(globalThis, "devicePixelRatio");
+  const previousDpr = globalThis.devicePixelRatio;
+  Object.defineProperty(globalThis, "devicePixelRatio", { value: 2, configurable: true });
+  try {
+    // A 4K clip in a 960×540 CSS box at 2× DPR is a 1920×1080 bitmap: the
+    // window never copies pixels it cannot show.
+    canvas.clientWidth = 960;
+    canvas.clientHeight = 540;
+    video.readyState = 2;
+    video.videoWidth = 3840;
+    video.videoHeight = 2160;
+    video.dispatchEvent({ type: "loadeddata" });
+    assert.equal(canvas.width, 1920);
+    assert.equal(canvas.height, 1080);
+  } finally {
+    if (hadDpr) Object.defineProperty(globalThis, "devicePixelRatio", { value: previousDpr, configurable: true });
+    else delete globalThis.devicePixelRatio;
+  }
+});
+
+test("a clip with frame callbacks paints only when the decoder has a frame", async () => {
+  const { document, intervals } = await boot({ settings: { id: "up-2" }, wallpapers: [VIDEO] });
+  const canvas = document.getElementById("se-wallpaper").querySelector("canvas");
+  const video = document.getElementById("se-wallpaper").querySelector("video");
+  const callbacks = [];
+  video.requestVideoFrameCallback = (callback) => {
+    callbacks.push(callback);
+    return callbacks.length;
+  };
+  video.cancelVideoFrameCallback = () => {};
+  video.readyState = 2;
+  video.videoWidth = 1920;
+  video.videoHeight = 1080;
+  video.dispatchEvent({ type: "loadeddata" });
+
+  assert.equal(callbacks.length, 1, "the decoder schedules the next callback, not a timer");
+  assert.equal(intervals.some((ms) => ms > 30 && ms < 40), false, "no frame timer when the engine can say when a frame exists");
+
+  const initial = canvas.draws;
+  callbacks.shift()(1000);
+  assert.equal(canvas.draws, initial + 1, "a new frame paints");
+  assert.equal(callbacks.length, 1, "and asks for the next one");
+
+  callbacks.shift()(1010);
+  assert.equal(canvas.draws, initial + 1, "a second frame inside the budget is skipped");
+  callbacks.shift()(1040);
+  assert.equal(canvas.draws, initial + 2, "the next budgeted frame paints");
 });
 
 test("a Scene wallpaper falls back to the frame the plugin rendered", async () => {
@@ -190,6 +278,7 @@ test("the poll replaces the picture when the chosen wallpaper changes", async ()
   const layer = document.getElementById("se-wallpaper");
   assert.equal(layer.querySelector("img"), null, "the picture is gone");
   assert.equal(layer.querySelector("video").getAttribute("src"), VIDEO.media, "the video took its place");
+  assert.ok(layer.querySelector("canvas.se-wallpaper-media"), "and it is painted through the frame pump");
 });
 
 test("an uploaded picture wins over the plugin's, stamped so a replacement lands", async () => {
@@ -213,8 +302,8 @@ test("an uploaded picture wins over the plugin's, stamped so a replacement lands
     "/session-navigator/api/wallpaper/media?v=" + encodeURIComponent(UPLOAD.modified + "-" + UPLOAD.bytes),
     "the stamp changes when the bytes do, so a replaced file is re-fetched",
   );
-  assert.equal(layer.style.filter, "blur(0px)", "an uploaded file gets no plugin look of its own");
-  assert.equal(video.style.objectFit, "cover");
+  assert.equal(layer.style.filter, "none", "an uploaded file gets no plugin look and no filter layer");
+  assert.equal(layer.querySelector("canvas.se-wallpaper-media").style.objectFit, "cover");
 });
 
 test("美化 off is a plain window, even with a wallpaper chosen everywhere else", async () => {
@@ -301,7 +390,7 @@ test("磨砂度 is the panel's density: 0 is clear glass, 100 is the old panel",
     "0%",
     "0 is a percentage like any other: the glass is gone",
   );
-  assert.match(clear.document.getElementById("se-wallpaper").style.filter, /^blur\(0px\)/, "and the picture is sharp");
+  assert.equal(clear.document.getElementById("se-wallpaper").style.filter, "none", "a sharp picture needs no filter layer");
 
   const frosted = await boot({
     settings: { id: "up-1" },

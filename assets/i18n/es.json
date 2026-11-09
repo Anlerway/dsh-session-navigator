@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Restablecer el valor por defecto",
     "setGroupWallpaper": "Ventana independiente",
+    "setWindowGpu": "Aceleración GPU",
+    "setWindowGpuHint": "Activada por defecto; se aplica al abrir la próxima ventana y usa renderizado por software si la GPU no sirve.",
     "setWallpaperOn": "Fondo de pantalla",
     "setWallpaperOnHint": "Apagado, la ventana ya no muestra fondo",
     "setWallpaperBlur": "Desenfoque de la imagen",

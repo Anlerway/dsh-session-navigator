@@ -1,13 +1,14 @@
-Versionshinweise: V1.2.0-Alpha-V2
+Versionshinweise: V1.2.0
 
 Wichtigste Änderungen
 
-Dies ist eine Vorschauversion. Danke an alle, die das Plugin installieren und benutzen, und danke für die Geduld bei jedem Zwischenstand; Fehlerberichte und Vorschläge sind willkommen.
+Dies ist die offizielle Version 1.2.0. Danke an alle, die das Plugin installieren und benutzen, und danke für die Geduld bei jedem Zwischenstand; Fehlerberichte und Vorschläge sind willkommen.
 
 - Ein Schwebekugel-Einstieg: ziehen, werfen, abprallen lassen; fünf Stile, auswählbar unter Einstellungen › Einstieg-Optionen
 - Zehn Sprachen in der Oberfläche, acht davon neu
 - Das Plugin wurde umgebaut, der Kaltstart ist deutlich schneller
 - Das abgesetzte Fenster folgt dem Theme und arbeitet mit dsh-plugin-wallpaper-engine zusammen
+- Das abgesetzte Fenster kann per GPU beschleunigt rendern; standardmäßig an, bei fehlender Unterstützung automatisch aus
 - Wurde die Liste nach dem Löschen einer Sitzung nicht aktualisiert, ist das behoben
 - Fehlt eine Laufzeit, wird der Download jetzt direkt angeboten
 - Das Datenverzeichnis lässt sich auf den Standard zurücksetzen
@@ -24,6 +25,7 @@ Neu
 - Einstellungen › Datenverzeichnis: Speicherort ändern, auf den Standard zurücksetzen
 - Versionshinweise gibt es ebenfalls in allen Sprachen
 - „Abgesetztes Fenster“: das Hintergrundbild von dsh-plugin-wallpaper-engine übernehmen oder ein eigenes Bild hochladen; Weichzeichnen, Milchglas, Abdunkeln
+- Ein GPU-beschleunigter Rendermodus für das abgesetzte Fenster: standardmäßig an, unter Einstellungen › Abgesetztes Fenster abschaltbar; ohne Unterstützung durch Grafikkarte oder Treiber wird automatisch auf Software-Rendering zurückgegriffen
 
 Verbessert
 

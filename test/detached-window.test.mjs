@@ -608,6 +608,39 @@ test("the helper puts the language in the page's URL, and reloads on a switch", 
   assert.match(main, /win\.loadURL\(url\)/, "which reloads the page");
 });
 
+test("the helper keeps hardware acceleration unless the profile turns it off", () => {
+  const main = read("src/detached/main.cjs");
+  assert.match(main, /const DISABLE_GPU = process\.env\.DSH_SE_DISABLE_GPU === "1"/, "one environment switch decides");
+  assert.match(main, /if \(DISABLE_GPU\) app\.disableHardwareAcceleration\?\.\(\);/, "the old unconditional call is now the escape hatch");
+  assert.doesNotMatch(main, /^app\.disableHardwareAcceleration/m, "the window does not opt out of the GPU by default");
+  assert.match(main, /app\.commandLine\.appendSwitch\("enable-gpu-rasterization"\)/, "rasterisation is asked for explicitly");
+  assert.match(main, /app\.commandLine\.appendSwitch\("ignore-gpu-blocklist"\)/, "a virtual GPU is not forced back to software by the blocklist");
+  assert.match(main, /details\?\.type === "GPU"/, "a dead GPU process is reported once");
+});
+
+test("the GPU switch is read before spawn, and a refused GPU is remembered", () => {
+  const launcher = read("src/detached/launcher.js");
+  const host = read("src/index.js");
+  const main = read("src/detached/main.cjs");
+
+  assert.match(launcher, /options\.hardwareAcceleration\(\)/, "the launcher asks settings, not the environment alone");
+  assert.ok(
+    launcher.indexOf("await options.hardwareAcceleration()") < launcher.indexOf("spawn(runtime.binary"),
+    "the answer has to arrive before Electron starts: hardware acceleration cannot be disabled later",
+  );
+  assert.match(launcher, /else env\.DSH_SE_DISABLE_GPU = "1"/, "off means the helper is spawned with the escape hatch set");
+  assert.match(launcher, /message\?\.type === "gpu"/, "the helper's report arrives on the control channel");
+  assert.match(launcher, /options\.onGpu\(message\)/, "and is handed to the Host");
+  assert.match(host, /hardwareAcceleration: async \(\) => normalizeSettings/, "the Host reads the switch for each launch");
+  assert.match(host, /onGpu: \(report\) =>/, "and subscribes to the refusal");
+  assert.match(host, /mergeSettings\(draft, \{ shell: \{ window: \{ gpu: false \} \} \}\)/, "the fallback is written as a normal settings patch");
+  assert.match(main, /if \(!gpuUsable\(status\)\)/, "the helper judges the feature status it actually got");
+  assert.match(main, /reportGpu\("feature-status", status\)/, "and reports it");
+  assert.match(main, /if \(!controlReady\) return;/, "the report waits for the handshake instead of looking unauthenticated");
+  assert.match(main, /message\.type === "hello-ok"/, "the queued report leaves once the Host says hello");
+  assert.match(main, /if \(!quitting\) reportGpu/, "a GPU process torn down on quit is not a driver failure");
+});
+
 test("the panel tells the Host which language it is drawing in", () => {
   const client = read("lib/client.js");
   assert.match(client, /function uiLang\(\)/, "one place answers the question");

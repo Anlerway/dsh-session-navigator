@@ -111,7 +111,7 @@ key 变了（旧版本算的是别的东西、或数据目录换过）就会留�
 
 ## 1.2 `wallpaper/`
 
-设置页「独立窗口美化」里上传的那张图或那段视频，落在 `wallpaper/wallpaper.<ext>`，
+设置页「独立窗口」里上传的那张图或那段视频，落在 `wallpaper/wallpaper.<ext>`，
 **目录里最多一个文件**：换一张会先清掉旧的另一种扩展名。设置文档只记文件名
 （`wallpaper.custom`）和给人看的名字（`wallpaper.customName`），归一只认
 `wallpaper.<两到五位小写扩展名>`，路径一律丢成空串。
@@ -166,7 +166,8 @@ key 变了（旧版本算的是别的东西、或数据目录换过）就会留�
                 "percent": "p70",                     // p50 | p70 | p85 | p100
                 "dim": 0,                             // 0 – 0.8，默认无遮罩
                 "closeOnBackdrop": true },
-    "window": { "alwaysOnTop": false, "bounds": null } // 独立窗口记住的几何
+    "window": { "gpu": true,                        // 独立窗口的 GPU 合成；不支持时自动落成 false
+                "alwaysOnTop": false, "bounds": null } // 独立窗口记住的几何
   },
   "list": { "autoCollapse": false,
             "showArchived": true,

@@ -958,7 +958,9 @@
       // The ball stays on top while the panel is open: it is the one control that
       // must never be buried, so it is also allowed to close what it opened.
       const showButton = entry !== "ball";
-      const showBall = entry !== "sidebar";
+      // The detached window is the panel already; a second floating entry there
+      // has nothing to open, and it would sit on top of the window it belongs to.
+      const showBall = entry !== "sidebar" && !windowHost();
       // 物理效果 off, or the ball hidden by another entry mode, has to stop a
       // flight already in progress. A ball that is merely sitting in the air
       // stays there: placement and throwing are different gestures.

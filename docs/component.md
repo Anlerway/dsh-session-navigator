@@ -196,6 +196,20 @@ Electron 的第一个参数是目录时按应用加载，所以借来的树一�
 `window-closed`（`src/index.js`）。窗口的 OS 层面知识只有那个进程有，走同一条总线意味着
 面板不需要第二条通道。
 
+**窗口默认走 GPU 合成，设置页可以关掉。** 设置键 `shell.window.gpu` 默认 `true`；
+`src/detached/launcher.js` 在 spawn 之前读它，关掉时给 helper 设 `DSH_SE_DISABLE_GPU=1`
+（父进程已有的同名变量仍然优先，作为手动逃生口）。helper 开着时显式打开
+`enable-gpu-rasterization` 与 `ignore-gpu-blocklist`（虚拟机、远程桌面的虚拟 GPU 常被
+Chromium 黑名单按回软件渲染）。视频壁纸仍是 canvas 逐帧拷贝，GPU 合成并不等于视频硬解，
+但窗口的列表、阴影和壁纸层不再由软件光栅化。
+
+**不支持时自动关，并把结论记下来。** helper 启动 3 秒后读一次 `getGPUFeatureStatus()`；
+`gpu_compositing` 不以 `enabled` 开头，或 GPU 进程在退出前异常消失，就通过控制通道发一条
+`{ type: "gpu", available: false, reason, status }`（握手完成前先排队）。Host 把
+`shell.window.gpu` 写成 `false`，下次启动直接走软件渲染，不再每次重试；设置页仍可手动打开。
+GPU 进程异常退出会在 Host 日志留一行 `gpu process gone`；`DSH_SE_GPU_LOG=1` 另打一条
+`getGPUFeatureStatus()`，用于确认这台机器的驱动究竟给了什么。
+
 ## 7. 相关文件
 
 | 文件 | 职责 |

@@ -48,10 +48,13 @@ body {
   font-size: 12px;
 }
 
-/* The footer button is the panel's entry point inside DSH's sidebar. In the
-   window the panel is already open, so the button is the one thing that would
-   look wrong — it is rendered, just never shown. */
-.se-footerBtn {
+/* The footer button and the floating ball are the panel's entry points inside
+   DSH's sidebar. In the window the panel is already open, so both are the one
+   thing that would look wrong — they are rendered, just never shown. FooterAction
+   also skips the ball when hostBridge says this is the window; this rule keeps a
+   stale bundle honest. */
+.se-footerBtn,
+.se-ball {
   display: none !important;
 }
 
@@ -175,6 +178,19 @@ html[data-theme="light"] .se-caption-close:hover {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* The video is the source the canvas copies, not something to show. It stays
+   off-screen at a small nominal size: a detached element still decodes, and the
+   canvas above is the only thing this window paints. */
+#se-wallpaper .se-wallpaper-source {
+  position: absolute;
+  left: -100000px;
+  top: 0;
+  width: 320px;
+  height: 180px;
+  opacity: 0.01;
+  pointer-events: none;
 }
 
 /* 壁纸暗度: a black veil on the picture, for one too bright to read over. It sits

@@ -170,6 +170,32 @@ export class Node {
     return this.attributes.has(String(name).toLowerCase());
   }
 
+  /** The 2D context the wallpaper's video pump draws through. */
+  getContext(kind) {
+    if (this.tagName !== "CANVAS" || kind !== "2d") return null;
+    if (!this.context) {
+      this.draws = 0;
+      this.context = {
+        drawImage: () => {
+          this.draws += 1;
+        },
+      };
+    }
+    return this.context;
+  }
+
+  /** Enough of HTMLMediaElement for the wallpaper script to start a video. */
+  play() {
+    this.playing = true;
+    return Promise.resolve();
+  }
+  pause() {
+    this.playing = false;
+  }
+  load() {
+    this.reloaded = true;
+  }
+
   appendChild(child) {
     child.parentNode = this;
     this.childNodes.push(child);

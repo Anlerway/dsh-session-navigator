@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Вернуть значение по умолчанию",
     "setGroupWallpaper": "Отдельное окно",
+    "setWindowGpu": "Ускорение GPU",
+    "setWindowGpuHint": "Включено по умолчанию; применяется при следующем открытии и переходит на программный рендеринг, если GPU недоступен.",
     "setWallpaperOn": "Обои",
     "setWallpaperOnHint": "Если выключить, окно больше не показывает обои",
     "setWallpaperBlur": "Размытие картинки",

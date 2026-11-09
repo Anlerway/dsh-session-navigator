@@ -97,7 +97,7 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 | `capability-missing` | 501 | 该 profile 缺这个服务 |
 | `registry-detach-failed` | 409 | DSH 的工作区登记拒绝了这次解绑，删除已整体撤销，会话原样留在原处 |
 | `cross-site` | 403 | 跨站写请求（`Sec-Fetch-Site: cross-site`） |
-| `unsupported-media-type` | 415 | 写请求没用 `application/json` |
+| `unsupported-media-type` | 415 | 写请求没用 `application/json`，或原始上传用了表单类型 |
 | 其它（含 `ui-asset-missing`） | 500 | 未预期的服务端故障 |
 
 ### 3.1 写请求的同源约束
@@ -109,8 +109,12 @@ bad-request`：一个写错的头不该变成"最后写入者赢"。
 - `Sec-Fetch-Site: cross-site` → `403 cross-site`；
 - `Content-Type` 不是 `application/json` → `415 unsupported-media-type`。JSON 不是
   CORS 的"简单内容类型"，跨站带这个头发请求会先触发预检，而 DSH 不应答预检。
+- `POST /wallpaper/custom` 是唯一例外：它的 body 就是文件，不能是 JSON。这里拒绝的是
+  `text/plain`、`application/x-www-form-urlencoded`、`multipart/form-data` 这三种表单类型
+  （它们不需要预检）；`image/*`、`video/*` 与没有 content-type 的本地请求照常放行。
 
-插件自己的前端一直带 `content-type: application/json; charset=utf-8`，所以不受影响。
+插件自己的前端一直带 `content-type: application/json; charset=utf-8`，所以不受影响；
+上传壁纸时带的是文件自己的 `image/*` / `video/*`。
 用 curl 手工调写接口要显式加这个头：
 
 ```bash
@@ -588,7 +592,7 @@ Host 自己也留一份：收到 `session-status` 时把 `rows` 连同到达时�
 
 ### 4.9.1 自定义壁纸
 
-独立窗口底下的那张图（见设置页「独立窗口美化」组）。
+独立窗口底下的那张图（见设置页「独立窗口」组）。
 
 | 路由 | body / query | 返回 |
 |---|---|---|
@@ -614,6 +618,14 @@ handler 自己 `createWriteStream` 落盘。**上传没有固定上限，边界�
 
 媒体路由支持 `Range`（`bytes=a-b` / `a-` / `-后缀` 三种写法，206 + `Content-Range`），
 否则视频壁纸拖不动进度。全部 `no-store`：换了壁纸，窗口四秒内的下一次轮询就该看见。
+
+视频壁纸不直接交给合成器：`assets/detached/wallpaper.js` 把 `<video>` 放在离屏小窗里当源，
+用 `drawImage` 画到 canvas。画布位图不超过窗口显示尺寸乘设备像素比（DPR 最多算 2），
+4K 素材因此不会按 3840×2160 逐帧拷贝。有 `requestVideoFrameCallback` 时只在解码器真的出了
+新帧才重绘，否则退回 30 fps 的 rAF 预算；窗口隐藏或视频暂停时停泵，回到前台再继续。
+60/120 fps 的素材因此不会要求整窗按原帧率重绘。只有模糊度或亮度 / 对比度 / 饱和度真的离开默认值时，
+才给壁纸层加 `filter`；默认值是 `none`，因为即使 `blur(0px)` 也会让 Chromium 多开一层离屏滤镜、
+在每一帧 canvas 更新后重新栅格化。
 
 设置里的 `wallpaper` 有五项，都由窗口脚本 `assets/detached/wallpaper.js` 在每轮轮询里读：
 
@@ -742,7 +754,7 @@ profile，删一半留下的是一份谁都用不了的目录，等下一次比�
 目录随包发布（`package.json` 的 `files` 里有 `docs/changelog/`），装好的副本读的就是仓库
 里那几个文件，没有第二份要同步，也没有一步"发版前记得复制"。十份必须一起改：条目数由
 `test/notes.test.mjs` 对齐，某一版漏写一条会在测试里失败，而不是让看那种语言的用户
-少读一条。标题行自己带版本号（`更新说明：V1.2.0-Alpha-V2` 这样），但路由返回的
+少读一条。标题行自己带版本号（`更新说明：V1.2.0` 这样），但路由返回的
 `version` 来自 `package.json`——标题是给人读的，判断"这版看过没有"不能靠解析文档。
 
 解析只认一个很小的子集：标题、无序/有序列表、分隔线、`**粗体**`、`\`代码\``；认不出的行
@@ -946,7 +958,10 @@ profile，删一半留下的是一份谁都用不了的目录，等下一次比�
 ## 5. 客户端怎么用
 
 `lib/client.js` 里 `storeOf(path)` / `revisionOf(path)` 负责把响应塞进订阅式 store，
-所有写请求都带 `If-Match`。客户端不解析 `error` 文案，只按 `code` 分支；
+写请求默认都带 `If-Match`。例外是自定义壁纸的上传与删除（`POST` / `DELETE /wallpaper/custom`）：
+路由只 merge `wallpaper.custom` 与 `wallpaper.customName` 两个字段，不碰其它设置，
+所以两端都不发修订号，避免另一个窗口写过设置后这里拿着陈旧 revision 一直 409；
+返回里的 revision 仍会刷新本地缓存。客户端不解析 `error` 文案，只按 `code` 分支；
 `revision-conflict` 的处理是重新 `GET /bootstrap?refresh=1` 再让用户重试，
 设置页同理——它重读 `GET /settings` 并采用新的 `revision`，否则每个控件都会带着
 同一个陈旧的 `If-Match` 一直 409（`lib/client.js` `SettingsSection.save`）。

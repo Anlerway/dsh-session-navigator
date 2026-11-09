@@ -39,6 +39,7 @@ test("defaults keep the panel plain: 浮窗, fixed medium, no scrim", () => {
   // Hard constraint 10: a wallpaper must never be darkened by default.
   assert.equal(settings.shell.modal.dim, 0);
   assert.equal(settings.shell.modal.closeOnBackdrop, true);
+  assert.equal(settings.shell.window.gpu, true);
   assert.equal(settings.shell.window.alwaysOnTop, false);
   assert.equal(settings.shell.window.bounds, null);
   // The plugin stores no runtime preference: the browser component is not
@@ -270,6 +271,15 @@ test("the scrim is clamped to [0, MAX_DIM]", () => {
   assert.equal(normalizeSettings({ shell: { modal: { dim: 4 } } }).shell.modal.dim, MAX_DIM);
   assert.equal(normalizeSettings({ shell: { modal: { dim: "0.5" } } }).shell.modal.dim, 0);
   assert.equal(MAX_DIM, 0.8);
+});
+
+test("the GPU switch is a boolean and defaults to on", () => {
+  assert.equal(defaultSettings().shell.window.gpu, true);
+  assert.equal(normalizeSettings({ shell: { window: { gpu: false } } }).shell.window.gpu, false);
+  assert.equal(normalizeSettings({ shell: { window: { gpu: true } } }).shell.window.gpu, true);
+  // A string in a hand-edited document is not a switch: keep the default.
+  assert.equal(normalizeSettings({ shell: { window: { gpu: "false" } } }).shell.window.gpu, true);
+  assert.equal(normalizeSettings({ shell: { window: { alwaysOnTop: false } } }).shell.window.gpu, true);
 });
 
 test("remembered window bounds are validated, not echoed", () => {

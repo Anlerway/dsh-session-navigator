@@ -1,13 +1,14 @@
-Notas da versão: V1.2.0-Alpha-V2
+Notas da versão: V1.2.0
 
 Principais mudanças
 
-Esta é uma versão de prévia. Obrigado a quem instala e usa o plugin, e pela paciência a cada versão; relatos de bugs e sugestões são bem-vindos.
+Esta é a versão oficial 1.2.0. Obrigado a quem instala e usa o plugin, e pela paciência a cada versão; relatos de bugs e sugestões são bem-vindos.
 
 - Entrada com bola flutuante: arrasta-se, atira-se e quica; cinco estilos, escolhida em Configurações › Ajustes de entrada
 - Dez idiomas na interface, oito deles novos
 - O plugin foi reestruturado e a inicialização a frio ficou bem mais rápida
 - A janela destacada adapta-se ao tema e integra-se com o dsh-plugin-wallpaper-engine
+- A janela destacada pode renderizar com aceleração de GPU, ativada por padrão e desativada automaticamente quando não houver suporte
 - A lista nem sempre se atualizava ao excluir uma sessão; corrigido
 - Sem runtime, agora o download é oferecido
 - A pasta de dados pode voltar ao padrão
@@ -24,6 +25,7 @@ Novidades
 - Configurações › Pasta de dados: mudar de local e voltar ao padrão
 - As notas da versão também são traduzidas
 - «Janela destacada»: seguir o papel de parede do dsh-plugin-wallpaper-engine ou enviar uma imagem própria; desfoque, vidro fosco e escurecimento
+- Um modo de renderização acelerada por GPU para a janela destacada: ativado por padrão, pode ser desligado em Configurações › Janela destacada; sem suporte da placa de vídeo ou do driver, volta automaticamente à renderização por software
 
 Melhorias
 

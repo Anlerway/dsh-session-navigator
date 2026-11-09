@@ -117,12 +117,36 @@ function applyLang(lang) {
  */
 const CAPTION_FALLBACK = { color: "#232324", symbol: "#e6e6e6" };
 
-app.disableHardwareAcceleration?.();
+// Hardware acceleration is on by default: the page is a dense list with a
+// video-capable wallpaper layer, and software compositing made both the
+// panel and the window feel heavier than the same page inside DSH.
+// `DSH_SE_DISABLE_GPU=1` is the escape hatch for a broken driver or a
+// remote session, where Chromium's GPU process would otherwise take the
+// window down with it. The switch has to be decided before `whenReady`.
+const DISABLE_GPU = process.env.DSH_SE_DISABLE_GPU === "1";
+const LOG_GPU = process.env.DSH_SE_GPU_LOG === "1";
+if (DISABLE_GPU) app.disableHardwareAcceleration?.();
+else {
+  app.commandLine.appendSwitch("enable-gpu-rasterization");
+  // Chromium's blocklist is conservative about virtual GPUs (VMware SVGA,
+  // VirtualBox, some RDP adapters). Without this switch the window starts a
+  // GPU process and then composites in software anyway — which is exactly the
+  // case this option exists for.
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+}
 
 /** @type {BrowserWindow | null} */
 let win = null;
 /** @type {import("node:net").Socket | null} */
 let control = null;
+/** The Host only accepts messages after it has answered the hello. */
+let controlReady = false;
+/** A GPU report that arrived before the handshake finished. */
+let gpuReport = null;
+/** A machine reports its missing GPU once, not once per frame. */
+let gpuReported = false;
+/** A GPU process torn down on quit is not a driver failure. */
+let quitting = false;
 
 /**
  * Remembered geometry, clamped to a visible display.
@@ -166,6 +190,38 @@ function send(event, payload) {
 }
 
 /**
+ * Chromium answers with the feature set it actually enabled. A report that is
+ * missing (older Electron) is not evidence against the GPU.
+ *
+ * @param {any} status
+ * @returns {boolean}
+ */
+function gpuUsable(status) {
+  const compositing = typeof status?.gpu_compositing === "string" ? status.gpu_compositing : "";
+  return compositing === "" || compositing.startsWith("enabled");
+}
+
+/**
+ * Tell the Host that this machine cannot use the GPU.
+ *
+ * The settings page owns the switch, so the helper must not write settings
+ * itself; it reports the fact and the Host remembers it for the next launch.
+ * The message is queued until `hello-ok`: writing earlier would look like an
+ * unauthenticated client and the Host would drop the connection.
+ *
+ * @param {string} reason
+ * @param {any} [status]
+ */
+function reportGpu(reason, status) {
+  if (DISABLE_GPU || gpuReported) return;
+  gpuReported = true;
+  gpuReport = { available: false, reason, status: status ?? null };
+  if (!controlReady) return;
+  send("gpu", gpuReport);
+  gpuReport = null;
+}
+
+/**
  * Run `fn` at most once per `ms`, trailing edge.
  *
  * A resize fires dozens of events per second; writing the geometry (and posting
@@ -203,6 +259,7 @@ function persistBounds() {
 
 function connectControl() {
   if (!PORT) return;
+  controlReady = false;
   const socket = createConnection({ host: "127.0.0.1", port: PORT });
   control = socket;
   socket.setEncoding("utf8");
@@ -229,14 +286,22 @@ function connectControl() {
         app.quit();
       } else if (message.type === "lang") {
         applyLang(message.lang);
+      } else if (message.type === "hello-ok") {
+        controlReady = true;
+        if (gpuReport) {
+          send("gpu", gpuReport);
+          gpuReport = null;
+        }
       }
     }
   });
   socket.on("error", () => {
     control = null;
+    controlReady = false;
   });
   socket.on("close", () => {
     control = null;
+    controlReady = false;
   });
 
   const heartbeat = setInterval(() => send("ping", {}), 20_000);
@@ -396,6 +461,20 @@ ipcMain.handle("se:window", (_event, action) => {
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 
+// A GPU process that dies is otherwise just a window that stops repainting.
+// The Host log gets one line, which is enough to tell a driver problem from a
+// page problem; the `DSH_SE_DISABLE_GPU=1` fallback is documented in
+// docs/component.md.
+app.on("before-quit", () => {
+  quitting = true;
+});
+app.on("child-process-gone", (_event, details) => {
+  if (details?.type === "GPU") {
+    console.error(`session-navigator detached: gpu process gone (${details.reason ?? "unknown"})`);
+    if (!quitting) reportGpu(`gpu-process-${details.reason ?? "gone"}`);
+  }
+});
+
 app.whenReady().then(() => {
   // The page comes from the Host on loopback; no other origin may ever share its
   // session. Local assets, devtools and loopback are reachable; everything else
@@ -412,6 +491,24 @@ app.whenReady().then(() => {
   });
   connectControl();
   createWindow();
+  if (!DISABLE_GPU) {
+    // `getGPUFeatureStatus()` reports what Chromium decided, not what it was
+    // asked for; giving the window a few seconds is what makes the answer
+    // about this machine rather than about a process that has not started.
+    setTimeout(() => {
+      let status = null;
+      try {
+        status = app.getGPUFeatureStatus();
+      } catch {
+        return;
+      }
+      if (LOG_GPU) console.log(`session-navigator detached: gpu ${JSON.stringify(status)}`);
+      if (!gpuUsable(status)) {
+        console.error(`session-navigator detached: gpu unusable (${status?.gpu_compositing ?? "unknown"}); asking for software rendering`);
+        reportGpu("feature-status", status);
+      }
+    }, 3000).unref?.();
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

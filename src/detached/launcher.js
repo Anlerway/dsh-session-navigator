@@ -105,6 +105,11 @@ function redactLines(lines) {
  *   app directory to pass as the first argument, because a borrowed tree's own
  *   `resources` must stay untouched
  * @param {() => number} options.webPort
+ * @param {() => Promise<boolean>} [options.hardwareAcceleration] whether the
+ *   detached window may use the GPU; read before every launch (the switch is
+ *   stored in settings and only applies to the next window)
+ * @param {(report: { available?: boolean, reason?: string, status?: any }) => void} [options.onGpu]
+ *   called when the helper proves the GPU cannot be used
  * @param {(level: string, message: string) => void} [options.log]
  * @param {string} [options.profileKey]
  * @returns {object}
@@ -206,7 +211,19 @@ export function createDetachedController(options) {
         }
         if (message?.type === "ping") socket.write(`${JSON.stringify({ type: "pong" })}\n`);
         else if (message?.type === "bounds") rememberBounds(message.bounds).catch(() => {});
-        else if (message?.type === "closed") {
+        else if (message?.type === "gpu") {
+          log(
+            message.available === false ? "warn" : "info",
+            `detached: GPU ${message.available === false ? "unavailable" : "ready"}${message.reason ? ` (${message.reason})` : ""}`,
+          );
+          if (typeof options.onGpu === "function") {
+            try {
+              options.onGpu(message);
+            } catch {
+              /* a listener that throws must not corrupt the control channel */
+            }
+          }
+        } else if (message?.type === "closed") {
           sockets.delete(socket);
           child = null;
           closedByUser = true;
@@ -260,6 +277,19 @@ export function createDetachedController(options) {
       return { pid: child.pid ?? null, port: control.port };
     }
 
+    // The switch belongs to settings, but the decision must be made before the
+    // child starts: `app.disableHardwareAcceleration()` cannot run later. A
+    // failed read keeps the default (on); an explicit env var still wins as
+    // the manual escape hatch.
+    let useGpu = true;
+    if (typeof options.hardwareAcceleration === "function") {
+      try {
+        useGpu = (await options.hardwareAcceleration()) !== false;
+      } catch (error) {
+        log("warn", `detached: could not read the GPU setting: ${error?.message ?? error}`);
+      }
+    }
+
     const userData = helperProfileDir(options.dataDir, profileKey);
     await mkdir(userData, { recursive: true });
 
@@ -287,6 +317,8 @@ export function createDetachedController(options) {
     // ★ The DSH desktop app runs with ELECTRON_RUN_AS_NODE=1; inheriting it makes
     // the child a plain Node process with no BrowserWindow at all.
     delete env.ELECTRON_RUN_AS_NODE;
+    if (useGpu && process.env.DSH_SE_DISABLE_GPU !== "1") delete env.DSH_SE_DISABLE_GPU;
+    else env.DSH_SE_DISABLE_GPU = "1";
 
     // An owned runtime gets no path argument: `electron.exe <script>` is handled
     // by the bundled `default_app.asar`, which this build does not install (it is

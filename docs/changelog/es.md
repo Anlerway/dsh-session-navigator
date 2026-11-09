@@ -1,13 +1,14 @@
-Notas de la versión: V1.2.0-Alpha-V2
+Notas de la versión: V1.2.0
 
 Cambios principales
 
-Es una versión de vista previa. Gracias a quienes instalan y usan el plugin, y por la paciencia en cada versión; los informes de errores y las sugerencias son bienvenidos.
+Esta es la versión oficial 1.2.0. Gracias a quienes instalan y usan el plugin, y por la paciencia en cada versión; los informes de errores y las sugerencias son bienvenidos.
 
 - Entrada con bola flotante: se arrastra, se lanza y rebota; cinco estilos, se elige en Ajustes › Ajustes de entrada
 - Diez idiomas en la interfaz, ocho de ellos nuevos
 - El plugin se reestructuró y el arranque en frío es mucho más rápido
 - La ventana independiente se adapta al tema y se integra con dsh-plugin-wallpaper-engine
+- La ventana independiente puede renderizar con aceleración por GPU, activada por defecto y desactivada automáticamente si no es compatible
 - La lista no siempre se refrescaba al borrar una sesión; corregido
 - Si falta el runtime, ahora se ofrece la descarga
 - La carpeta de datos puede volver a la predeterminada
@@ -24,6 +25,7 @@ Novedades
 - Ajustes › Carpeta de datos: cambiar de ubicación y volver a la predeterminada
 - Las notas de la versión también están traducidas
 - «Ventana independiente»: seguir el fondo de dsh-plugin-wallpaper-engine o subir una imagen propia; desenfoque, vidrio esmerilado y oscurecimiento
+- Un modo de renderizado acelerado por GPU para la ventana independiente: activado por defecto, se puede desactivar en Ajustes › Ventana independiente; si la tarjeta gráfica o el controlador no lo admiten, vuelve automáticamente al renderizado por software
 
 Mejoras
 

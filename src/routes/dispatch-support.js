@@ -67,17 +67,32 @@ export function announceWrite(api, path, method) {
  *     a cross-site form or `fetch` with it needs a preflight that DSH never
  *     answers. The panel's own requests already send it.
  *
+ * The raw upload route is the exception: its body is the file, so it cannot be
+ * JSON. The same rule still applies in form: image/* and video/* are not
+ * CORS-simple either, and the three types a form *can* send without a preflight
+ * are refused. A request with no content type is local tooling (curl), which
+ * this guard already lets through.
+ *
  * Requests without `Sec-Fetch-Site` (curl, scripts) are allowed: they are not
  * a cross-site browser request, and local tooling has to keep working.
  *
  * @param {import("node:http").IncomingMessage} req
+ * @param {boolean} [rawBody] true when the body is a file, not a JSON document
  */
-export function assertSameOrigin(req) {
+export function assertSameOrigin(req, rawBody = false) {
   const site = String(req.headers["sec-fetch-site"] ?? "");
   if (site === "cross-site") {
     throw codedError("cross-site", "cross-site writes are refused");
   }
   const type = String(req.headers["content-type"] ?? "").toLowerCase();
+  if (rawBody) {
+    const formType =
+      type.startsWith("text/plain") ||
+      type.startsWith("application/x-www-form-urlencoded") ||
+      type.startsWith("multipart/form-data");
+    if (!formType) return;
+    throw codedError("unsupported-media-type", "raw uploads must not be sent as form data");
+  }
   if (!type.startsWith("application/json")) {
     throw codedError("unsupported-media-type", "writes must be sent as application/json");
   }

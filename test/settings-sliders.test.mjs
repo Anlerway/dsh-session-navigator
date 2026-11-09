@@ -277,3 +277,23 @@ test("the host's squircle never squares off a round control", async () => {
     assert.match(body, /corner-shape:round/, selector + " must opt out of the host's superellipse");
   }
 });
+
+test("GPU 加速 is on by default, and the switch writes only its own key", async () => {
+  const rowFor = (tree) => collect(wallpaperGroup(tree), byClass("se-set-row")).find((row) => textOf(row).includes("setWindowGpu"));
+  const switchOf = (tree) => collect(rowFor(tree), byClass("se-set-switch"))[0];
+
+  const { tree, calls, driver, api, t } = await renderSettings({ component: "ready" });
+  assert.ok(rowFor(tree), "the GPU row lives in the group that owns the detached window");
+  assert.equal(switchOf(tree).props["aria-pressed"], true, "on by default");
+
+  switchOf(tree).props.onClick();
+  await tick();
+  const write = calls.filter((call) => call.method === "PUT" && call.url.endsWith("/settings")).pop();
+  assert.deepEqual(write.body, { shell: { window: { gpu: false } } }, "a partial patch: the wallpaper rows are untouched");
+
+  const after = await driver.settle(() => page(driver, api, t));
+  assert.equal(switchOf(after).props["aria-pressed"], false, "the answer from the host turns the switch off");
+
+  const off = await renderSettings({ component: "ready", gpu: false });
+  assert.equal(switchOf(off.tree).props["aria-pressed"], false, "a document that already recorded the fallback renders off");
+});

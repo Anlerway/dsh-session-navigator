@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Restaurar o padrão",
     "setGroupWallpaper": "Janela destacada",
+    "setWindowGpu": "Aceleração de GPU",
+    "setWindowGpuHint": "Ativada por padrão; vale na próxima janela e usa renderização por software se a GPU não funcionar.",
     "setWallpaperOn": "Papel de parede",
     "setWallpaperOnHint": "Desligado, a janela deixa de mostrar papel de parede",
     "setWallpaperBlur": "Desfoque da imagem",

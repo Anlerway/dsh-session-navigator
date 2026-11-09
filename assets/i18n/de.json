@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Auf Standard zurücksetzen",
     "setGroupWallpaper": "Abgesetztes Fenster",
+    "setWindowGpu": "GPU-Beschleunigung",
+    "setWindowGpuHint": "Standardmäßig an; gilt beim nächsten Öffnen und fällt auf Software zurück, wenn die GPU nicht nutzbar ist.",
     "setWallpaperOn": "Hintergrundbild",
     "setWallpaperOnHint": "Ausgeschaltet zeigt das Fenster kein Hintergrundbild",
     "setWallpaperBlur": "Bildunschärfe",

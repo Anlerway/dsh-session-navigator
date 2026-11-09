@@ -532,7 +532,10 @@
             // The browser sends the file's own type; the host needs it only as a
             // fallback for a file name without an extension.
             if (typeof chosen?.type === "string" && chosen.type !== "") headers["content-type"] = chosen.type;
-            if (Number.isFinite(revisions.settings)) headers["if-match"] = '"' + revisions.settings + '"';
+            // No If-Match here. The route merges only wallpaper.custom into the
+            // document it reads, so a settings revision from this tab — often
+            // older than the one a slider or another window just wrote — would
+            // reject an upload that cannot actually clobber anything.
             const response = await fetch(API + "/wallpaper/custom?name=" + encodeURIComponent(name), {
               method: "POST",
               credentials: "same-origin",
@@ -589,7 +592,9 @@
         setError("");
         setNote("");
         try {
-          const result = await apiSend("DELETE", "/wallpaper/custom", undefined);
+          // Same reason as upload: removing the file only clears its own two
+          // fields, so an unrelated settings write must not turn it into a 409.
+          const result = await apiSend("DELETE", "/wallpaper/custom", undefined, { ifMatch: false });
           if (Number.isFinite(result?.revision)) revisions.settings = result.revision;
           setFile(null);
           setNote(t("setWallpaperCleared"));
@@ -603,10 +608,24 @@
 
       const enabled = wallpaper.enabled !== false;
       const mirroring = wallpaper.sync !== false;
+      // GPU 加速 — on unless the document says otherwise. A helper that finds
+      // the machine cannot use it writes this back to false, so the next launch
+      // skips a GPU process that would only fall back to software.
+      const gpu = settings?.shell?.window?.gpu !== false;
       return h(
         "div",
         { className: "se-set-grp" },
         h("div", { className: "se-set-h" }, t("setGroupWallpaper")),
+        h(
+          SetRow,
+          { label: t("setWindowGpu"), hint: t("setWindowGpuHint") },
+          h(SetSwitch, {
+            on: gpu,
+            disabled: saving,
+            title: t("setWindowGpu"),
+            onToggle: (next) => save({ shell: { window: { gpu: next } } }),
+          }),
+        ),
         h(
           SetRow,
           { label: t("setWallpaperOn"), hint: t("setWallpaperOnHint") },

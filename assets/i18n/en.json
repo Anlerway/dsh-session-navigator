@@ -43,6 +43,8 @@
     "setBallStyleGrok": "Grok",
     "setRevertDefault": "Reset to default",
     "setGroupWallpaper": "Detached window",
+    "setWindowGpu": "GPU acceleration",
+    "setWindowGpuHint": "On by default; applies next launch and falls back to software if the GPU cannot be used.",
     "setWallpaperOn": "Wallpaper",
     "setWallpaperOnHint": "Turned off, the window shows no wallpaper",
     "setWallpaperBlur": "Picture blur",
