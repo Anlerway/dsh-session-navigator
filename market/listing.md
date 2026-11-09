@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.1.3 |
+| 版本 | 1.2.0 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |
@@ -20,6 +20,8 @@
 - 所有会话 按工作区切成一段一段，标题就是工作区名字；点标题收起整段，折叠状态跟着布局记忆一起保存
 - 收藏、待办、置顶、归档；配备回收站，删除后有后悔药
 - 跨工作区剪切粘贴；会话可导出 Markdown 或 JSONL：用户的话、助手的回复、每次工具调用与输出，压缩过的历史按原文保留
+- 侧栏按钮之外还有一个悬浮球入口，拖得动、抛得出，落下会弹跳；五种样式可选
+- 独立窗口默认 GPU 加速，背景可跟随 dsh-plugin-wallpaper-engine，也能换成自己的图片或视频
 
 ## 界面
 
@@ -38,12 +40,14 @@
 </p>
 <p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
 
-## 本版更新（1.1.3）
+## 本版更新（1.2.0）
 
-- 独立窗口的状态徽章不再慢一拍：状态一到就当场重绘，不用等下一次列表刷新
-- 独立窗口不在前台时也按秒核对状态，切回前台看到的就是当前状态
-- 会话收尾时徽章不再先跳「进行中」再落到「空闲」
-- 独立窗口与主面板互相同步：在 DSH 侧栏或独立窗口删会话，两边都跟着更新
+- 悬浮球入口：侧栏按钮之外多一个可拖动的球，抛出会落下、弹跳；五种样式在设置 › 入口设置里切换
+- 独立窗口默认开启 GPU 加速，显卡或驱动不支持时自动改用软件渲染
+- 独立窗口可以跟随 dsh-plugin-wallpaper-engine 的壁纸，也能上传自己的图片或视频，模糊、磨砂、暗度可调
+- 冷启动从 3.1 秒降到 0.12 秒（两千个会话）
+- 界面新增八种语言，共十种：日、韩、德、法、西、俄、葡、繁體中文
+- 弹窗统一改用 DSH 原生弹窗；缺运行环境时直接提示下载；数据目录可还原默认
 
 ## 安装
 
@@ -70,7 +74,9 @@ Session Navigator manages DSH sessions the way Windows Explorer manages files: a
 per workspace, tags, notes, favourites and a recycle bin on top of the native session store.
 The "All sessions" view is cut into one band per workspace, each caption foldable.
 Session files never move — all state lives in `~/.dsh-session-navigator/`, a sibling of `~/.dsh`,
-so uninstalling means deleting one folder. Zero runtime dependencies, no build step, MIT.
+so uninstalling means deleting one folder. Version 1.2.0 adds a throwable floating-ball entry, GPU-accelerated
+rendering in the detached window, and wallpaper support that follows dsh-plugin-wallpaper-engine or your own
+image. Zero runtime dependencies, no build step, MIT.
 
 ```bash
 dsh plugin --profile web add dsh-session-navigator

@@ -17,20 +17,22 @@
 
 # Session Navigator
 
-Manage DSH sessions the way Windows Explorer manages files, so that session management is as simple as file management.
+Manage DSH sessions the way Windows Explorer manages files, so that managing a session is as simple as managing a file.
 
-An index lives under `~/.dsh-session-navigator/`: folders, names, tags, notes.
+An index lives in `~/.dsh-session-navigator/` — folders, names, tags, notes.
 
-**Who it is for**: people with many sessions — sort, move, delete, annotate and rename your sessions and workspaces as you please, put sessions on a to-do list, in favorites or at the top, and session management is as simple as file management.
+**Who it is for**: people who keep a lot of sessions. Sort, move, delete, annotate and rename your sessions and workspaces as you please; put sessions on a to-do list, favorite them, pin them to the top — session management turns into file management.
 
-- The folder tree is built from your workspaces; make folders of your own, nest them as deep as you like, and drag workspaces and sessions in and out
-- All sessions, grouped by workspace, with folders you can mix and arrange as you like
-- Titles, tags and notes are your own words, written whenever you like
-- Search covers titles, notes and tags, and a "conversation content" tick also searches the dialogue itself
-- Favorites, todos, pins and archive; a recycle bin comes with them, so a delete can be taken back
+- The folder tree grows out of your workspaces; make folders of your own, nest them as deep as you like, and drag workspaces and sessions in and out
+- All sessions sit under their workspace, and folders group them any way you like
+- Titles, tags and notes are yours to set
+- Search covers titles, notes and tags; tick "conversation content" and it searches the dialogue itself
+- Favorites, to-dos, pins and archive, with a recycle bin on top, so a delete can be taken back
 - Cut and paste across workspaces; export a session as Markdown or JSONL
-- AI in one click: let a model rename a session, tag it and write its note
-- The interface speaks ten languages — 中文, English, 日本語, 한국어, Deutsch, Français, Español, Русский, Português, 繁體中文 — following DSH by default, or pinned to one from the settings page (all eight DSH ships are covered; Korean and Traditional Chinese come from the plugin's own picker)
+- AI summary in one click: a model renames a session, tags it and writes its note
+- A floating ball entry: besides the sidebar button you can drag out a ball and throw it — it falls, bounces and stays on the floor; five styles, switched in settings › Entry settings
+- The detached window renders with GPU acceleration by default and drops to software rendering when the graphics card or driver cannot do it; the backdrop can follow dsh-plugin-wallpaper-engine or be your own picture or video, with blur, frost and dim
+- The interface speaks ten languages — 中文, English, 日本語, 한국어, Deutsch, Français, Español, Русский, Português, 繁體中文 — following DSH by default, or pinned to one in settings (the eight DSH ships are all covered; Korean and Traditional Chinese come from the plugin's own picker)
 
 ## What it looks like
 
@@ -52,7 +54,7 @@ An index lives under `~/.dsh-session-navigator/`: folders, names, tags, notes.
 
 <p align="center"><em>Settings</em></p>
 
-Is the floating panel too small to be comfortable? Detach it into a window of its own — a real Explorer.
+Floating panel too small, too cramped, not enough? There is also the detached window — a real Explorer.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/window.png" width="900" alt="Detached window, full screen">
@@ -60,7 +62,7 @@ Is the floating panel too small to be comfortable? Detach it into a window of it
 
 <p align="center"><em>Detached window, full screen</em></p>
 
-And of course it can share the screen: split across one monitor, or one per monitor.
+It also works split across one screen, or spread over several.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="DSH chat on the left, Session Navigator docked on the right, each independent">
@@ -142,7 +144,7 @@ Desktop
 dsh plugin --profile desktop remove dsh-session-navigator
 ```
 
-The plugin's own data is not removed with it; delete `~/.dsh-session-navigator/` to clean up completely.
+The plugin's own data stays behind; delete `~/.dsh-session-navigator/` to clean up completely.
 
 Requires Node.js `^22.15.0 || >=24.0.0`.
 
@@ -150,20 +152,20 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 
 | Task | How |
 | --- | --- |
-| Group sessions | Create a folder inside a workspace and drag sessions into it |
-| Box select | Drag a box with the mouse the way Windows does; a click on empty space clears the selection |
+| Group sessions | Make a folder inside a workspace and drag sessions into it |
+| Box select | Drag a box with the mouse, Explorer style; a click on empty space clears the selection |
 | Rename | The edit button, or the detail pane on the right |
-| Tag / note | Right-hand detail pane; tags can be made in advance, and AI can generate them in one click |
+| Tag / note | The detail pane; tags can be prepared in advance, and AI can generate them in one click |
 | Search | The box searches titles, notes, tags and conversation content |
-| Favorite / to-do | Select rows, then favorite them or put them on the to-do list |
-| Shortcut | Right-click → "Create a shortcut in this directory"; a shortcut can live in any folder |
-| Pin | Folders and workspaces pin to the front, in sync with the sessions DSH itself pins |
-| Quick access | Add entries on the left to reach the folders you use most in one click |
-| Archive | Listed at the bottom by default; hide them in settings |
+| Favorite / to-do | Select rows, then favorite them or add them to the to-do list |
+| Shortcut | Right-click → "Create a shortcut in this directory"; a shortcut can live anywhere |
+| Pin | Folders and workspaces pin to the front, in step with the sessions DSH itself pins |
+| Quick access | Add entries on the left to reach your usual folders in one click |
+| Archive | At the bottom of the list by default; hide it in settings |
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Change workspace | Cut / paste across workspaces; the session moves as it is |
 | Export | Detail pane and row menu; Markdown or JSONL |
-| AI fields | A model writes a **title, description and tags** for a session: one click in the "AI fields" group of the detail pane, several sessions at once from the row menu, or one sweep over every session still missing a description or tags in settings |
+| AI summary | A model writes a **title, description and tags** for a session: one click in the "AI fields" section of the detail pane, several sessions at once from the row menu, or one sweep over every session still missing a description or tags in settings |
 
 ## Settings
 
@@ -173,7 +175,11 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| Open mode | Floating panel | Floating panel / detached window; the detached window needs a browser runtime and is Windows-only |
+| Open mode | Floating panel | Floating panel / detached window; the detached window needs the Electron component and is Windows-only |
+| Entry position | Bottom left | Bottom left / floating ball / both; the ball can be dragged, and thrown |
+| Ball style | Default | Default / DeepSeek / ChatGPT / Claude / Grok |
+| GPU acceleration | On | How the detached window renders; software rendering takes over when the GPU cannot do it, and the change applies the next time the window opens |
+| Wallpaper | On | Follow dsh-plugin-wallpaper-engine, or upload your own picture / video; blur, frost and dim are adjustable |
 | Session header button style | Auto | It can also be fixed to icon only |
 | Auto collapse | Off | Collapse sibling folders after entering one |
 | Show archived | On | Turned off, archived sessions are no longer listed at the bottom |
@@ -181,11 +187,12 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Collapse subagents | On | Click the arrow to expand |
 | Date format | Exact date | Or time since then |
 | Size unit | Auto | Switch between B / KB / MB / GB, or fix it to KB |
-| Build the index when idle | On | It fills the index in slowly in the background after startup and holds up no request; when a session's content changes, only that session is rebuilt on the next pass |
+| Build the index when idle | On | The index fills in slowly in the background after startup and holds up no request; when a session's content changes, only that session is rebuilt on the next pass |
 | Rebuild / delete index | — | Rebuild from scratch, or delete the cache file |
 | Fields model | Host default | Pick a model and a reasoning effort from the DSH model catalogue |
 | Fill in what is missing | — | Queues every session missing a **description or tags**; progress shows on the settings page and at the bottom of the panel, and it can be stopped at any time |
-| Data directory | `~/.dsh-session-navigator` | For migration; change it in settings |
+| Data directory | `~/.dsh-session-navigator` | For migration; change it in settings, or send it back to the default location |
+| Clear data | — | Deletes the virtual tree, tags, notes, settings and the recycle bin; session files and the Electron component stay untouched |
 
 ## Docs
 
@@ -196,7 +203,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 ## Development and testing
 
 ```powershell
-node --test "test/*.test.mjs"   # 573 cases
+node --test "test/*.test.mjs"   # all cases; the run prints the count
 node test/render-smoke.mjs      # render smoke test
 ```
 ## Issues
