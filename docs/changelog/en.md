@@ -1,9 +1,10 @@
-Release notes: V1.2.0-Alpha-V1
+Release notes: V1.2.0-Alpha-V2
 
 Highlights
 
 This is a preview release. Thanks to everyone who installs and uses the plugin, and for your patience between versions; bug reports and suggestions are always welcome.
 
+- A floating ball entry: drag it, throw it, watch it bounce; five styles, chosen in Settings › Entry settings
 - Ten interface languages, eight of them new
 - The plugin was refactored, and cold start got much faster
 - The detached window follows the theme and pairs with dsh-plugin-wallpaper-engine
@@ -16,6 +17,7 @@ In detail
 
 New
 
+- A floating ball entry: a draggable ball in addition to the sidebar button; a throw falls, bounces and settles on the floor; five styles (Default, DeepSeek, ChatGPT, Claude, Grok) can be switched; chosen in Settings › Entry settings
 - Eight new languages, ten in total (Japanese, Korean, German, French, Spanish, Russian, Portuguese, Traditional Chinese)
 - A progress bar for AI summaries
 - A missing Electron component now offers the download right away

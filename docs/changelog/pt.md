@@ -1,9 +1,10 @@
-Notas da versão: V1.2.0-Alpha-V1
+Notas da versão: V1.2.0-Alpha-V2
 
 Principais mudanças
 
 Esta é uma versão de prévia. Obrigado a quem instala e usa o plugin, e pela paciência a cada versão; relatos de bugs e sugestões são bem-vindos.
 
+- Entrada com bola flutuante: arrasta-se, atira-se e quica; cinco estilos, escolhida em Configurações › Ajustes de entrada
 - Dez idiomas na interface, oito deles novos
 - O plugin foi reestruturado e a inicialização a frio ficou bem mais rápida
 - A janela destacada adapta-se ao tema e integra-se com o dsh-plugin-wallpaper-engine
@@ -16,6 +17,7 @@ As mudanças em detalhe
 
 Novidades
 
+- Entrada com bola flutuante: uma bola arrastável além do botão da barra lateral; ao atirá-la, cai, quica e para no chão; cinco estilos (Padrão, DeepSeek, ChatGPT, Claude, Grok) para trocar; escolhida em Configurações › Ajustes de entrada
 - Oito idiomas novos, dez no total (japonês, coreano, alemão, francês, espanhol, russo, português, chinês tradicional)
 - Barra de progresso dos resumos de IA
 - Sem o componente Electron, o download é oferecido na hora

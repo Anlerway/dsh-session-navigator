@@ -1,9 +1,10 @@
-Versionshinweise: V1.2.0-Alpha-V1
+Versionshinweise: V1.2.0-Alpha-V2
 
 Wichtigste Änderungen
 
 Dies ist eine Vorschauversion. Danke an alle, die das Plugin installieren und benutzen, und danke für die Geduld bei jedem Zwischenstand; Fehlerberichte und Vorschläge sind willkommen.
 
+- Ein Schwebekugel-Einstieg: ziehen, werfen, abprallen lassen; fünf Stile, auswählbar unter Einstellungen › Einstieg-Optionen
 - Zehn Sprachen in der Oberfläche, acht davon neu
 - Das Plugin wurde umgebaut, der Kaltstart ist deutlich schneller
 - Das abgesetzte Fenster folgt dem Theme und arbeitet mit dsh-plugin-wallpaper-engine zusammen
@@ -16,6 +17,7 @@ Alle Änderungen im Einzelnen
 
 Neu
 
+- Schwebekugel-Einstieg: neben dem Knopf in der Seitenleiste eine ziehbare Kugel, die nach einem Wurf fällt, abprallt und am Boden zur Ruhe kommt; fünf Stile (Standard, DeepSeek, ChatGPT, Claude, Grok) zum Wechseln; auswählbar unter Einstellungen › Einstieg-Optionen
 - Acht neue Sprachen, insgesamt zehn (Japanisch, Koreanisch, Deutsch, Französisch, Spanisch, Russisch, Portugiesisch, traditionelles Chinesisch)
 - Fortschrittsbalken für die KI-Zusammenfassung
 - Fehlt die Electron-Komponente, wird der Download direkt angeboten
