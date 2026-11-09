@@ -2,10 +2,10 @@
  * 产物护航：磁盘上的 lib/client.js 必须能从 src/client/ 逐字节重建。
  *
  * 负责：把「改了分片却忘了重建」变成一条红的用例，而不是等某个用户装上插件
- * 发现面板少了一块。产物不进仓库（CI、pretest、prepack 各自重建），所以这条
- * 用例真正保护的是直接跑 `node --test` 的人：那时磁盘上的产物可能是上一次
- * 构建留下的。重建本身交给 scripts/build-client.mjs --check，这里只断言它的
- * 退出码，以及产物开头仍然是宿主认识的那一层壳。
+ * 发现面板少了一块。产物进仓库，所以这条用例守的就是提交里的那份：src/client/
+ * 动过而 lib/client.js 没跟着重建，提交本身就会红。重建交给
+ * scripts/build-client.mjs --check，这里只断言它的退出码，以及产物开头仍然是
+ * 宿主认识的那一层壳。
  * 不负责：分片内容的正确性（由其余用例与 render-smoke 覆盖）。
  */
 import test from "node:test";

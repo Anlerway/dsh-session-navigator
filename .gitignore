@@ -2,12 +2,12 @@
 # Windows shell reveal); it is installed next to the plugin, never committed.
 node_modules/
 
-# The client bundle is generated from src/client/ by scripts/build-client.mjs.
-# It is not tracked: CI builds it before the tests, `npm test` builds it through
-# pretest, and prepack builds it into the tarball. A fresh checkout therefore has
-# no lib/client.js until one of those runs — the panel in a linked checkout stays
-# at the last build until you run `pnpm build:client` again.
-lib/client.js
+# The client bundle is generated from src/client/ by scripts/build-client.mjs, and
+# it is committed: a clone or a git-installed copy then has a working panel without
+# a build step. It stays generated — edit the fragments, run `pnpm build:client`,
+# and commit the result. `pnpm test` carries the bundle-drift case and
+# `pnpm check:client` names the first byte that drifted, so a stale bundle fails
+# instead of shipping.
 
 # Scratch space. Anything that is not the plugin itself belongs outside the
 # repository (see ../project_old for the archived material).
