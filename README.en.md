@@ -17,6 +17,8 @@
 
 # Session Navigator
 
+### Supports Simplified Chinese, English, 日本語, 한국어, Deutsch, Français, Español, Русский, Português and Traditional Chinese
+
 Manage DSH sessions the way Windows Explorer manages files, so that managing a session is as simple as managing a file.
 
 An index lives in `~/.dsh-session-navigator/` — folders, names, tags, notes.
@@ -30,9 +32,9 @@ An index lives in `~/.dsh-session-navigator/` — folders, names, tags, notes.
 - Favorites, to-dos, pins and archive, with a recycle bin on top, so a delete can be taken back
 - Cut and paste across workspaces; export a session as Markdown or JSONL
 - AI summary in one click: a model renames a session, tags it and writes its note
-- A floating ball entry: besides the sidebar button you can drag out a ball and throw it — it falls, bounces and stays on the floor; five styles, switched in settings › Entry settings
-- The detached window renders with GPU acceleration by default and drops to software rendering when the graphics card or driver cannot do it; the backdrop can follow dsh-plugin-wallpaper-engine or be your own picture or video, with blur, frost and dim
-- The interface speaks ten languages — 中文, English, 日本語, 한국어, Deutsch, Français, Español, Русский, Português, 繁體中文 — following DSH by default, or pinned to one in settings (the eight DSH ships are all covered; Korean and Traditional Chinese come from the plugin's own picker)
+- A floating ball entry: physical interaction; five styles, switched in settings › Entry settings
+- The detached window renders with GPU acceleration by default; the backdrop can follow dsh-plugin-wallpaper-engine or be your own picture or video
+
 
 ## What it looks like
 
@@ -65,7 +67,7 @@ Floating panel too small, too cramped, not enough? There is also the detached wi
 It also works split across one screen, or spread over several.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="DSH chat on the left, Session Navigator docked on the right, each independent">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="Relying on Windows split screen, each side independent">
 </p>
 
 <p align="center"><em>Split view</em></p>
@@ -165,7 +167,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Delete | The whole session directory moves to the recycle bin; restorable, purgeable |
 | Change workspace | Cut / paste across workspaces; the session moves as it is |
 | Export | Detail pane and row menu; Markdown or JSONL |
-| AI summary | A model writes a **title, description and tags** for a session: one click in the "AI fields" section of the detail pane, several sessions at once from the row menu, or one sweep over every session still missing a description or tags in settings |
+| AI summary | A model writes a **title, description and tags** for a session: one click in the "AI fields" section of the detail pane |
 
 ## Settings
 
@@ -176,7 +178,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Setting | Default | Notes |
 | --- | --- | --- |
 | Open mode | Floating panel | Floating panel / detached window; the detached window needs the Electron component and is Windows-only |
-| Entry position | Bottom left | Bottom left / floating ball / both; the ball can be dragged, and thrown |
+| Entry position | Bottom left | Bottom left / floating ball / both; the ball supports physical interaction |
 | Ball style | Default | Default / DeepSeek / ChatGPT / Claude / Grok |
 | GPU acceleration | On | How the detached window renders; software rendering takes over when the GPU cannot do it, and the change applies the next time the window opens |
 | Wallpaper | On | Follow dsh-plugin-wallpaper-engine, or upload your own picture / video; blur, frost and dim are adjustable |
@@ -187,7 +189,7 @@ Requires Node.js `^22.15.0 || >=24.0.0`.
 | Collapse subagents | On | Click the arrow to expand |
 | Date format | Exact date | Or time since then |
 | Size unit | Auto | Switch between B / KB / MB / GB, or fix it to KB |
-| Build the index when idle | On | The index fills in slowly in the background after startup and holds up no request; when a session's content changes, only that session is rebuilt on the next pass |
+| Build the index when idle | On | The index fills in slowly in the background after startup; when a session's content changes, that session's index is rebuilt on the next pass |
 | Rebuild / delete index | — | Rebuild from scratch, or delete the cache file |
 | Fields model | Host default | Pick a model and a reasoning effort from the DSH model catalogue |
 | Fill in what is missing | — | Queues every session missing a **description or tags**; progress shows on the settings page and at the bottom of the panel, and it can be stopped at any time |

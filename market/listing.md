@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.2.0 |
+| 版本 | 1.2.1 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |
@@ -40,14 +40,15 @@
 </p>
 <p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
 
-## 本版更新（1.2.0）
+## 本版更新（1.2.1）
 
-- 悬浮球入口：侧栏按钮之外多一个可拖动的球，抛出会落下、弹跳；五种样式在设置 › 入口设置里切换
-- 独立窗口默认开启 GPU 加速，显卡或驱动不支持时自动改用软件渲染
-- 独立窗口可以跟随 dsh-plugin-wallpaper-engine 的壁纸，也能上传自己的图片或视频，模糊、磨砂、暗度可调
-- 冷启动从 3.1 秒降到 0.12 秒（两千个会话）
-- 界面新增八种语言，共十种：日、韩、德、法、西、俄、葡、繁體中文
-- 弹窗统一改用 DSH 原生弹窗；缺运行环境时直接提示下载；数据目录可还原默认
+- 修复了移动母会话，子会话还停留在原地的bug
+- 修复了悬浮球因窗口缩放导致的位置变动的问题
+- 解锁了子会话可以拖动、勾选、剪切、复制的功能
+- 修复了会话被打开的过于严格的判断
+- 修复了工作区的（真实）文件夹被删掉，会被当成「工作区不存在」的问题
+- 删除会话时一并清掉插件里属于它的索引及其缓存
+- 新增清除缓存会检查并清理无目标指向的索引及其缓存
 
 ## 安装
 
@@ -74,9 +75,11 @@ Session Navigator manages DSH sessions the way Windows Explorer manages files: a
 per workspace, tags, notes, favourites and a recycle bin on top of the native session store.
 The "All sessions" view is cut into one band per workspace, each caption foldable.
 Session files never move — all state lives in `~/.dsh-session-navigator/`, a sibling of `~/.dsh`,
-so uninstalling means deleting one folder. Version 1.2.0 adds a throwable floating-ball entry, GPU-accelerated
-rendering in the detached window, and wallpaper support that follows dsh-plugin-wallpaper-engine or your own
-image. Zero runtime dependencies, no build step, MIT.
+so uninstalling means deleting one folder. Version 1.2.1 moves a parent's child sessions along with it,
+keeps the floating ball where it was when the window is resized, lets child sessions be dragged, ticked,
+cut and copied, moves open-but-idle sessions instead of refusing them, re-creates a workspace folder that
+was deleted, and clears a session's index and cache — orphans included — when the session is deleted.
+Zero runtime dependencies, no build step, MIT.
 
 ```bash
 dsh plugin --profile web add dsh-session-navigator

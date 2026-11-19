@@ -17,6 +17,8 @@
 
 # 会话资源管理器
 
+### 支持简体中文、English、日本語、한국어、Deutsch、Français、Español、Русский、Português、繁體中文
+
 像 Windows 资源管理器那样管理 DSH 的会话，让会话管理像文件管理那样简单。
 
 在 `~/.dsh-session-navigator/` 记一份索引——记录文件夹、名称、标签、备注。
@@ -30,9 +32,9 @@
 - 收藏、待办、置顶、归档；配备回收站，删除后有后悔药
 - 跨工作区剪切粘贴；会话可自由导出 Markdown 或 JSONL
 - 支持AI一键总结功能，帮你一键重命名，标记标签，记录备注
-- 悬浮球入口：侧栏按钮之外还能拖一个球出来，抛出去会落下、弹跳；五种样式在设置 › 入口设置里切换
-- 独立窗口默认用 GPU 加速渲染，显卡或驱动不支持时自动改用软件渲染；背景可跟随 dsh-plugin-wallpaper-engine，也能上传自己的图片或视频，模糊、磨砂、暗度可调
-- 界面支持中文、English、日本語、한국어、Deutsch、Français、Español、Русский、Português、繁體中文 十种语言：默认跟随 DSH，也可以在设置里钉住一种（DSH 官方八种之外，韩语与繁體中文由插件自己的下拉提供）
+- 悬浮球入口：支持物理效果交互；五种样式在设置 › 入口设置里切换
+- 独立窗口默认用 GPU 加速渲染；背景可跟随 dsh-plugin-wallpaper-engine，也能上传自己的图片或视频
+
 
 ## 界面介绍
 
@@ -65,7 +67,7 @@
 当然，也可以进行分屏/多屏协作
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="DSH 聊天在左，会话资源管理器停靠在右，两边各自独立">
+  <img src="https://raw.githubusercontent.com/Anlerway/dsh-session-navigator/main/assets/screenshots/split.png" width="900" alt="依靠windows分屏能力，两边各自独立">
 </p>
 
 <p align="center"><em>分屏模式</em></p>
@@ -165,7 +167,7 @@ dsh plugin --profile desktop remove dsh-session-navigator
 | 删除 | 整个会话目录移进回收站，可还原、可清空 |
 | 换工作区 | 跨工作区剪切 / 粘贴，会话原样转移|
 | 会话导出 | 详情栏和右键菜单，导出为 Markdown 或 JSONL |
-| AI 总结 | 让模型给会话写**标题、描述、标签**：详情栏「AI 字段」段一键生成，右键菜单可以一次勾多个会话批量生成，设置里还能一键补齐所有缺描述或标签的会话|
+| AI 总结 | 让模型给会话写**标题、描述、标签**：详情栏「AI 字段」段一键生成|
 
 ## 配置
 
@@ -176,7 +178,7 @@ dsh plugin --profile desktop remove dsh-session-navigator
 | 设置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | 打开方式 | 浮窗 | 浮窗 / 独立弹窗。独立弹窗需要Electron 组件，仅支持 Windows |
-| 入口位置 | 左下角 | 左下角 / 悬浮球 / 全部；悬浮球可以拖动，也能抛出去 |
+| 入口位置 | 左下角 | 左下角 / 悬浮球 / 全部；悬浮球支持物理交互 |
 | 悬浮球样式 | 默认 | 默认 / DeepSeek / ChatGPT / Claude / Grok |
 | GPU 加速 | 开 | 独立窗口的渲染方式；不支持时自动改用软件渲染，下次打开窗口时生效 |
 | 壁纸 | 开 | 跟随 dsh-plugin-wallpaper-engine，或上传自己的图片 / 视频；模糊度、磨砂度、暗度可调 |
@@ -187,7 +189,7 @@ dsh plugin --profile desktop remove dsh-session-navigator
 | 折叠子智能体 | 开 | 可点箭头展开 |
 | 日期格式 | 详细日期 | 或距今时间 |
 | 大小单位 | 自动转换 | 在 B / KB / MB / GB 切换；也能固定 KB |
-| 空闲时自动建立索引 | 开 | 启动完在后台一点点把索引建起来，不挡任何请求；某个会话内容变了，下一轮自动只重建它 |
+| 空闲时自动建立索引 | 开 | 启动完在后台一点点把索引建起来，某个会话内容变了，下一轮自动重建该会话索引 |
 | 重建 / 删除索引 | — | 从头重建或删掉缓存文件 |
 | AI 字段的模型 | 宿主默认 | 从 DSH 的模型目录里选模型和强度 |
 | 一键补齐缺的字段 | — | 把缺**描述或标签**的会话排进队列，进度显示在设置页与面板底部，随时可以停 |
