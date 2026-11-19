@@ -2,7 +2,7 @@
 import { deleteWorkspace, renameSession } from "../host/actions.js";
 import { moveSessions } from "../host/move.js";
 import { emptyTrash, purgeSessions, restoreSessions, trashSessions } from "../host/trash.js";
-import { assertStandalone, badRequest, trashClosure, withBoundChildren } from "../routes/shared.js";
+import { badRequest, trashClosure, withBoundChildren } from "../routes/shared.js";
 import { requireIdArray, requireText } from "../validate.js";
 
 export const maintenanceRoutes = {
@@ -17,11 +17,11 @@ export const maintenanceRoutes = {
    * second, independent session under a fresh id instead of moving.
    */
   "POST /move": async (api, req) => {
-    // 剪切/复制: a subagent moves with its parent's workspace by derivation, so
-    // moving one alone (or copying it into a second standalone session) would
-    // break the delegation the parent's transcript points at. Refused for the
-    // whole request, not per session: a half-applied batch is worse than none.
-    await assertStandalone(api, req.body?.ids);
+    // 剪切/复制: a subagent may move or be copied on its own — its log is a
+    // session directory like any other, and the host transcription only points at
+    // the id, which does not change. Moving a *parent* takes its children along
+    // (see followChildren in src/host/move.js), so a run never ends up split
+    // across two workspaces.
     return moveSessions(api, req.body ?? {});
   },
 

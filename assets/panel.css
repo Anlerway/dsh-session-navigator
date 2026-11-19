@@ -331,11 +331,6 @@
 .se-shell .row:hover .chk,.se-shell .row.sel .chk,.se-shell .listbody.has-sel .chk{opacity:1}
 .se-shell .chk.on{background:var(--sm-accent);border-color:var(--sm-accent);color:#04283a}
 .se-shell .chk .ic{width:11px;height:11px}
-/* A subagent has no checkbox: the glyph in its place says the row is bound to
-   its parent, and stays quiet at rest so the list does not read as a wall of
-   marks. */
-.se-shell .chk-bound{width:15px;height:15px;display:grid;place-items:center;color:var(--sm-text-3);opacity:.55;flex:0 0 auto}
-.se-shell .row:hover .chk-bound,.se-shell .row.sel .chk-bound{opacity:1;color:var(--sm-accent)}
 .se-shell .row.bound-row .nm{color:var(--sm-text-2)}
 .se-shell .st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--sm-text-2)}
 .se-shell .dot{width:7px;height:7px;border-radius:50%;corner-shape:round;background:var(--sm-text-3)}

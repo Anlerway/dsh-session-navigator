@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 八十五个测试文件，各自钉住什么
+## 1. 八十八个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|

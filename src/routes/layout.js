@@ -2,7 +2,7 @@
 import { moveNode } from "../domain/folders.js";
 import { canAcceptSessions, canMove, nearestWorkspace } from "../domain/tree.js";
 import { moveSessions } from "../host/move.js";
-import { assertStandalone, badRequest, expectedRevision } from "../routes/shared.js";
+import { badRequest, expectedRevision } from "../routes/shared.js";
 import { codedError } from "../store/sidecar.js";
 import { optionalObject, requireIdArray } from "../validate.js";
 
@@ -42,9 +42,10 @@ export const layoutRoutes = {
       // seen or cleared; the caller that sent it has a stale selection.
       throw codedError("session-not-found", `unknown session ${unknown[0]}`);
     }
-    // A child is filed under its parent's workspace by derivation, so a
-    // placement written for it would be a second, contradictory home.
-    await assertStandalone(api, ids, snapshot);
+    // A subagent accepts a placement of its own: it is a row in the same list,
+    // and a user who files it inside a folder means exactly what the row says.
+    // Where it *belongs* is still derived from its parent for the workspace
+    // count, so this override is a folder position, not a second home.
     const tree = snapshot.tree;
     /** @type {string[]} */
     const moved = [];

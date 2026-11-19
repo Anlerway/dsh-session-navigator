@@ -158,7 +158,6 @@
         nodeIdsToActOn,
         setHint,
         sessionsById,
-        blockedByBinding,
         tree,
         scope,
         load,

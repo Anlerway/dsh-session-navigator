@@ -287,6 +287,76 @@ test("a placement stops holding once its folder leaves the workspace", () => {
   assert.equal(lifted.counts[FIXED_NODES.ungrouped], 0);
 });
 
+test("a delegation follows its parent into a workspace folder", () => {
+  const parent = { id: "p1", workspaceId: "wa", parentSession: null, isSubagent: false };
+  const child = { id: "c1", workspaceId: "wa", parentSession: "p1", isSubagent: true };
+  const grandchild = { id: "g1", workspaceId: "wa", parentSession: "c1", isSubagent: true };
+  const tree = buildTree({
+    registry,
+    sessions: [parent, child, grandchild],
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 } },
+      sessionPlacement: { p1: "d-area" },
+    },
+  });
+  // One row was filed; filing a parent files what it delegated, all the way down.
+  assert.deepEqual(tree.sessionHome, { p1: "d-area", c1: "d-area", g1: "d-area" });
+  assert.equal(tree.counts["d-area"], 3, "the folder draws the whole delegation");
+  // The sidecar still holds only the row the user actually dragged.
+  assert.deepEqual(tree.sessionPlacement, { p1: "d-area" });
+});
+
+test("a delegation with a placement of its own wins over the inherited one", () => {
+  const parent = { id: "p1", workspaceId: "wa", parentSession: null, isSubagent: false };
+  const child = { id: "c1", workspaceId: "wa", parentSession: "p1", isSubagent: true };
+  const tree = buildTree({
+    registry,
+    sessions: [parent, child],
+    userTree: {
+      folders: {
+        "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 },
+        "d-side": { id: "d-side", name: "旁支", parent: workspaceNodeId("wa"), order: 0 },
+      },
+      sessionPlacement: { p1: "d-area", c1: "d-side" },
+    },
+  });
+  assert.equal(tree.sessionHome.c1, "d-side", "a hand-filed child stays where the user put it");
+  assert.equal(tree.sessionHome.p1, "d-area");
+});
+
+test("a delegation falls back to its workspace when the parent leaves the folder", () => {
+  const parent = { id: "p1", workspaceId: "wa", parentSession: null, isSubagent: false };
+  const child = { id: "c1", workspaceId: "wa", parentSession: "p1", isSubagent: true };
+  const tree = buildTree({
+    registry,
+    sessions: [parent, child],
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 } },
+      sessionPlacement: {},
+    },
+  });
+  // Nothing is filed anywhere: both rows sit on the workspace node, where DSH
+  // itself put them, and the folder stays empty.
+  assert.deepEqual(tree.sessionHome, { p1: workspaceNodeId("wa"), c1: workspaceNodeId("wa") });
+  assert.equal(tree.counts["d-area"] ?? 0, 0);
+});
+
+test("a fork names a parent but does not inherit its folder", () => {
+  // A fork is a copy the user asked for: same history, its own row, own place.
+  const parent = { id: "p1", workspaceId: "wa", parentSession: null, isSubagent: false };
+  const fork = { id: "f1", workspaceId: "wa", parentSession: "p1", isSubagent: false };
+  const tree = buildTree({
+    registry,
+    sessions: [parent, fork],
+    userTree: {
+      folders: { "d-area": { id: "d-area", name: "子项目", parent: workspaceNodeId("wa"), order: 0 } },
+      sessionPlacement: { p1: "d-area" },
+    },
+  });
+  assert.equal(tree.sessionHome.p1, "d-area");
+  assert.equal(tree.sessionHome.f1, workspaceNodeId("wa"), "the fork keeps its own row where DSH puts it");
+});
+
 test("an empty registry still yields a navigable tree", () => {
   const tree = buildAutoTree({ registry: null, sessions: [] });
   assert.deepEqual(tree.roots, [FIXED_NODES.root, FIXED_NODES.trash]);

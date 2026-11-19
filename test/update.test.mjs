@@ -80,10 +80,13 @@ test("parseRelease keeps what the rows show and trims the notes", () => {
 });
 
 test("a newer release turns hasUpdate on, and is answered from the cache next time", async () => {
-  const { fetchImpl, calls } = stubFetch(200, { tag_name: "v1.2.1", html_url: REPO_URL + "/releases/tag/v1.2.1" });
+  // One patch above whatever this checkout ships: a literal number here would
+  // stop being "newer" the release after it was written.
+  const newer = pkg.version.replace(/(\d+)$/, (_, n) => String(Number(n) + 1));
+  const { fetchImpl, calls } = stubFetch(200, { tag_name: "v" + newer, html_url: REPO_URL + "/releases/tag/v" + newer });
   const first = await checkUpdate({ fetchImpl });
   assert.equal(first.current, pkg.version);
-  assert.equal(first.latest, "1.2.1");
+  assert.equal(first.latest, newer);
   assert.equal(first.hasUpdate, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://api.github.com/repos/Anlerway/dsh-session-navigator/releases/latest");

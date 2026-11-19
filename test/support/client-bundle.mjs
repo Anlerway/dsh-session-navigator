@@ -115,3 +115,18 @@ export function loadClientBundle(options = {}) {
   if (!bundle) throw new Error("the module factory did not run");
   return { bundle, test: bundle.__test ?? {}, fetch: fetchImpl };
 }
+
+/** A document that remembers what got appended to <body>. */
+export function ballDocument() {
+  const appended = [];
+  const document = {
+    createElement: () => ({ style: {}, appendChild() {}, setAttribute() {} }),
+    getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    head: { appendChild() {} },
+    body: { appendChild: (node) => appended.push(node), contains: () => true },
+    documentElement: { getAttribute: () => null },
+  };
+  return { document, appended };
+}

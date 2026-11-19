@@ -43,7 +43,7 @@ const LOG = "session.v4.jsonl.zstd";
  * @param {string} home
  * @param {string} project
  * @param {string} sessionId
- * @param {{ cwd?: string, events?: object[], origin?: string }} [extra]
+ * @param {{ cwd?: string, events?: object[], origin?: string, parentSession?: string, delegationDepth?: number }} [extra]
  * @returns {Promise<{ dir: string, log: string }>}
  */
 async function writeSession(home, project, sessionId, extra = {}) {
@@ -56,6 +56,8 @@ async function writeSession(home, project, sessionId, extra = {}) {
     createdAt: 1_700_000_000_000,
     cwd: extra.cwd ?? "C:\\work\\source",
     ...(extra.origin ? { origin: extra.origin } : {}),
+    ...(extra.parentSession ? { parentSession: extra.parentSession } : {}),
+    ...(typeof extra.delegationDepth === "number" ? { delegationDepth: extra.delegationDepth } : {}),
   };
   const events = extra.events ?? [
     { seq: 0, type: "turn/start", time: 1, data: { turn: 1 } },
@@ -321,7 +323,7 @@ test("a session the registry calls home but the payload is not in is put where i
   }
 });
 
-test("subagent sessions are refused", async () => {
+test("a subagent moves on its own", async () => {
   const box = await sandbox();
   try {
     const targetPath = join(box.root, "target-workspace");
@@ -330,18 +332,22 @@ test("subagent sessions are refused", async () => {
       { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
     ]);
     const api = apiWith(box.home, registry);
-    await writeSession(box.home, "proj", "s1", { origin: "subagent" });
+    // A delegation's log is a session directory like any other, so the row the
+    // user picked is the row that moves. Its parent keeps pointing at the id,
+    // which does not change.
+    const { dir } = await writeSession(box.home, "proj", "s1", { origin: "subagent", delegationDepth: 1 });
 
-    await assert.rejects(
-      () => moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } }),
-      (error) => error.code === "subagent-unsupported",
-    );
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true);
+    assert.deepEqual(result.results[0].children, { moved: [], failed: [] });
+    assert.equal(existsSync(join(dir, LOG)), false);
+    assert.equal(existsSync(join(box.home, "sessions", projectKey(targetPath), "s1", LOG)), true);
   } finally {
     await box.cleanup();
   }
 });
 
-test("a live session is refused instead of being moved under its writer", async () => {
+test("moving a parent takes its delegations along", async () => {
   const box = await sandbox();
   try {
     const targetPath = join(box.root, "target-workspace");
@@ -350,7 +356,59 @@ test("a live session is refused instead of being moved under its writer", async 
       { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
     ]);
     const api = apiWith(box.home, registry);
+    const parent = await writeSession(box.home, "proj", "s1");
+    const child = await writeSession(box.home, "proj", "s2", { origin: "subagent", parentSession: "s1", delegationDepth: 1 });
+    const grandchild = await writeSession(box.home, "proj", "s3", { origin: "subagent", parentSession: "s2", delegationDepth: 2 });
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true);
+    assert.deepEqual(result.results[0].children, { moved: ["s2", "s3"], failed: [] });
+    const targetProject = join(box.home, "sessions", projectKey(targetPath));
+    for (const id of ["s1", "s2", "s3"]) {
+      assert.equal(existsSync(join(targetProject, id, LOG)), true, `${id} followed the parent`);
+    }
+    assert.equal(existsSync(parent.dir), false);
+    assert.equal(existsSync(child.dir), false, "the delegation does not stay behind in the old workspace");
+    assert.equal(existsSync(grandchild.dir), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a fork is not a delegation and does not follow anything", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(targetPath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    // A fork names a parent but declares no origin and depth 0: it is a copy the
+    // user asked for, and moving the original must not drag it along.
+    await writeSession(box.home, "proj", "s1");
+    const fork = await writeSession(box.home, "proj", "s2", { parentSession: "s1" });
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.deepEqual(result.results[0].children, { moved: [], failed: [] });
+    assert.equal(existsSync(join(fork.dir, LOG)), true);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a generating session is refused instead of being moved under its writer", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(targetPath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    // Open *and* streaming: the agent holds a writer on the log.
     api.ctx.sessions = { get: (id) => (id === "s1" ? { id: "s1" } : undefined) };
+    api.ctx.agents = { get: (id) => (id === "s1" ? { id: "s1", status: "running" } : undefined) };
     await writeSession(box.home, "proj", "s1");
 
     await assert.rejects(
@@ -358,6 +416,36 @@ test("a live session is refused instead of being moved under its writer", async 
       (error) => error.code === "session-active",
       "a batch where nothing moved surfaces the failure instead of a 200 of refusals",
     );
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("an open but idle session is flushed, moved, and detached from the host", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(targetPath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    const calls = [];
+    const row = { id: "s1", detach() { calls.push("detach"); } };
+    api.ctx.sessions = {
+      get: (id) => (id === "s1" ? row : undefined),
+      store: { get: (id) => (id === "s1" ? row : undefined) },
+      async flush(session) { calls.push(`flush:${session?.id ?? "?"}`); },
+    };
+    // An agent record that is open but not generating: no reason to refuse.
+    api.ctx.agents = { get: (id) => (id === "s1" ? { id: "s1", status: "idle" } : undefined) };
+    const { dir } = await writeSession(box.home, "proj", "s1");
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true, "an idle open session moves");
+    assert.deepEqual(calls, ["flush:s1", "detach"], "flush before the move, detach after it");
+    assert.equal(existsSync(join(dir, LOG)), false);
+    assert.equal(existsSync(join(box.home, "sessions", projectKey(targetPath), "s1", LOG)), true);
   } finally {
     await box.cleanup();
   }
@@ -373,6 +461,7 @@ test("one refused id does not cancel the ids that could move", async () => {
     ]);
     const api = apiWith(box.home, registry);
     api.ctx.sessions = { get: (id) => (id === "s1" ? { id: "s1" } : undefined) };
+    api.ctx.agents = { get: (id) => (id === "s1" ? { id: "s1", status: "running" } : undefined) };
     const live = await writeSession(box.home, "proj", "s1");
     const idle = await writeSession(box.home, "proj", "s2");
 
@@ -388,6 +477,51 @@ test("one refused id does not cancel the ids that could move", async () => {
     );
     assert.equal(existsSync(join(live.dir, LOG)), true, "the refused session keeps its log where it was");
     assert.equal(existsSync(idle.dir), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a workspace whose directory was deleted is re-created instead of refused", async () => {
+  const box = await sandbox();
+  try {
+    // The registry row is the workspace; the folder named by its path is just
+    // where the logs go, and the user is free to delete it from Explorer.
+    const targetPath = join(box.root, "deleted-workspace");
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    const { dir } = await writeSession(box.home, "proj", "s1");
+    assert.equal(existsSync(targetPath), false, "the folder really is gone");
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true, "a missing folder is not a missing workspace");
+    assert.equal(existsSync(targetPath), true, "the folder is re-created for the move");
+    assert.equal(existsSync(join(box.home, "sessions", projectKey(targetPath), "s1", LOG)), true);
+    assert.equal(existsSync(join(dir, LOG)), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("copying into a workspace whose directory was deleted re-creates it too", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "deleted-workspace");
+    const registry = fakeRegistry([
+      { id: "w-source", title: "source", path: "C:\\work\\source", sessionIds: ["s1"] },
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    await writeSession(box.home, "proj", "s1");
+
+    const result = await moveSessions(api, { ids: ["s1"], copy: true, target: { workspaceId: "w-target" } });
+    const copy = result.results[0];
+    assert.equal(copy.copied, true);
+    assert.equal(existsSync(targetPath), true);
+    const duplicated = await readArtifact(copy.artifactTo);
+    assert.equal(duplicated.header.cwd, targetPath, "the copy is filed under the re-created folder");
   } finally {
     await box.cleanup();
   }

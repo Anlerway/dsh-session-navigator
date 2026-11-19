@@ -389,6 +389,33 @@ export function createContentIndex(options = {}) {
   }
 
   /**
+   * Forget the cached text of specific sessions.
+   *
+   * Purging a session deletes its log, and `sync` would drop the entry on the
+   * next listing pass — but "next listing pass" is not a promise anyone can
+   * check, and until then the deleted conversation is still sitting in a file in
+   * the user's data directory. This is the promise kept at the moment of
+   * deletion. An id this index never held costs nothing.
+   *
+   * Only memory changes here; `dirty` makes the next `flush` rewrite the file
+   * without the text, and the caller may flush immediately.
+   *
+   * @param {string[]} ids
+   * @returns {number} how many entries were dropped
+   */
+  function forget(ids) {
+    let dropped = 0;
+    for (const id of Array.isArray(ids) ? ids : []) {
+      if (typeof id !== "string") continue;
+      if (!entries.delete(id)) continue;
+      dropped += 1;
+      dirty = true;
+    }
+    if (dropped > 0) total = Math.max(0, total - dropped);
+    return dropped;
+  }
+
+  /**
    * Forget everything — memory and file — and keep forgetting.
    *
    * opening is left resolved, otherwise the next open() would read the file that
@@ -425,5 +452,5 @@ export function createContentIndex(options = {}) {
     return { enabled, bytes: onDisk, exists: onDisk > 0, sessions: entries.size };
   }
 
-  return { sync, work, search, state, open, flush, clear, rebuild, cacheInfo, dropDisk };
+  return { sync, work, search, state, open, flush, clear, rebuild, cacheInfo, dropDisk, forget };
 }

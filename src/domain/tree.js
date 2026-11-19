@@ -352,7 +352,13 @@ export function buildTree({ registry, sessions, trashedIds, userTree, listSettin
   // every live session below, because a hidden session can be revealed by
   // standing on it and it must know where it belongs when it is.
   const countView = { sessions: shown };
-  const treeLike = { nodes, children, sessionPlacement };
+  // 子会话跟着母会话的文件位置走：一个 delegation 只是母会话这次运行的一部分，
+  // 母会话被拖进某个文件夹（或放回工作区根），它没有自己的 placement 时就应该
+  // 在同一个容器里，而不是留在工作区根上散着。继承只走 parentSession 链、只对
+  // isSubagent 生效（fork 是一个独立的副本，不该跟着动），子会话自己写的
+  // placement 永远优先——那才是"我就是要把它单独放在这里"。
+  const placements = inheritPlacements(live, sessionPlacement);
+  const treeLike = { nodes, children, sessionPlacement: placements };
   /** @type {Record<string, string>} */
   const sessionHome = {};
   for (const session of live) {
@@ -465,6 +471,53 @@ export function buildTree({ registry, sessions, trashedIds, userTree, listSettin
     // never has to replay the workspace-vs-override question (R2).
     sessionHome,
   };
+}
+
+/**
+ * The placement map with the delegations folded in.
+ *
+ * A session's own `sessionPlacement` row is an explicit filing decision; a
+ * subagent without one inherits the container its parent sits in, up the
+ * `parentSession` chain. That is the same rule the workspace home already
+ * follows in `domain/sessions.js` (a child belongs where its parent belongs),
+ * one level down: the workspace decides which project the run lives in, the
+ * placement decides which folder of that project the run is filed in.
+ *
+ * Cycle-guarded, and a fork is never a child here — it names a parent but is an
+ * independent copy the user asked for.
+ *
+ * @param {object[]} sessions the live sessions (hidden ones included: a hidden
+ *   parent still decides where its child would be filed)
+ * @param {Record<string, string>} placement the sidecar's own map
+ * @returns {Record<string, string>} a copy, so the caller never mutates the sidecar
+ */
+function inheritPlacements(sessions, placement) {
+  const own = placement && typeof placement === "object" ? placement : {};
+  /** @type {Record<string, string>} */
+  const out = { ...own };
+  if (sessions.length === 0) return out;
+  const byId = new Map(sessions.map((session) => [session.id, session]));
+
+  /**
+   * @param {any} session
+   * @param {Set<string>} seen
+   * @returns {string}
+   */
+  const chain = (session, seen) => {
+    if (!session) return "";
+    if (typeof own[session.id] === "string") return own[session.id];
+    if (!session.isSubagent || !session.parentSession) return "";
+    if (seen.has(session.id)) return "";
+    seen.add(session.id);
+    return chain(byId.get(session.parentSession), seen);
+  };
+
+  for (const session of sessions) {
+    if (typeof out[session.id] === "string") continue;
+    const inherited = chain(session, new Set());
+    if (inherited) out[session.id] = inherited;
+  }
+  return out;
 }
 
 /**

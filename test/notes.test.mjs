@@ -171,15 +171,12 @@ test("every language has notes, and they cover the same ground", async () => {
     const parsed = parseNotes(await readFile(file, "utf8"));
     assert.ok(parsed.title.length > 0, `${lang} introduces itself`);
     assert.ok(parsed.title.endsWith(version), `${lang} names the version being shipped`);
-    // The document opens with paragraphs, not a list: the 主要改动 heading and
-    // the sentence saying what kind of release this is, before anybody has to
-    // read a bullet.
+    // The document opens with the 主要改动 heading, and one list under it is the
+    // whole change set: the release says what it changed, in the user's words.
     assert.equal(parsed.blocks[0]?.kind, "p", `${lang} opens with the highlights heading`);
-    assert.equal(parsed.blocks[1]?.kind, "p", `${lang} says what kind of release this is`);
-    // Four lists: the highlights, then what is new, what got better, what was
-    // fixed. The numbers are the contract between the ten files; a translation
-    // that drops a bullet fails here rather than silently telling less.
-    shapes.set(lang, parsed.blocks.filter((block) => block.kind === "list").map((list) => list.items.length).join("/"));
+    // The bullets are the contract between the ten files; a translation that
+    // drops one fails here rather than silently telling less.
+    shapes.set(lang, parsed.blocks.map((block) => block.kind + (block.kind === "list" ? block.items.length : "")).join(","));
   }
-  assert.deepEqual([...new Set(shapes.values())], ["9/8/10/9"], "every language says the same amount");
+  assert.deepEqual([...new Set(shapes.values())], ["p,list7"], "every language says the same amount");
 });

@@ -229,6 +229,11 @@
             // so it is only offered when every checked row is a session.
             const bulkIds = [...checked];
             const allSessions = bulkIds.length > 0 && bulkIds.every((checkedId) => sessionsById.has(checkedId));
+            // 剪切 / 复制 / 删除 are per-log and work on a delegation too, but the
+            // four flag verbs below write into the *parent's* run
+            // (domain/subagents.js) and the host refuses a bound id: say so on the
+            // item instead of failing a round-trip later.
+            const bulkHasBound = bulkIds.some((checkedId) => sessionsById.get(checkedId)?.isSubagent === true);
             // Labels follow the direction the click will take, as 归档 does: a set
             // that is already collected everywhere offers to take it back out.
             const everyIn = (container) => bulkIds.length > 0 && bulkIds.every((checkedId) => Boolean(flagMemberIn(container, checkedId)));
@@ -249,16 +254,22 @@
             items.push({
               label: allFavorite ? T("取消收藏 {0} 项", [count]) : T("收藏 {0} 项", [count]),
               icon: "star",
+              disabled: bulkHasBound,
+              onDisabled: () => setHint(T("选中的集合里有子智能体：收藏 / 待办 / 置顶 / 归档只能选父会话或普通会话")),
               run: () => flagMany("favorite"),
             });
             items.push({
               label: allTodo ? T("取消待办 {0} 项", [count]) : T("待办 {0} 项", [count]),
               icon: "todo",
+              disabled: bulkHasBound,
+              onDisabled: () => setHint(T("选中的集合里有子智能体：收藏 / 待办 / 置顶 / 归档只能选父会话或普通会话")),
               run: () => flagMany("todo"),
             });
             items.push({
               label: allPinned ? T("取消置顶 {0} 项", [count]) : T("置顶 {0} 项", [count]),
               icon: "pin",
+              disabled: bulkHasBound,
+              onDisabled: () => setHint(T("选中的集合里有子智能体：收藏 / 待办 / 置顶 / 归档只能选父会话或普通会话")),
               run: () => pinMany(),
             });
             if (allContainers) {
@@ -273,6 +284,8 @@
               items.push({
                 label: archived ? T("取消归档 {0} 项", [count]) : T("归档 {0} 项", [count]),
                 icon: "archive",
+                disabled: bulkHasBound,
+                onDisabled: () => setHint(T("选中的集合里有子智能体：收藏 / 待办 / 置顶 / 归档只能选父会话或普通会话")),
                 run: () => setArchive(!archived),
               });
             }
@@ -355,11 +368,12 @@
           // 待办 draw shortcut rows, and those go through kind === "shortcut".
           if (kind === "session") {
             const session = sessionsById.get(id) ?? payload;
-            // A subagent's menu is mostly read-only: the operations that change
-            // its *parent's* run belong to the parent (domain/subagents.js), and
-            // the host refuses them anyway; offering them here would only produce
-            // a hint after a failed round-trip. 删除 is the exception — a bin
-            // entry is its own payload — so it is offered at the bottom.
+            // A subagent is a session row like any other for the three gestures
+            // that only move its own log: 剪切 / 复制 (the cross-workspace move in
+            // src/host/move.js) and 删除. The verbs that write into its *parent's*
+            // run — 收藏 / 待办 / 置顶 / 归档 / 重命名 / 分叉 — still belong to the
+            // parent (domain/subagents.js) and the host still refuses them, so they
+            // stay off this menu rather than produce a hint after a round-trip.
             if (session?.isSubagent === true) {
               // 转到会话原位置 answers a question only 收藏 / 待办 raise: there the row
               // is a membership, so where it really lives is not on screen.
@@ -376,6 +390,27 @@
                 run: () => {
                   if (session.parentSession) selectAndReveal(session.parentSession);
                 },
+              });
+              items.push({ sep: true });
+              // Moving a delegation moves its own directory; the parent's run
+              // keeps resolving it by id, and moving the *parent* takes this row
+              // along (followChildren in src/host/move.js), so the two gestures
+              // agree about where the run lives.
+              items.push({
+                label: T("剪切"),
+                icon: "cut",
+                key: "Ctrl+X",
+                disabled: session?.trashed === true,
+                onDisabled: () => setHint(T("回收站里的会话不能移动；先还原它")),
+                run: () => cutOrCopy("cut"),
+              });
+              items.push({
+                label: T("复制到…"),
+                icon: "copy",
+                key: "Ctrl+C",
+                disabled: session?.trashed === true,
+                onDisabled: () => setHint(T("回收站里的会话不能移动；先还原它")),
+                run: () => cutOrCopy("copy"),
               });
               items.push({ sep: true });
               // A summary is not a change to the store — it lands in its own
@@ -397,11 +432,10 @@
                 },
               });
               items.push({ sep: true });
-              // 删除 is the one write a delegation can take on its own. The bin
-              // only moves the payload and restore puts it back, so the parent's
-              // run is untouched and its transcript keeps resolving the child it
-              // points at; every other verb above stays the parent's. Inside 回收站
-              // the same row offers the bin's two verbs.
+              // 删除 touches only the payload: the bin moves it and restore puts
+              // it back, so the parent's run is untouched and its transcript keeps
+              // resolving the child it points at. Inside 回收站 the same row offers
+              // the bin's two verbs.
               if (session?.trashed) {
                 items.push({ label: T("还原"), icon: "restore", run: () => restoreSelection([id]) });
                 items.push({ sep: true });
@@ -409,7 +443,6 @@
               } else {
                 items.push({ label: T("删除到回收站"), icon: "trash", danger: true, run: () => deleteSelection([id]) });
               }
-              items.push({ label: T("子智能体 · 随父会话操作"), disabled: true });
               setContextMenu({ left: x, top: y, items });
               return;
             }

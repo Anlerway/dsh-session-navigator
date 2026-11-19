@@ -26,7 +26,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loadClientBundle, recordingFetch } from "./support/client-bundle.mjs";
+import { ballDocument as makeBallDocument, loadClientBundle, recordingFetch } from "./support/client-bundle.mjs";
 
 const EXPOSE = [
   "openNativeSettings",
@@ -420,9 +420,10 @@ test("the ball is a ball you can throw, and a throw is not a click", async () =>
     assert.equal(frames.length, 0, "a placed ball hovers where the hand left it");
     api.glideBall(node, 0, 0);
     assert.equal(frames.length, 0, "zero speed is not a throw");
+    // Remembered as a fraction of the travel (1200×720 here), not as pixels.
     assert.deepEqual(
       JSON.parse(stored.get("session-navigator.ball-spot")),
-      { left: 630, top: 410 },
+      { v: 2, x: 0.518333, y: 0.558333 },
       "the spot is remembered by the browser, not by the settings document",
     );
 
@@ -454,21 +455,6 @@ test("the ball is a ball you can throw, and a throw is not a click", async () =>
     globalThis.performance.now = previousNow;
   }
 });
-
-/** A document that remembers what got appended to <body>. */
-function makeBallDocument() {
-  const appended = [];
-  const document = {
-    createElement: () => ({ style: {}, appendChild() {}, setAttribute() {} }),
-    getElementById: () => null,
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    head: { appendChild() {} },
-    body: { appendChild: (node) => appended.push(node), contains: () => true },
-    documentElement: { getAttribute: () => null },
-  };
-  return { document, appended };
-}
 
 /**
  * The panel's overlay root is click-through at z-index 900 on purpose. A ball

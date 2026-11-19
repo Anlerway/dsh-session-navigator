@@ -603,6 +603,14 @@
     const BALL_ACCEL_GAIN = 0.6;          // dsh-pet ACCEL_GAIN_MAX
     const BALL_THROW_MIN = 500;           // px/s (dsh-pet DEAD_ZONE_SPEED)
     const BALL_MAX_SPEED = 3600;          // px/s (dsh-pet MAX_THROW_SPEED)
+    // Where the ball is, kept twice over. `ballSpot` is the pixels this window
+    // draws, because a throw integrates in pixels; `ballRatio` is the same spot
+    // as a fraction of the distance the ball can travel (viewport minus the ball
+    // and both gaps). The fraction is what survives a resize — a window that
+    // grows keeps the ball in the same place in the layout instead of pinning it
+    // to a pixel column — and the fraction is what localStorage keeps, so the
+    // spot means the same thing in the next window of a different size.
+    let ballRatio = null;
     let ballSpot = readBallSpot();
     let ballThrown = false;
     let ballCaught = false;
@@ -624,6 +632,45 @@
         left: Math.min(Math.max(BALL_GAP, left), Math.max(BALL_GAP, width - BALL_SIZE - BALL_GAP)),
         top: Math.min(Math.max(BALL_GAP, top), Math.max(BALL_GAP, height - BALL_SIZE - BALL_GAP)),
       };
+    }
+
+    /** How far the ball's corner can travel on each axis, which is what a ratio divides by. */
+    function ballTravel(view) {
+      return {
+        x: Math.max(0, (view?.width || 0) - BALL_SIZE - 2 * BALL_GAP),
+        y: Math.max(0, (view?.height || 0) - BALL_SIZE - 2 * BALL_GAP),
+      };
+    }
+
+    /**
+     * A pixel spot as a fraction of that travel: 0 is hard against the top/left
+     * margin, 1 hard against the bottom/right one. `null` when there is no
+     * layout to divide by (unit tests, SSR) — the spot is then pixels and stays
+     * pixels, because a fraction of a zero travel means nothing.
+     */
+    function ratioOf(spot) {
+      if (!spot) return null;
+      const travel = ballTravel(viewportSize());
+      const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
+      return {
+        x: travel.x > 0 ? clamp01((spot.left - BALL_GAP) / travel.x) : 0,
+        y: travel.y > 0 ? clamp01((spot.top - BALL_GAP) / travel.y) : 0,
+        scalable: travel.x > 0 || travel.y > 0,
+      };
+    }
+
+    /** The inverse: a fraction back to pixels this window can draw. */
+    function spotOf(ratio) {
+      if (!ratio || ratio.scalable !== true) return null;
+      const view = viewportSize();
+      const travel = ballTravel(view);
+      const clamp01 = (value) => Math.min(Math.max(Number.isFinite(value) ? value : 0, 0), 1);
+      return clampBall(
+        Math.round(BALL_GAP + clamp01(ratio.x) * travel.x),
+        Math.round(BALL_GAP + clamp01(ratio.y) * travel.y),
+        view.width,
+        view.height,
+      );
     }
 
     /**
@@ -723,22 +770,51 @@
       return { left, top, vx, vy, bounced, atRest };
     }
 
+    /**
+     * Read the remembered spot. Two shapes live in storage: v2 names the fraction
+     * (`{v:2,x,y}`) and v1 the pixels (`{left,top}`) of whatever window wrote
+     * it. Both are read here, so updating the plugin keeps the ball where the
+     * user left it; a v1 record becomes a fraction the moment `ballRatio` is
+     * derived from it, and the next save writes v2.
+     */
     function readBallSpot() {
       try {
         const raw = globalThis.localStorage?.getItem(BALL_SPOT_KEY);
         if (!raw) return null;
-        const spot = JSON.parse(raw);
-        if (!Number.isFinite(spot?.left) || !Number.isFinite(spot?.top)) return null;
+        const saved = JSON.parse(raw);
+        if (Number.isFinite(saved?.x) && Number.isFinite(saved?.y)) {
+          const ratio = { x: saved.x, y: saved.y, scalable: true };
+          const spot = spotOf(ratio);
+          if (!spot) return null;
+          ballRatio = ratioOf(spot);
+          return spot;
+        }
+        if (!Number.isFinite(saved?.left) || !Number.isFinite(saved?.top)) return null;
         const view = viewportSize();
-        return clampBall(spot.left, spot.top, view.width, view.height);
+        return clampBall(saved.left, saved.top, view.width, view.height);
       } catch {
         return null;
       }
     }
 
-    function saveBallSpot(spot) {
+    /**
+     * Write the spot down. The fraction is preferred: it is the one value that
+     * still means the same thing in a window of another size. Without a layout
+     * to divide by (unit tests, SSR) the pixels are stored instead — the v1
+     * shape, which reads back correctly above.
+     */
+    function saveBallSpot() {
+      if (!ballSpot) return;
+      ballRatio = ratioOf(ballSpot);
+      const record = ballRatio?.scalable === true
+        ? {
+          v: 2,
+          x: Math.round(ballRatio.x * 1e6) / 1e6,
+          y: Math.round(ballRatio.y * 1e6) / 1e6,
+        }
+        : { left: ballSpot.left, top: ballSpot.top };
       try {
-        globalThis.localStorage?.setItem(BALL_SPOT_KEY, JSON.stringify(spot));
+        globalThis.localStorage?.setItem(BALL_SPOT_KEY, JSON.stringify(record));
       } catch {
         // Forgetting where the ball was is cheaper than breaking the click;
         // storage can be full or switched off entirely.
@@ -754,6 +830,7 @@
       // outside the viewport; the render path re-clamps for free.
       const view = viewportSize();
       ballSpot = clampBall(ballSpot.left, ballSpot.top, view.width, view.height);
+      ballRatio = ratioOf(ballSpot);
       return {
         ...base,
         left: ballSpot.left + "px",
@@ -774,7 +851,7 @@
       glideFrame = 0;
       glideStop = null;
       if (node?.style) node.style.transform = "";
-      if (persist && ballSpot) saveBallSpot(ballSpot);
+      if (persist && ballSpot) saveBallSpot();
       return true;
     }
 
@@ -797,6 +874,9 @@
       let last = performance.now();
       const write = () => {
         ballSpot = { left: Math.round(state.left), top: Math.round(state.top) };
+        // The fraction follows the flight tick by tick: a settle saves it, and a
+        // reload mid-air saves the release below.
+        ballRatio = ratioOf(ballSpot);
         if (node.style) {
           node.style.left = ballSpot.left + "px";
           node.style.top = ballSpot.top + "px";
@@ -817,7 +897,7 @@
         glideFrame = 0;
         glideStop = null;
         write();
-        saveBallSpot(ballSpot);
+        saveBallSpot();
         if (node.style) node.style.transform = "";
         squash(1.06);
       };
@@ -867,6 +947,7 @@
         if (node.classList) node.classList.add("dragging");
         const view = viewportSize();
         ballSpot = clampBall(rect.left + dx, rect.top + dy, view.width, view.height);
+        ballRatio = ratioOf(ballSpot);
         if (node.style) {
           node.style.left = ballSpot.left + "px";
           node.style.top = ballSpot.top + "px";
@@ -885,7 +966,7 @@
           ballCaught = false;
           // Remember where the hand let go even if the ball keeps flying: a
           // reload in mid-air should not resurrect the previous window's spot.
-          saveBallSpot(ballSpot);
+          saveBallSpot();
           if (entryPhysics.on) {
             const { vx, vy } = throwVelocity(samples, performance.now());
             // A placement is not a throw. Below the threshold the ball simply
@@ -910,17 +991,23 @@
 
     // A resize does not necessarily re-render the footer, so the mounted ball is
     // moved by hand. The listener reads ballSpot, never the DOM, to find out
-    // whether the user has dragged at all.
+    // whether the user has dragged at all — and it re-derives the pixels from the
+    // fraction instead of re-clamping them, so a window that grows keeps the ball
+    // at the same *proportion* of the layout. Re-clamping alone pinned it to a
+    // pixel column: grow the window and it stayed hard against an edge.
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("resize", () => {
-        if (!ballSpot) return;
+        if (!ballSpot && !ballRatio) return;
         const node = globalThis.document?.querySelector?.(".se-ball");
         stopGlide(false, node);
-        const view = viewportSize();
-        ballSpot = clampBall(ballSpot.left, ballSpot.top, view.width, view.height);
+        ballSpot = spotOf(ballRatio) ?? ballSpot;
+        if (!ballSpot) return;
+        ballRatio = ratioOf(ballSpot);
         if (node?.style) {
           node.style.left = ballSpot.left + "px";
           node.style.top = ballSpot.top + "px";
+          node.style.right = "auto";
+          node.style.bottom = "auto";
         }
       });
     }

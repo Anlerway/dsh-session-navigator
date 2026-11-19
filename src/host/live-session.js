@@ -79,6 +79,29 @@ function sessionOf(sessions, id) {
 }
 
 /**
+ * Is this session *generating* right now?
+ *
+ * "Open in DSH" and "producing tokens" are two different states, and only the
+ * second one is a reason to refuse a move: an agent that is streaming holds a
+ * writer on the log and would keep appending to the old path. An idle session
+ * the user merely has on screen appends nothing, so its log can be relocated
+ * (the caller flushes it first) and the host's view is detached afterwards.
+ *
+ * @param {any} ctx plugin context; a missing `agents` service answers "no"
+ * @param {string} sessionId
+ * @returns {boolean}
+ */
+export function isSessionRunning(ctx, sessionId) {
+  const id = String(sessionId ?? "");
+  if (!ctx || id === "") return false;
+  const agent = agentOf(getService(ctx, "agents"), id);
+  if (!agent) return false;
+  // Registries in the wild spell the same fact two ways: `status` on the agent
+  // record, and a boolean on an inner run. Either one claiming "running" wins.
+  return agent.status === "running" || agent.running === true;
+}
+
+/**
  * Dispose an agent, but never wait on it forever.
  *
  * A cancel that resolves is the normal path. `scope.dispose()` is the one that

@@ -15,7 +15,6 @@
       nodeIdsToActOn,
       setHint,
       sessionsById,
-      blockedByBinding,
       tree,
       scope,
       load,
@@ -46,9 +45,10 @@
             setHint(T("回收站里的会话不能移动；先还原它"));
             return;
           }
-          // Cutting or copying a delegation would paste a fragment of one run as
-          // a session of its own; the parent is the unit of movement.
-          if (blockedByBinding(sessions)) return;
+          // A delegation is cut and copied like any session: its log is a
+          // session directory, and the paste is the same cross-workspace move.
+          // Moving the parent takes the children along on the host side, so the
+          // two gestures cannot disagree about where a run lives.
           // A container is only ever moved: duplicating a folder would have to
           // duplicate its children, and the registry has no notion of a copied
           // workspace. This is the one place the rule lives — the menu items and
@@ -70,7 +70,7 @@
               : T("已复制 {0} 个{1}，转到目标位置后粘贴", [total, noun]),
           );
         },
-        [blockedByBinding, idsToActOn, nodeIdsToActOn, sessionsById],
+        [idsToActOn, nodeIdsToActOn, sessionsById],
       );
 
       /**
@@ -367,7 +367,24 @@
               T("已把 {0} 个会话放回「{1}」", [settled.length, name]),
             );
           }
-          const moving = ids.filter((id) => !settled.includes(id));
+          // A delegation shown inside a folder because its parent is there has
+          // no placement row of its own, so clearing one would be a no-op and it
+          // would stay in the folder. Filing it at the workspace node is the
+          // explicit row that pulls it back out — its own row always wins over
+          // what it would otherwise inherit (see domain/tree.js).
+          const inherited = copy
+            ? []
+            : ids.filter((id) => {
+                const session = sessionsById.get(id);
+                return Boolean(session?.homeInherited) && session.workspaceId === workspaceId;
+              });
+          if (inherited.length > 0 && target?.id) {
+            await mutate(
+              () => apiSend("POST", "/sessions/placement", { ids: inherited, parent: target.id }),
+              T("已把 {0} 个会话放回「{1}」", [inherited.length, name]),
+            );
+          }
+          const moving = ids.filter((id) => !settled.includes(id) && !inherited.includes(id));
           if (moving.length === 0) return true;
           const ok = await mutate(
             () => apiSend("POST", "/move", { ids: moving, target: { workspaceId }, copy }),

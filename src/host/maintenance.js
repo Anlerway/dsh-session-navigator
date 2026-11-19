@@ -14,7 +14,12 @@
  *     logs, so keeping them is an optimisation and dropping them costs one scan;
  *   - the detached window's Chromium profile (`detached/chromium/<hash>/`): a
  *     browser cache by another name, rebuilt on the next launch, and the tens of
- *     megabytes nobody would otherwise notice.
+ *     megabytes nobody would otherwise notice;
+ *   - orphaned per-session records — annotations, AI summaries, a virtual
+ *     placement, shortcuts — whose session no longer exists. These free no bytes
+ *     (the sidecars stay); they are swept because nothing else ever revisits a
+ *     key it has no session for, and a leftover row is visible as a bug on the
+ *     annotations page. See `./session-records.js`.
  *
  * It deliberately does not touch:
  *
@@ -33,6 +38,7 @@ import { join } from "node:path";
 import { componentPaths } from "../component/layout.js";
 import { cleanTmp } from "../paths.js";
 import { clearLogFacts } from "../sources/logfacts.js";
+import { recordCount, sweepOrphanSessionRecords } from "./session-records.js";
 
 /** Phases in which the component owns its download directory. */
 const COMPONENT_BUSY = new Set(["downloading", "verifying", "extracting"]);
@@ -155,7 +161,7 @@ export function invalidateMemory(api) {
  * Clear every cache this plugin owns.
  *
  * @param {any} api
- * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, manifest: { removed: number, bytes: number }, profile: { removed: number, bytes: number }, skipped: string[], tookMs: number }>}
+ * @returns {Promise<{ freedBytes: number, caches: string[], tmp: { removed: number, bytes: number }, downloads: { removed: number, bytes: number }, staging: { removed: number, bytes: number }, manifest: { removed: number, bytes: number }, profile: { removed: number, bytes: number }, orphans: { annotations: string[], summaries: string[], placements: string[], shortcuts: string[] }, skipped: string[], tookMs: number }>}
  */
 export async function clearCaches(api) {
   const started = Date.now();
@@ -284,6 +290,44 @@ export async function clearCaches(api) {
     }
   }
 
+  // 孤儿记录: annotations / AI summaries / sessionPlacement / shortcuts whose
+  // session does not exist any more. No bytes come back — the sidecars stay — so
+  // this item frees nothing and is listed for a different reason: those records
+  // are invisible until they are wrong. A session deleted by DSH itself, by an
+  // earlier build, or by anything that never told this plugin leaves a row on the
+  // annotations page that cannot be opened, and the bin is the only other place
+  // that would ever look at that key.
+  //
+  // "Exists" means live *or* in the bin: a trashed session is not gone, and its
+  // annotation is what keeps the bin row readable.
+  //
+  // The 会话内容 index is not swept here. Its own sync drops entries whose session
+  // left the listing, and the clear above deletes the whole file when the user
+  // wants those bytes back.
+  /** @type {{ annotations: string[], summaries: string[], placements: string[], shortcuts: string[] }} */
+  let orphans = { annotations: [], summaries: [], placements: [], shortcuts: [] };
+  try {
+    if (api?.documents && typeof api?.reader?.snapshot === "function") {
+      const [snapshot, trash] = await Promise.all([api.reader.snapshot({}), api.documents.trash.read()]);
+      /** @type {Set<string>} */
+      const known = new Set();
+      for (const session of snapshot?.sessions ?? []) {
+        if (typeof session?.id === "string") known.add(session.id);
+      }
+      for (const session of snapshot?.view?.sessions ?? []) {
+        if (typeof session?.id === "string") known.add(session.id);
+      }
+      for (const id of Object.keys(trash?.entries ?? {})) known.add(id);
+      orphans = await sweepOrphanSessionRecords(api, known);
+      if (recordCount(orphans) > 0) caches.push("orphan-records");
+    }
+  } catch {
+    // A sidecar that cannot be rewritten (a locked file, a corrupt one parked in
+    // quarantine) must not fail the whole clear: the bytes below are already
+    // freed and the sweep is retried on the next press.
+    skipped.push("orphan-records");
+  }
+
   return {
     freedBytes: tmp.bytes + downloads.bytes + staging.bytes + content.freedBytes + manifest.bytes + profile.bytes,
     caches,
@@ -292,6 +336,7 @@ export async function clearCaches(api) {
     staging,
     manifest,
     profile,
+    orphans,
     skipped,
     tookMs: Date.now() - started,
   };

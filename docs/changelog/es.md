@@ -1,53 +1,11 @@
-Notas de la versión: V1.2.0
+Notas de la versión: V1.2.1
 
 Cambios principales
 
-Esta es la versión oficial 1.2.0. Gracias a quienes instalan y usan el plugin, y por la paciencia en cada versión; los informes de errores y las sugerencias son bienvenidos.
-
-- Entrada con bola flotante: se arrastra, se lanza y rebota; cinco estilos, se elige en Ajustes › Ajustes de entrada
-- Diez idiomas en la interfaz, ocho de ellos nuevos
-- El plugin se reestructuró y el arranque en frío es mucho más rápido
-- La ventana independiente se adapta al tema y se integra con dsh-plugin-wallpaper-engine
-- La ventana independiente puede renderizar con aceleración por GPU, activada por defecto y desactivada automáticamente si no es compatible
-- La lista no siempre se refrescaba al borrar una sesión; corregido
-- Si falta el runtime, ahora se ofrece la descarga
-- La carpeta de datos puede volver a la predeterminada
-- Todos los diálogos usan ahora los de DSH
-
-Los cambios en detalle
-
-Novedades
-
-- Entrada con bola flotante: una bola arrastrable además del botón de la barra lateral; al lanzarla, cae, rebota y se detiene en el suelo; cinco estilos (Predeterminado, DeepSeek, ChatGPT, Claude, Grok) para cambiar; se elige en Ajustes › Ajustes de entrada
-- Ocho idiomas nuevos, diez en total (japonés, coreano, alemán, francés, español, ruso, portugués, chino tradicional)
-- Barra de progreso de los resúmenes de IA
-- Si falta el componente de Electron, se ofrece la descarga en el acto
-- Ajustes › Carpeta de datos: cambiar de ubicación y volver a la predeterminada
-- Las notas de la versión también están traducidas
-- «Ventana independiente»: seguir el fondo de dsh-plugin-wallpaper-engine o subir una imagen propia; desenfoque, vidrio esmerilado y oscurecimiento
-- Un modo de renderizado acelerado por GPU para la ventana independiente: activado por defecto, se puede desactivar en Ajustes › Ventana independiente; si la tarjeta gráfica o el controlador no lo admiten, vuelve automáticamente al renderizado por software
-
-Mejoras
-
-- Arranque en frío 3,1 s → 0,12 s (dos mil sesiones); el reinicio lee el manifiesto de sesiones
-- Actualizar lee solo los archivos cambiados; una respuesta ya no dispara un barrido completo
-- Las listas largas solo crean las filas visibles; la primera pantalla ahorra más de cincuenta mil elementos
-- Cabecera y estadísticas de la sesión en caché por versión de archivo
-- La indexación cede el hilo principal cada 150 ms y limita el texto por sesión
-- El resaltado al pasar el ratón responde al instante
-- Vaciar la caché incluye ahora el manifiesto de sesiones, el contenido de las sesiones, la caché de Chromium y el índice
-- Los diálogos usan los nativos de DSH
-- Algunos textos revisados
-- Los doce grupos de la página de ajustes están ordenados por uso
-
-Correcciones
-
-- Borrar sesiones: las abiertas también van a la papelera, no caen en «Sin grupo» y no dejan carpetas vacías
-- El panel se quedaba en blanco a veces
-- Una sesión borrada seguía en el espacio de trabajo
-- La ventana del explorador retenía el proceso de DSH
-- Los márgenes del menú de fila no coincidían con los del menú del host
-- El runtime se mostraba como Electron
-- El progreso de descarga del componente ahora empieza al hacer clic
-- Un panel al 100 % ya no tapa la barra de título
-- Los tres botones de arriba a la derecha de la ventana independiente son más grandes
+* Corregido: al mover una sesión padre, las sesiones hijas se quedaban donde estaban
+* Corregido: la bola flotante cambiaba de sitio al redimensionar la ventana
+* Las sesiones hijas ya se pueden arrastrar, marcar, cortar y copiar
+* Corregido: la comprobación de sesión abierta era demasiado estricta
+* Corregido: un espacio de trabajo con la carpeta (real) borrada se trataba como inexistente
+* Al borrar una sesión se limpian también su índice y su caché dentro del plugin
+* «Borrar caché» ahora revisa y quita las entradas de índice y caché sin destino

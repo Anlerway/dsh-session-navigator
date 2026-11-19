@@ -129,6 +129,9 @@ function fakeApi({ home, registry, tree, sessions, running = [] }) {
     ctx: {
       get: (name) => (name === "workspaceRegistry" ? registry : undefined),
       sessions: { get: (id) => (running.includes(id) ? { id } : undefined) },
+      // "open" alone no longer blocks a move: only a generating agent does, so
+      // the fixture has to show the run, not just the row on screen.
+      agents: { get: (id) => (running.includes(id) ? { id, status: "running" } : undefined) },
     },
     dshHome: () => home,
     documents: { tree: treeDocument },

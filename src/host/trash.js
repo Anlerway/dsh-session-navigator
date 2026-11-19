@@ -34,7 +34,7 @@ import {
   trashTargetDir,
 } from "../domain/trash.js";
 import { codedError } from "../store/sidecar.js";
-import { dropShortcutsTo } from "../domain/shortcuts.js";
+import { forgetSessionRecords } from "./session-records.js";
 import { detachSession, flushSession, stopSession } from "./live-session.js";
 import { attachTo, detachEverywhere, registryOrNull } from "./registry.js";
 
@@ -465,6 +465,10 @@ async function forgetEntry(api, id, trashId) {
  * still open in another process) does not stop the rest: the entry that failed
  * keeps its record so the bin still shows it, and `errors` says why.
  *
+ * The payload is only half of what a session is. The other half is what this
+ * plugin wrote *about* it — see `src/host/session-records.js` — and both halves
+ * are dropped here, in the same call, so 永久删除 leaves nothing behind.
+ *
  * @param {any} api
  * @param {string[]} ids
  * @returns {Promise<{ purged: string[], skipped: string[], errors: { sessionId: string, code: string, message: string }[] }>}
@@ -516,15 +520,24 @@ export async function purgeSessions(api, ids) {
   }
 
   api.reader.invalidate();
-  // A reference outlives nothing: once the payload is gone, every shortcut that
-  // pointed at it is gone too. That is the *only* way a shortcut disappears —
-  // the row itself is not deletable — so this is where the promise is kept.
+  // The plugin's own records go with the payload: annotations, AI summaries, a
+  // virtual placement, the shortcuts that pointed at it, and the cached
+  // transcript in the 会话内容 index. A shortcut is the visible half — a row in
+  // 收藏 that opens nothing — and without this the annotations page would keep
+  // listing a session whose log was deleted. A failure here is reported rather
+  // than thrown: the bytes are already gone, and the sweep in 清理缓存 collects
+  // anything a locked document would not let go of.
+  /** @type {{ annotations: string[], summaries: string[], placements: string[], shortcuts: string[], content: number }} */
+  let records = { annotations: [], summaries: [], placements: [], shortcuts: [], content: 0 };
+  let recordsError = "";
   if (purged.length > 0) {
-    await api.documents.tree.mutate((draft) => {
-      for (const id of purged) dropShortcutsTo(draft, "session", id);
-    });
+    try {
+      records = await forgetSessionRecords(api, purged);
+    } catch (error) {
+      recordsError = String(/** @type {any} */ (error)?.message ?? error);
+    }
   }
-  return { purged, skipped, errors };
+  return { purged, skipped, errors, records, recordsError };
 }
 
 /**

@@ -1,5 +1,7 @@
 // shared：从 src/index.js 原样切出
+import { FIXED_NODES } from "../constants.js";
 import { boundIds, withDescendants } from "../domain/subagents.js";
+import { workspaceNodeId } from "../domain/tree.js";
 import { samePath } from "../paths.js";
 import { codedError } from "../store/sidecar.js";
 import { rejectUnknownKeys, requireEnum, requireObject, requireText } from "../validate.js";
@@ -19,11 +21,22 @@ import { rejectUnknownKeys, requireEnum, requireObject, requireText } from "../v
 export function withHome(sessions, tree) {
   const home = tree?.sessionHome ?? {};
   const placement = tree?.sessionPlacement ?? {};
-  return sessions.map((session) => ({
-    ...session,
-    home: home[session.id] ?? null,
-    homeOverride: typeof placement[session.id] === "string",
-  }));
+  return sessions.map((session) => {
+    const homeId = home[session.id] ?? null;
+    const explicit = typeof placement[session.id] === "string";
+    // A delegation with no placement of its own is shown in the container its
+    // parent sits in (see domain/tree.js). The client needs to tell that apart
+    // from a stored row: clearing a placement is only a write when one exists,
+    // and "put this child back beside its parent's container" is a write of its
+    // own.
+    const own = session.workspaceId ? workspaceNodeId(session.workspaceId) : FIXED_NODES.ungrouped;
+    return {
+      ...session,
+      home: homeId,
+      homeOverride: explicit,
+      homeInherited: !explicit && Boolean(homeId) && session.isSubagent === true && homeId !== own,
+    };
+  });
 }
 
 /**

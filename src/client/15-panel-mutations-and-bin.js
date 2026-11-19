@@ -35,7 +35,7 @@
       const describeError = useCallback((error) => {
         const code = String(error?.code ?? "");
         const raw = String(error?.message ?? error ?? "").trim();
-        if (code === "session-active") return T("这个会话正在 DSH 中打开，无法移动或删除；可以先复制它，或重启 DSH 后再试");
+        if (code === "session-active") return T("这个会话正在生成回复，暂时不能移动或删除；等这次运行结束（或先停止它）再试");
         if (code === "subagent-unsupported") return T("子智能体跟随父会话，不能单独操作：请选择父会话");
         if (code === "target-exists") return T("目标位置已有同名会话，未覆盖");
         if (code === "workspace-not-found") return T("目标工作区不存在，或它的目录已经失效");

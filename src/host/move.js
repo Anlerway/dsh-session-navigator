@@ -17,9 +17,12 @@
  * it started or at the destination with its original header — never a
  * half-written log.
  *
- * Live sessions are refused for a *move*. DSH keeps a write handle open on the
- * old path and rebinding it is undocumented internal state; moving the file
- * under an open writer corrupts the tail. A *copy* is a different thing: it
+ * A *running* session is refused for a *move*. A generating agent keeps a write
+ * handle open on the old path and rebinding it is undocumented internal state;
+ * moving the file under a writer that is mid-append corrupts the tail. A session
+ * the user has merely opened writes nothing: it is flushed, moved, and then
+ * detached from the host so no stale row points at the old path. A *copy* is a
+ * different thing: it
  * never touches the source, it reads it. Refusing there made 复制 fail with
  * "close it before moving it" for every session the user had merely opened, and
  * the panel offers no way to close one — so the copy now reads the log as a
@@ -35,6 +38,7 @@ import { getService } from "../capabilities.js";
 import { exists, fileList } from "../fs.js";
 import { dshHomeOf } from "./fsutil.js";
 import { codedError } from "../store/sidecar.js";
+import { detachSession, flushSession, isSessionRunning } from "./live-session.js";
 import { enqueue, holdersOf as workspacesHolding, registryOrNull } from "./registry.js";
 import { FIXED_NODES } from "../constants.js";
 import { patchAnnotation } from "../domain/annotations.js";
@@ -60,6 +64,28 @@ import {
 function inside(root, target) {
   const rel = relative(resolve(root), resolve(target));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) && !rel.split(sep).includes("..");
+}
+
+/**
+ * Make sure the target workspace's directory exists.
+ *
+ * The registry is the authority on which workspaces exist; the directory on
+ * disk is only where their payload goes. A workspace whose folder was deleted
+ * by hand (or whose drive was unmounted) is still a workspace — it still has a
+ * row, a title and its other sessions — so refusing the move with "目标工作区
+ * 不存在" answers a question nobody asked and leaves the user unable to file
+ * anything there. Re-create the directory instead, and only report a missing
+ * workspace when the directory cannot be made.
+ *
+ * @param {string} path absolute workspace path
+ * @returns {Promise<void>}
+ */
+async function ensureWorkspaceDir(path) {
+  try {
+    await mkdir(path, { recursive: true });
+  } catch (error) {
+    throw codedError("workspace-not-found", `workspace directory ${path} cannot be created: ${messageOf(error)}`);
+  }
 }
 
 /**
@@ -247,9 +273,13 @@ async function assertCopied(from, to) {
 /**
  * Shared preamble: locate the artifact, refuse what must not move.
  *
+ * A subagent's log is a session directory like any other, so a delegation may be
+ * moved or copied on its own; it is also moved along with its parent (see
+ * {@link followChildren}), which is what keeps a delegated run in one workspace.
+ *
  * @param {any} api
  * @param {string} sessionId
- * @param {string} action
+ * @param {string} action what the caller is about to do, for messages
  * @param {{ allowLive?: boolean }} [options] `allowLive` is for a copy: the
  *   source is only read, so a session DSH has open is a snapshot, not a
  *   conflict.
@@ -263,15 +293,20 @@ async function prepare(api, sessionId, action, options = {}) {
   if (!stored?.logPath) {
     throw codedError("session-not-found", `${sessionId} has no session log on disk`);
   }
-  if (stored.origin === "subagent") {
-    throw codedError("subagent-unsupported", `${sessionId} is a subagent session; subagent logs cannot be ${action}`);
-  }
   const live = getService(api.ctx, "sessions")?.get?.(sessionId) ?? null;
   if (live && options.allowLive !== true) {
-    throw codedError(
-      "session-active",
-      `${sessionId} 正在 DSH 中打开，无法移动；请先复制它，或重启 DSH 后再移动`,
-    );
+    // Only a *running* agent is a real conflict: it holds the log writer and
+    // would keep appending to the path this move is about to take away. A
+    // session merely open on screen writes nothing, so it is moved like any
+    // other — after its buffered events are pushed to the file, so the move
+    // takes them along (the host view is detached at the end of the move).
+    if (isSessionRunning(api.ctx, sessionId)) {
+      throw codedError(
+        "session-active",
+        `${sessionId} 正在生成回复，无法移动；等这次运行结束（或先停止它）后再移动`,
+      );
+    }
+    await flushSession(api.ctx, sessionId);
   }
   // A live log is still being appended to. Copying it is a snapshot, so the
   // frame or line that is half written is skipped instead of refused — the same
@@ -281,17 +316,131 @@ async function prepare(api, sessionId, action, options = {}) {
 }
 
 /**
- * Move one session to a target workspace.
+ * Is this header a delegation (a subagent), rather than a session of its own?
+ *
+ * The same rule the listing uses (see domain/sessions.js): a child names its
+ * parent and either declares `origin: "subagent"` or carries a delegation
+ * depth. A fork also names a parent but keeps depth 0 and no origin — a fork is
+ * a copy the user asked for and never follows anything.
+ *
+ * @param {any} header
+ * @returns {boolean}
+ */
+function isDelegation(header) {
+  const parent = typeof header?.parentSession === "string" ? header.parentSession : "";
+  if (!parent) return false;
+  return header.origin === "subagent" || (!header.origin && (header.delegationDepth ?? 0) > 0);
+}
+
+/**
+ * Every delegation below `id`, at any depth.
+ *
+ * The registry knows nothing about this: DSH creates a child itself, outside
+ * `workspace.sessionIds`, so the child's own header is the only record of the
+ * relation. Cycle-guarded — a hand-edited header must not hang a move.
+ *
+ * @param {Map<string, any>} headers
+ * @param {string} id
+ * @returns {string[]}
+ */
+function descendantIdsOf(headers, id) {
+  /** @type {Map<string, string[]>} */
+  const children = new Map();
+  for (const header of headers.values()) {
+    if (!isDelegation(header)) continue;
+    const list = children.get(header.parentSession) ?? [];
+    list.push(header.id);
+    children.set(header.parentSession, list);
+  }
+  /** @type {string[]} */
+  const out = [];
+  const seen = new Set([id]);
+  const queue = [...(children.get(id) ?? [])];
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (!next || seen.has(next)) continue;
+    seen.add(next);
+    out.push(next);
+    queue.push(...(children.get(next) ?? []));
+  }
+  return out;
+}
+
+/**
+ * Move the delegations of a session after the session itself.
+ *
+ * A child lives in its own directory, so moving the parent alone leaves the
+ * delegation behind in the workspace it was created in: the moved session then
+ * lists children that belong somewhere else, and the target workspace shows a
+ * run without the delegations it made. Each child goes through the same
+ * transaction as its parent (journal, rollback, registry swap), one at a time,
+ * and a child that cannot move is reported instead of undoing the rest — a
+ * locked child log must not cost the parent its move.
+ *
+ * @param {any} api
+ * @param {string} sessionId
+ * @param {any} target
+ * @returns {Promise<{ moved: string[], failed: { sessionId: string, code: string, message: string }[] }>}
+ */
+async function followChildren(api, sessionId, target) {
+  let headers = new Map();
+  try {
+    headers = await readAllHeaders(dshHomeOf(api));
+  } catch {
+    // No header listing means no way to name the children. The parent has
+    // already moved, so the honest answer is "no children followed".
+    return { moved: [], failed: [] };
+  }
+  const ids = descendantIdsOf(headers, sessionId);
+  /** @type {string[]} */
+  const moved = [];
+  /** @type {{ sessionId: string, code: string, message: string }[]} */
+  const failed = [];
+  for (const id of ids) {
+    try {
+      const result = await moveOneOnly(api, id, target);
+      if (result?.moved !== false) moved.push(id);
+    } catch (error) {
+      failed.push({
+        sessionId: id,
+        code: String(/** @type {any} */ (error)?.code ?? "io-error"),
+        message: messageOf(error),
+      });
+    }
+  }
+  return { moved, failed };
+}
+
+/**
+ * Move one session to a target workspace, taking its delegations along.
+ *
+ * @param {any} api
+ * @param {string} sessionId
+ * @param {any} target
+ * @param {{ followChildren?: boolean }} [options] `followChildren: false` is for
+ *   the recursion below: a child's own children are already in the list the
+ *   first call walked.
+ * @returns {Promise<object>}
+ */
+async function moveOne(api, sessionId, target, options = {}) {
+  const result = await moveOneOnly(api, sessionId, target);
+  if (options.followChildren === false) return result;
+  const children = await followChildren(api, sessionId, target);
+  return { ...result, children };
+}
+
+/**
+ * Move one session directory — and nothing else — to a target workspace.
  *
  * @param {any} api
  * @param {string} sessionId
  * @param {any} target
  * @returns {Promise<object>}
  */
-async function moveOne(api, sessionId, target) {
+async function moveOneOnly(api, sessionId, target) {
   const registry = registryOf(api.ctx);
   const resolved = await resolveTarget(registry, target);
-  const { root, stored, artifact } = await prepare(api, sessionId, "moved");
+  const { root, stored, artifact, live } = await prepare(api, sessionId, "moved");
 
   const fromWorkspaces = workspacesHolding(registry, sessionId);
   // "Already there" is a claim about two things: the registry and the payload.
@@ -312,12 +461,10 @@ async function moveOne(api, sessionId, target) {
     };
   }
 
-  // A workspace whose directory has disappeared cannot own a session: the
-  // registry's own attachSession would refuse the move after the bytes had
-  // already been relocated, so refuse it here while nothing has moved yet.
-  if (!(await exists(resolved.path))) {
-    throw codedError("workspace-not-found", `workspace ${resolved.id} points at ${resolved.path}, which does not exist`);
-  }
+  // A workspace folder deleted from the disk does not delete the workspace:
+  // the registry still lists it and attachSession still accepts it. Put the
+  // directory back, so the payload has somewhere to land.
+  await ensureWorkspaceDir(resolved.path);
 
   const sourceDir = dirname(stored.logPath);
   const directoryName = sourceDir.split(/[\\/]/).pop();
@@ -421,6 +568,12 @@ async function moveOne(api, sessionId, target) {
     /* the session moved; its title projection is cosmetic and rebuilt on read */
   });
   api.reader.invalidate();
+  // The host may still hold this session open (it was moved while idle). Its
+  // writer already points at the old path, so let go of it the way a delete
+  // does: `session/disposed` makes every client drop the stale row, and the
+  // next open reads the log where it now lives. Best effort — a profile with
+  // no session store has nothing to detach.
+  if (live) await detachSession(api.ctx, sessionId);
   // The registry now describes the payload, so the journal entry has done its
   // job. Failure to remove it costs one no-op repair at the next start.
   if (api.paths?.dataDir) await forgetMove(api.paths, sessionId).catch(() => {});
@@ -455,9 +608,7 @@ async function copyOne(api, sessionId, target) {
   const resolved = await resolveTarget(registry, target);
   const { root, stored, artifact } = await prepare(api, sessionId, "copied", { allowLive: true });
 
-  if (!(await exists(resolved.path))) {
-    throw codedError("workspace-not-found", `workspace ${resolved.id} points at ${resolved.path}, which does not exist`);
-  }
+  await ensureWorkspaceDir(resolved.path);
 
   const newId = `session-${randomId()}`;
   const header = { ...artifact.header, id: newId, cwd: resolved.path };

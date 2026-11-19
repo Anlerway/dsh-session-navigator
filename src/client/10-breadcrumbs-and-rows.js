@@ -433,12 +433,14 @@
           // A session row can be dragged onto a workspace row. The payload is
           // the whole checked set when the dragged row is part of it, so a
           // multi-selection moves as one gesture.
-          // A subagent is part of its parent's run, so it has no checkbox: the
-          // operations behind one (delete, cut, copy, 收藏, 待办, 归档) are the
-          // parent's to make, and a box that can be ticked would promise them.
-          // And it only drags once it is picked: an unpicked row leaves
-          // the press to 框选, which is what dragging across a list should do.
-          draggable: rowDraggable({ selected, checked }) && session.trashed !== true && !rename && !isChild,
+          // A subagent is its own row: it can be ticked, dragged, cut, copied and
+          // deleted like any other. Only operations that would edit the parent's
+          // run from the child's row stay refused (收藏/待办/归档/置顶/重命名),
+          // and those are refused where they are invoked, not by hiding the row's
+          // controls. Drag only starts once the row is picked: an unpicked row
+          // leaves the press to 框选, which is what dragging across a list should
+          // do.
+          draggable: rowDraggable({ selected, checked }) && session.trashed !== true && !rename,
           onDragStart: (event) => {
             // 多选拖动: the payload is the whole check-set, split into the
             // sessions a workspace can take and the containers that move as
@@ -455,19 +457,20 @@
         h(
           "div",
           { className: "cell col-check col-check-cell" },
-          isChild
-            ? h("span", { className: "chk-bound", title: T("子智能体跟随父会话：请操作父会话") }, h(Icon, { name: "branch", size: 10 }))
-            : h(
-                "span",
-                {
-                  className: "chk" + (checked ? " on" : ""),
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    onCheck(session.id);
-                  },
-                },
-                checked ? h(Icon, { name: "check", size: 10 }) : null,
-              ),
+          // One checkbox for every row. A subagent used to draw a branch glyph
+          // here instead, which promised the opposite of what the row can do: it
+          // is a session, it can be picked, moved and deleted.
+          h(
+            "span",
+            {
+              className: "chk" + (checked ? " on" : ""),
+              onClick: (event) => {
+                event.stopPropagation();
+                onCheck(session.id);
+              },
+            },
+            checked ? h(Icon, { name: "check", size: 10 }) : null,
+          ),
         ),
         h(
           "div",

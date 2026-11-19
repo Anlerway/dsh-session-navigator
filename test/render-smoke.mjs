@@ -433,9 +433,11 @@ if (dotRule("warn") !== "#e0a44a") throw new Error(`a waiting row must stay ambe
 console.log("SessionRow status ladder ok: 空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中");
 
 // ── 子智能体 rows ─────────────────────────────────────────────────────────
-// A child row is not a session the user can act on: it has no checkbox, no
-// rename pencil and no drag handle, and it says so with a bound glyph and a 子
-// tag. The parent row, in turn, carries the count and the twist that opens it.
+// A child row is a session row with the same checkbox and the same drag handle:
+// its log is its own directory, so it is selected, dragged and binned like any
+// other row. What it does not get is the rename pencil — a rename writes into the
+// parent's run — and it keeps the 子 tag that says where it comes from. The
+// parent row, in turn, carries the count and the twist that opens it.
 const childRow = render({
   type: SessionRow,
   props: {
@@ -451,10 +453,14 @@ const childRow = render({
 });
 const childClasses = findAll(childRow, hasClass("bound-row"));
 if (childClasses.length !== 1) throw new Error("a subagent row must carry .bound-row");
-if (findAll(childRow, hasClass("chk")).length !== 0) throw new Error("a subagent row must not render a checkbox");
-if (findAll(childRow, hasClass("chk-bound")).length !== 1) throw new Error("a subagent row must show the bound glyph instead");
+if (findAll(childRow, hasClass("chk")).length !== 1) throw new Error("a subagent row must render the same checkbox as any session");
+if (findAll(childRow, hasClass("chk-bound")).length !== 0) throw new Error("a subagent row must not swap its checkbox for a bound glyph");
 if (findAll(childRow, hasClass("nm-editbtn")).length !== 0) throw new Error("a subagent row must not offer a rename pencil");
-if (childRow.props.draggable !== false) throw new Error("a subagent row must not be draggable");
+if (childRow.props.draggable !== false) throw new Error("an unpicked row does not drag, subagent or not");
+const pickedChildRow = render({ type: SessionRow, props: {
+  session: { ...session, id: "child-1", isSubagent: true, parentSession: "session-1", delegationDepth: 1 },
+  selected: true, now: Date.now(), onSelect: noop, checked: false, onCheck: noop, depth: 1, onBeginRename: noop } });
+if (pickedChildRow.props.draggable !== true) throw new Error("a picked subagent row drags: it moves on its own");
 if (!textOf(childRow).includes("子")) throw new Error("a subagent row must carry the 子 tag");
 
 const parentRow = render({

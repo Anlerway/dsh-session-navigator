@@ -141,8 +141,8 @@ export const ERROR_CODES = {
   },
   "session-active": {
     status: 409,
-    zh: "这个会话正在 DSH 中打开，无法移动或删除；可以先复制它，或重启 DSH 后再试",
-    en: "This session is open in DSH, so it cannot be moved or deleted; copy it instead, or restart DSH and try again",
+    zh: "这个会话正在生成回复，暂时不能移动或删除；等这次运行结束（或先停止它）再试",
+    en: "This session is still generating, so it cannot be moved or deleted yet; let the run finish (or stop it) and try again",
   },
   "session-corrupt": {
     status: 409,
