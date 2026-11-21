@@ -12,7 +12,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +20,7 @@ import { zstdCompressSync } from "node:zlib";
 
 import { projectKey, readArtifact } from "../src/sources/artifact.js";
 import { ROUTES } from "../src/index.js";
+import { canonicalRoot } from "./support/tmp-root.mjs";
 
 const LOG = "session.v4.jsonl.zstd";
 const placement = ROUTES["POST /sessions/placement"];
@@ -148,7 +149,7 @@ async function scene(options = {}) {
   const ids = options.ids ?? ["s1"];
   const running = options.running ?? [];
   const folderParent = options.folderParent ?? "w-ws-target";
-  const root = await mkdtemp(join(tmpdir(), "se-placement-"));
+  const root = await canonicalRoot("se-placement-");
   const home = join(root, "home");
   await mkdir(join(home, "sessions"), { recursive: true });
   const sourcePath = join(root, "source");

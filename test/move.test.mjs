@@ -34,6 +34,7 @@ import {
 import { moveSessions, reconcileMoves } from "../src/host/move.js";
 import { recordMove, journalPath } from "../src/host/move-journal.js";
 import { dataPaths } from "../src/paths.js";
+import { canonicalRoot } from "./support/tmp-root.mjs";
 
 const LOG = "session.v4.jsonl.zstd";
 
@@ -130,7 +131,7 @@ function fakeApi(home) {
 }
 
 async function sandbox() {
-  const root = await mkdtemp(join(tmpdir(), "se-move-"));
+  const root = await canonicalRoot("se-move-");
   const home = join(root, "home");
   await mkdir(join(home, "sessions"), { recursive: true });
   return { root, home, cleanup: () => rm(root, { recursive: true, force: true }) };
@@ -646,6 +647,39 @@ test("a workspace whose directory was deleted is re-created instead of refused",
     assert.equal(existsSync(targetPath), true, "the folder is re-created for the move");
     assert.equal(existsSync(join(box.home, "sessions", projectKey(targetPath), "s1", LOG)), true);
     assert.equal(existsSync(join(dir, LOG)), false);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a workspace recorded under another spelling of its own folder still takes sessions", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(join(box.root, "detour"), { recursive: true });
+    await mkdir(targetPath, { recursive: true });
+    // One folder, two spellings: what a hand-added workspace, a re-created
+    // folder or a stale record looks like. DSH's attach compares
+    // `realpath(header.cwd) === record.path` (entity.ts:152), so a record spelled
+    // this way can never win that comparison. The move must land anyway — with
+    // the header carrying the realpath spelling and the membership written
+    // through the entity — instead of refusing on a spelling the user did not
+    // type and cannot correct from here.
+    const otherSpelling = join(box.root, "detour", "..", "target-workspace");
+    const registry = fakeRegistry([
+      { id: "w-source", title: "source", path: "C:\\work\\source", sessionIds: ["s1"] },
+      { id: "w-target", title: "target", path: otherSpelling, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    const { dir } = await writeSession(box.home, "proj", "s1");
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true);
+    assert.equal(existsSync(dir), false, "the payload left the old project directory");
+    const moved = await readArtifact(result.results[0].artifactTo);
+    assert.equal(moved.header.cwd, targetPath, "the header carries the realpath spelling every registry stores");
+    assert.deepEqual(registry.find("w-target").record.sessionIds, ["s1"]);
+    assert.equal(registry.host.sessionPaths.get("s1"), targetPath, "the index and the ledger agree");
   } finally {
     await box.cleanup();
   }

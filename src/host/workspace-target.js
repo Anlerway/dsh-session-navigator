@@ -1,15 +1,14 @@
 /**
  * dsh-session-navigator — the workspace a move is aiming at.
  *
- * A target is not just an id: it is an id, the title beside it, and the exact
- * spelling of a directory that DSH will accept as that workspace's own path.
- * Everything here exists because that third part is compared as a string, not
- * as a location — the registry folds a session's cwd through realpath and then
- * demands `===` the path it stored when the workspace was added (that package's
- * entity.ts:152, via realpathNormalize in paths.ts:52-57). Get the spelling
- * wrong and the attach fails after the payload has already moved, which leaves
- * a log no workspace claims; hence the refusal happens here, before any byte
- * of a session log is touched.
+ * A target is not just an id: it is an id, the title beside it, and the spelling
+ * of a directory that DSH will accept as that workspace's own path. That third
+ * part is compared as a string, not as a location — the registry folds a
+ * session's cwd through realpath and then demands `===` the path it stored when
+ * the workspace was added (that package's entity.ts:152, via realpathNormalize
+ * in paths.ts:52-57) — so the header is written with the realpath spelling, and
+ * the attach that follows is allowed to disagree: `attachThroughIndex` files the
+ * session through the entity's own ledger write when it does.
  */
 
 import { mkdir, realpath } from "node:fs/promises";
@@ -48,46 +47,36 @@ export async function ensureWorkspaceDir(path) {
 }
 
 /**
- * The spelling of the target directory DSH will actually accept.
+ * The spelling of the target directory a header is written with.
  *
  * `attachSession` does not compare paths, it compares *strings*: it folds the
  * header's cwd through its own realpath and then requires that result to be
  * `===` the workspace record's path (packages/workspace/workspace/src/entity.ts
- * :152, fed by realpathNormalize in that package's paths.ts:52-57). A record
- * written before its folder was renamed, re-created with other capitalisation,
- * replaced by a junction or reached through a substituted drive therefore
- * resolves to a different string, and no header this plugin can write would
- * satisfy that comparison: the attach fails *after* the log has been rewritten,
- * which is exactly how a session ends up at a path no workspace claims.
+ * :152, fed by realpathNormalize in that package's paths.ts:52-57). The
+ * realpath spelling is therefore the only one a header can carry and still be
+ * validated against a record DSH created from a directory picker.
  *
- * So the header is written with the realpath spelling, and a record that no
- * longer names the folder it points at is refused *before* the payload moves.
- * The refusal talks about the workspace, because the session is not the thing
- * that is wrong; the two spellings ride along for the copyable detail.
+ * A record that spells its folder differently — Windows reaches one directory
+ * as `C:\Users\RUNNER~1\…` through %TEMP% and as `C:\Users\runneradmin\…`
+ * through realpath, and a re-added workspace can carry other capitalisation —
+ * cannot satisfy that `===` from this side whatever header is written. It is
+ * not refused here: refusing would make such a workspace impossible to file
+ * into, and the payload would be the thing left in the wrong place. The header
+ * carries this spelling, `attachThroughIndex` then falls back to the entity's
+ * own ledger write, and the session stays where the user dropped it.
  *
  * @param {{ id: string, title: string, path: string }} resolved
  * @returns {Promise<string>} the path to store as the header's cwd
  */
 export async function canonicalWorkspacePath(resolved) {
-  let canonical;
   try {
-    canonical = await realpath(resolved.path);
+    return await realpath(resolved.path);
   } catch (error) {
     throw codedError(
       "workspace-not-found",
       `workspace directory ${resolved.path} cannot be opened: ${messageOf(error)}`,
     );
   }
-  // Same folder, same string: the common case, and the one Windows reports
-  // back exactly as it is stored.
-  if (canonical === resolved.path) return canonical;
-  // Anything else — a trailing separator, a forward slash, other
-  // capitalisation, another drive letter — makes DSH's `!==` fail on every
-  // header we could write. Say which two spellings disagree.
-  throw codedError(
-    "workspace-path-mismatch",
-    `workspace ${resolved.id} is stored as ${resolved.path}, but that folder resolves to ${canonical}`,
-  );
 }
 
 /**

@@ -878,11 +878,10 @@ export async function moveSessions(api, body) {
   /** @type {object[]} */
   const results = [];
   // A destination that does not resolve is a bad request, not a per-session
-  // failure: nothing should move when the target itself is unknown, and
-  // nothing should move when DSH could never accept a header written for it.
-  const resolvedTarget = await resolveTarget(registryOf(api.ctx), target);
-  await ensureWorkspaceDir(resolvedTarget.path);
-  await canonicalWorkspacePath(resolvedTarget);
+  // failure: refuse it before the first byte moves. Whether its folder can be
+  // made, and which spelling the header must carry, is answered per session —
+  // there the directory is created and the spelling is settled against the disk.
+  await resolveTarget(registryOf(api.ctx), target);
   // One session that cannot move (a locked log, a target directory that already
   // exists) must not discard the ones that did: the caller sent them in one
   // click and needs to know which half landed. A failed entry reports its code
