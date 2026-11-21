@@ -1,11 +1,11 @@
-Release notes: V1.2.1
+Release notes: V1.2.2
 
 Highlights
 
-* Fixed moving a parent session left its child sessions behind
-* Fixed the floating ball changing position when the window was resized
-* Child sessions can now be dragged, ticked, cut and copied
-* Fixed the open-session check being far too strict
-* Fixed a workspace whose (real) folder had been deleted being treated as missing
-* Deleting a session now clears its index and cache inside the plugin too
-* Clear cache now finds and removes index and cache entries that point at nothing
+* Fixed a deleted blank session making new sessions impossible
+* Fixed other sessions turning invalid or vanishing from the sidebar after a delete
+* Fixed a session that had been opened once never moving again
+* Fixed a moved session disappearing from the sidebar while its log came back in the old folder
+* Fixed the first workspace being labelled default after the default one was deleted
+* Added a copy button for the error log
+* Changed where dialog buttons sit by default

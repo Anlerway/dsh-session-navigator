@@ -18,7 +18,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,10 +87,23 @@ function fakeRegistry(workspaces) {
     async detachSession(sessionId) {
       record.sessionIds = record.sessionIds.filter((id) => id !== sessionId);
     },
+    // `attachSession` ends in this call (entity.ts:160-162), so a move that
+    // bypasses the validation step still writes through the official path.
+    async mutate(change) {
+      const next = change(record);
+      if (next !== record) Object.assign(record, next);
+      return next;
+    },
   }));
   return {
     entities,
     headers: new Map(),
+    invalidSessionPaths: new Set(),
+    missingSessionPaths: new Set(),
+    host: {
+      sessionPaths: new Map(),
+      rememberSessionPath(id, path) { this.sessionPaths.set(id, path); },
+    },
     failAttach: false,
     list: () => entities,
     async indexHeader(header) {
@@ -421,7 +434,7 @@ test("a generating session is refused instead of being moved under its writer", 
   }
 });
 
-test("an open but idle session is flushed, moved, and detached from the host", async () => {
+test("an open but idle session is flushed, closed and moved without being taken off screen", async () => {
   const box = await sandbox();
   try {
     const targetPath = join(box.root, "target-workspace");
@@ -432,20 +445,153 @@ test("an open but idle session is flushed, moved, and detached from the host", a
     const api = apiWith(box.home, registry);
     const calls = [];
     const row = { id: "s1", detach() { calls.push("detach"); } };
-    api.ctx.sessions = {
-      get: (id) => (id === "s1" ? row : undefined),
-      store: { get: (id) => (id === "s1" ? row : undefined) },
-      async flush(session) { calls.push(`flush:${session?.id ?? "?"}`); },
+    // The persistence write handle the agent leaves behind. Closing it is what
+    // makes the rename legal on Windows; a scope dispose also closes it, but at
+    // the price of unloading the host's agent-creation scope.
+    const handle = { id: "s1", access: "write", close() { calls.push("close-writer"); } };
+    const services = {
+      sessions: {
+        get: (id) => (id === "s1" ? row : undefined),
+        store: { get: (id) => (id === "s1" ? row : undefined) },
+        async flush(session) { calls.push(`flush:${session?.id ?? "?"}`); },
+      },
+      agents: {
+        get: (id) => (id === "s1" ? agent : undefined),
+        store: { delete: (id) => calls.push(`agents.delete:${id}`) },
+      },
+      sessionPersistence: {
+        tracker: { writers: new Map([["s1", handle]]), openHandles: new Set([handle]) },
+        coordinator: { retirements: new Map(), states: new Map() },
+      },
     };
-    // An agent record that is open but not generating: no reason to refuse.
-    api.ctx.agents = { get: (id) => (id === "s1" ? { id: "s1", status: "idle" } : undefined) };
+    // An agent record that is open but not generating: no reason to refuse. The
+    // move still has to *close* it — a live agent keeps the log writer open, and
+    // Windows refuses the directory rename until that handle is gone.
+    const agent = {
+      id: "s1",
+      status: "idle",
+      cancel(cause) { calls.push(`cancel:${JSON.stringify(cause)}`); },
+      whenIdle() { calls.push("whenIdle"); return Promise.resolve(); },
+      // Never called: disposing the loop fiber unloads the Cordis scope the host
+      // creates agents on, and the next "new session" then fails with
+      // `cannot create effect on inactive context`.
+      scope: { dispose() { calls.push("dispose"); } },
+    };
+    api.ctx.get = (name) => (name === "workspaceRegistry" ? registry : services[name]);
     const { dir } = await writeSession(box.home, "proj", "s1");
 
     const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
     assert.equal(result.results[0].moved, true, "an idle open session moves");
-    assert.deepEqual(calls, ["flush:s1", "detach"], "flush before the move, detach after it");
+    assert.deepEqual(
+      calls,
+      ["flush:s1", "close-writer"],
+      "flush, then close the writer: dropping the agent row would take the row off every client",
+    );
+    assert.equal(
+      services.sessions.get("s1"),
+      row,
+      "the session the user has on screen is still the live row after the move",
+    );
+    assert.equal(
+      calls.includes("dispose"),
+      false,
+      "the loop fiber is never disposed: that is what breaks the next createSession",
+    );
     assert.equal(existsSync(join(dir, LOG)), false);
     assert.equal(existsSync(join(box.home, "sessions", projectKey(targetPath), "s1", LOG)), true);
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a session DSH still has open moves out of the cwd it was opened from", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    const sourcePath = join(box.root, "source-workspace");
+    await mkdir(targetPath, { recursive: true });
+    await mkdir(sourcePath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    // The registry asks the live session for its cwd before it asks its own
+    // index (workspace/src/index.ts:892-897), and that header is deep-frozen
+    // (core/session/src/index.ts:566-574) — a move cannot rewrite it. An attach
+    // issued while the session is still open is therefore compared against the
+    // workspace it was opened from: the `its cwd resolves to …` a user saw on a
+    // session that had already been moved. The fix is not to close the session
+    // (that drops the row from every client) but to teach the index the new
+    // path and write the membership ledger through the entity when the attach
+    // still refuses. This fixture keeps the row in `rows` to prove it.
+    const rows = new Map();
+    const services = {
+      sessions: {
+        get: (id) => rows.get(id),
+        store: { get: (id) => rows.get(id) },
+      },
+    };
+    rows.set("s1", {
+      id: "s1",
+      header: { id: "s1", cwd: sourcePath },
+      detach() { rows.delete("s1"); },
+    });
+    const target = registry.find("w-target");
+    const plainAttach = target.attachSession.bind(target);
+    target.attachSession = async (sessionId) => {
+      const open = services.sessions.get(sessionId);
+      if (open && open.header.cwd !== target.path) {
+        throw new Error(
+          `cannot attach session '${sessionId}' to workspace 'w-target': its cwd resolves to '${open.header.cwd}'`,
+        );
+      }
+      await plainAttach(sessionId);
+    };
+    const api = apiWith(box.home, registry);
+    api.ctx.get = (name) => (name === "workspaceRegistry" ? registry : services[name]);
+    const { dir } = await writeSession(box.home, "proj", "s1", { cwd: sourcePath });
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true, JSON.stringify(result.results[0]));
+    assert.equal(existsSync(dir), false, "the log left the source project directory");
+    assert.deepEqual(registry.find("w-target").record.sessionIds, ["s1"]);
+    const moved = await readArtifact(join(box.home, "sessions", projectKey(targetPath), "s1", LOG));
+    assert.equal(moved.header.cwd, targetPath);
+    assert.equal(
+      registry.host.sessionPaths.get("s1"),
+      targetPath,
+      "the registry index is taught the new path, so the workspace keeps listing the session",
+    );
+    assert.notEqual(
+      services.sessions.get("s1"),
+      undefined,
+      "the open session is left open: detaching it would drop the row from every client",
+    );
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("a log marked read-only is replaced instead of reported as EPERM", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(targetPath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    const { log } = await writeSession(box.home, "proj", "s1");
+    // A read-only attribute survives a directory rename, and Windows refuses to
+    // replace such a file — the byte-for-byte shape of the `io-error: EPERM` a
+    // user hit on a log nobody was holding.
+    await chmod(log, 0o444);
+
+    const result = await moveSessions(api, { ids: ["s1"], target: { workspaceId: "w-target" } });
+    assert.equal(result.results[0].moved, true, JSON.stringify(result.results[0]));
+    const movedLog = result.results[0].artifactTo;
+    assert.equal((await readArtifact(movedLog)).header.cwd, targetPath);
+    // The retry must leave a log the host can still append to.
+    await appendFile(movedLog, Buffer.alloc(0));
   } finally {
     await box.cleanup();
   }

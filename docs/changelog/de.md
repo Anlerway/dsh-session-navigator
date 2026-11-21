@@ -1,11 +1,11 @@
-Versionshinweise: V1.2.1
+Versionshinweise: V1.2.2
 
 Wichtigste Änderungen
 
-* Behoben: Beim Verschieben einer Eltern-Sitzung blieben die untergeordneten Sitzungen am alten Platz
-* Behoben: Die Schwebekugel verschob sich beim Größenwechsel des Fensters
-* Untergeordnete Sitzungen lassen sich jetzt ziehen, auswählen, ausschneiden und kopieren
-* Behoben: Die Prüfung „Sitzung ist offen“ war viel zu streng
-* Behoben: Ein Arbeitsbereich, dessen (echter) Ordner gelöscht wurde, galt als fehlend
-* Beim Löschen einer Sitzung werden ihr Index und ihr Cache im Plugin mit entfernt
-* „Cache leeren“ prüft und entfernt jetzt Index- und Cache-Einträge ohne Ziel
+* Behoben: Nach dem Löschen einer leeren Sitzung ließ sich keine neue mehr anlegen
+* Behoben: Nach dem Löschen wurden andere Sitzungen als ungültig markiert oder verschwanden aus der Seitenleiste
+* Behoben: Eine einmal geöffnete Sitzung ließ sich nie wieder verschieben
+* Behoben: Eine verschobene Sitzung verschwand aus der Seitenleiste, während ihr Protokoll im alten Ordner wieder auftauchte
+* Behoben: Nach dem Löschen des Standard-Arbeitsbereichs wurde der erste Arbeitsbereich als Standard bezeichnet
+* Kopierschaltfläche für das Fehlerprotokoll ergänzt
+* Standardposition der Dialogschaltflächen geändert

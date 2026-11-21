@@ -125,6 +125,36 @@ test("trashing moves the session directory into the bin", async () => {
   }
 });
 
+test("trashing drops DSH's projection-cache row for that session only", async () => {
+  const box = await sandbox();
+  try {
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [
+        { id: "s1", title: "first", workspaceId: "w1", workspaceTitle: "proj" },
+        { id: "s2", title: "second", workspaceId: "w1", workspaceTitle: "proj" },
+      ],
+    });
+    // DSH keeps one folded-projection row per stored session. A row left behind
+    // outlives the session it describes and is what makes a re-created id look
+    // like a broken session until the next restart.
+    const cacheDir = join(box.home, "storages", "session_projcache", "sessions");
+    await mkdir(cacheDir, { recursive: true });
+    for (const id of ["s1", "s2"]) {
+      await writeFile(join(cacheDir, `${id}.json`), JSON.stringify({ version: 7, record: { rows: {} } }));
+    }
+    await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"]);
+    assert.equal(existsSync(join(cacheDir, "s1.json")), false, "the deleted session's row goes with it");
+    assert.equal(existsSync(join(cacheDir, "s2.json")), true, "a sibling keeps its row");
+  } finally {
+    await box.cleanup();
+  }
+});
+
 test("trashing skips unknown ids instead of failing the batch", async () => {
   const box = await sandbox();
   try {
@@ -156,14 +186,26 @@ function liveHost({ stubborn = false, calls = [] } = {}) {
       if (!stubborn) agent.status = "idle";
       else throw new Error("wedged in a tool call");
     },
+    async whenIdle() {
+      calls.push("whenIdle");
+      if (stubborn) throw new Error("never became idle");
+    },
   };
+  // A trap: the teardown must not dispose the fiber. Disposing the agent loop's
+  // Cordis scope is what makes the *next* createSession fail with
+  // `cannot create effect on inactive context`, so any call here is a bug.
   if (!stubborn) {
     agent.scope = { async dispose() { calls.push("dispose"); } };
   }
+  const handle = { id: "s1", access: "write", close() { calls.push("close-writer"); } };
   return {
     agents: {
       get: (id) => (id === "s1" ? agent : null),
       store: { delete: (id) => calls.push("agents.delete:" + id) },
+    },
+    sessionPersistence: {
+      tracker: { writers: new Map([["s1", handle]]), openHandles: new Set([handle]) },
+      coordinator: { retirements: new Map(), states: new Map() },
     },
     sessions: {
       get: (id) => ({ id }),
@@ -191,7 +233,10 @@ test("a session the host still holds is stopped and then trashed", async () => {
       dataDir: box.dataDir,
       sessions: [{ id: "s1", title: "live", running: true }],
     });
-    api.ctx = { get: (name) => host[name] };
+    api.ctx = {
+      get: (name) => host[name],
+      emit: (...args) => calls.push(`emit:${args.join(":")}`),
+    };
     const dir = await writeSession(box.home, "proj", "s1");
 
     const result = await trashSessions(api, ["s1"]);
@@ -200,11 +245,16 @@ test("a session the host still holds is stopped and then trashed", async () => {
     assert.equal(existsSync(dir), false, "its payload left the sessions tree");
     assert.deepEqual(calls, [
       'cancel:{"kind":"disposed"}',
-      "dispose",
+      "whenIdle",
       "agents.delete:s1",
       "flush:s1",
+      "close-writer",
       "detach:s1",
-    ], "stop, drop the registry row, flush, detach — in that order, before the move");
+    ], "stop, drop the registry row, flush, close the writer, detach — before the move");
+    assert.equal(calls.includes("dispose"), false, "the loop fiber is never disposed");
+    // A live session emits `session/disposed` when it is detached, and DSH relays
+    // that to the clients itself. Emitting again would be a duplicate "removed".
+    assert.equal(calls.some((call) => call.startsWith("emit:")), false, "no manual announce for a live session");
   } finally {
     await box.cleanup();
   }
@@ -238,6 +288,43 @@ test("a session whose agent will not stop is refused without cancelling the batc
     assert.equal(existsSync(idle), false);
     const index = await api.documents.trash.read();
     assert.deepEqual(Object.keys(index.entries), ["s2"], "a refusal leaves no entry behind");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+/**
+ * A session DSH has never opened in this run: no agent, no session instance,
+ * only the persisted log. Deleting it moves bytes and nothing else — which is
+ * exactly why the clients have to be told. DSH relays `api-session/removed` from
+ * `session/disposed`, and a cold session has no instance to dispose, so the
+ * sidebar keeps the row until the next full reload and opening it resolves to
+ * nothing (the "无效" tab users report).
+ */
+test("deleting a session the host never opened announces the removal", async () => {
+  const box = await sandbox();
+  try {
+    const calls = [];
+    const api = fakeApi({
+      home: box.home,
+      dataDir: box.dataDir,
+      sessions: [{ id: "s1", title: "cold" }],
+    });
+    api.ctx = {
+      get: () => undefined,
+      emit: (...args) => calls.push(`emit:${args.join(":")}`),
+    };
+    const dir = await writeSession(box.home, "proj", "s1");
+
+    const result = await trashSessions(api, ["s1"]);
+    assert.deepEqual(result.trashed, ["s1"]);
+    assert.deepEqual(result.errors, []);
+    assert.equal(existsSync(dir), false);
+    assert.deepEqual(
+      calls,
+      ["emit:api-session/removed:s1"],
+      "the only host-facing effect is the removal event DSH cannot emit itself",
+    );
   } finally {
     await box.cleanup();
   }

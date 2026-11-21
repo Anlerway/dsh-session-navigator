@@ -739,6 +739,10 @@
     "默认预设": "Preajuste predeterminado",
     "（点按切换）": "(pulsa para cambiar)",
     "，以及 ": ", y ",
-    "打开独立窗口（需要先下载 Electron 组件）": "Abrir en una ventana aparte (se necesita el componente Electron)"
+    "打开独立窗口（需要先下载 Electron 组件）": "Abrir en una ventana aparte (se necesita el componente Electron)",
+    "复制错误日志": "Copiar registro de error",
+    "错误日志已复制": "Registro de error copiado",
+    "复制失败，请重试": "No se pudo copiar; inténtalo de nuevo",
+    "目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可": "La ruta guardada del espacio de trabajo ya no coincide con la carpeta del disco, así que DSH no puede aceptarla; quita el espacio de trabajo y vuelve a añadirlo"
   }
 }

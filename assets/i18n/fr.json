@@ -739,6 +739,10 @@
     "默认预设": "Préréglage par défaut",
     "（点按切换）": "(cliquez pour changer)",
     "，以及 ": ", et ",
-    "打开独立窗口（需要先下载 Electron 组件）": "Ouvrir dans une fenêtre séparée (composant Electron requis)"
+    "打开独立窗口（需要先下载 Electron 组件）": "Ouvrir dans une fenêtre séparée (composant Electron requis)",
+    "复制错误日志": "Copier le journal d'erreur",
+    "错误日志已复制": "Journal d'erreur copié",
+    "复制失败，请重试": "La copie a échoué ; réessayez",
+    "目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可": "Le chemin enregistré de l'espace de travail ne correspond plus au dossier sur le disque, DSH ne peut donc pas l'accepter ; supprimez l'espace de travail et ajoutez-le à nouveau"
   }
 }

@@ -301,7 +301,13 @@
         if (!message || typeof message !== "object") return;
         if (message.kind === "status" && Array.isArray(message.rows)) applyPeerStatus(message.rows);
         // A write from a window that cannot reach DSH: the one that can does it.
-        if (message.kind === "refresh" && message.needsDsh === true && canRefreshDsh()) void refreshDshViews();
+        // A delete carries the ids it moved, so this side applies DSH's own
+        // removal frame rather than pulling a baseline nobody lost rows from.
+        if (message.kind === "refresh" && canRefreshDsh()) {
+          const removed = Array.isArray(message.removed) ? message.removed : [];
+          if (removed.length > 0) applyDshRemovals(removed);
+          else if (message.needsDsh === true) void refreshDshViews();
+        }
         for (const listener of peerListeners) {
           try {
             listener(message);

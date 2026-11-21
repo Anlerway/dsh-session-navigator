@@ -242,7 +242,11 @@
               // pull DSH's baseline itself — the detached window runs in its own
               // process, so its BroadcastChannel never gets here — and the Host
               // has already dropped its header cache for this command.
-              if (!windowHost()) void refreshDshViews();
+              const removed = Array.isArray(command.payload?.removed) ? command.payload.removed : [];
+              if (!windowHost()) {
+                if (removed.length > 0) applyDshRemovals(removed);
+                else void refreshDshViews();
+              }
               publishLiveUpdate({ reason: "bridge", refresh: true, structural: false });
               return;
             }

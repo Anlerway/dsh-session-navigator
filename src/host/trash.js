@@ -19,7 +19,7 @@
  */
 
 import { cp, mkdir, rename, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { exists, fileList } from "../fs.js";
 import { dshHomeOf } from "./fsutil.js";
@@ -33,9 +33,16 @@ import {
   trashEntryOf,
   trashTargetDir,
 } from "../domain/trash.js";
+import { projcacheDir } from "../sources/projcache.js";
 import { codedError } from "../store/sidecar.js";
 import { forgetSessionRecords } from "./session-records.js";
-import { detachSession, flushSession, stopSession } from "./live-session.js";
+import {
+  announceSessionRemoved,
+  detachSession,
+  flushSession,
+  releaseWriters,
+  stopSession,
+} from "./live-session.js";
 import { attachTo, detachEverywhere, registryOrNull } from "./registry.js";
 
 
@@ -108,6 +115,24 @@ function isBusyError(err) {
 }
 
 /**
+ * Backoff for a rename that lost a race with a handle closing.
+ *
+ * A cancelled agent finishes its last append asynchronously, and on Windows that
+ * short-lived handle answers the directory rename with EBUSY. One immediate retry
+ * (the old behaviour) was the same coin flip; the session is already stopped by
+ * the time we get here, so waiting a moment is enough.
+ */
+const BUSY_RETRY_DELAYS_MS = [60, 150, 350, 700];
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+/**
  * The payload directory for a trash entry, or `null` when the recorded id is not
  * a payload name at all.
  *
@@ -129,6 +154,29 @@ function payloadOf(paths, trashId) {
 }
 
 
+
+/**
+ * Drop DSH's own projection cache record for one session.
+ *
+ * The cache holds one JSON per session — a fold shortcut the host hydrates from
+ * when a client asks about an id. Trashing the payload without dropping its row
+ * leaves the host able to answer for a session whose directory is in the bin: the
+ * client re-opens a row that resolves to nothing (无效), and a blank session
+ * created again under the same id starts from a projection whose payload does not
+ * exist. The row is derived data — losing it costs one replay, never a session —
+ * so this is best effort and never refuses a delete.
+ *
+ * @param {any} api
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
+async function forgetProjcacheRecord(api, id) {
+  try {
+    await rm(join(projcacheDir(dshHomeOf(api)), `${id}.json`), { force: true });
+  } catch {
+    /* a stale row is a replay, not a failure */
+  }
+}
 
 /**
  * Everything the trash routes need to know about the current sessions: the
@@ -217,6 +265,12 @@ export async function trashSessions(api, ids) {
       // would write into the directory that just left, which is the other way a
       // deleted session reappears under 未分组.
       await flushSession(api.ctx, id);
+      // Flushing writes the buffered suffix; closing the handle is what lets the
+      // directory go. An idle agent that was opened once still holds the log
+      // writer, and Windows refuses to rename a directory with an open file in it
+      // — the "open it once and it can never be moved" case. Nothing is racing at
+      // that point, so retrying alone would never succeed.
+      await releaseWriters(api.ctx, id);
       const entry = trashEntryOf(
         { ...session, id, logPath: header.logPath, sizeBytes: session.sizeBytes ?? header.sizeBytes },
         { trashId: newTrashId() },
@@ -242,16 +296,37 @@ export async function trashSessions(api, ids) {
 
       const from = originalDirOf(claimed);
       const to = trashTargetDir(api.paths, claimed.trashId);
+      // Whether DSH had this session open. A live session emits `session/disposed`
+      // when it is detached, and DSH relays that as `api-session/removed`; a cold
+      // one has no instance to dispose, so nobody tells the clients it is gone.
+      let detachedLive = false;
       try {
         try {
           await moveDir(from, to);
         } catch (err) {
-          // A handle the dispose could not close: Windows answers EBUSY/EPERM
-          // while a descriptor is still open. Let the host drop the session, then
-          // try the same rename once more before calling it a failure.
+          // A handle that has not closed yet: Windows answers EBUSY/EPERM while a
+          // descriptor is still open. Let the host drop the session and give the
+          // closing writer a moment, then try the same rename again.
           if (!isBusyError(err)) throw err;
-          await detachSession(api.ctx, id);
-          await moveDir(from, to);
+          /** @type {any} */
+          let last = err;
+          for (const delay of BUSY_RETRY_DELAYS_MS) {
+            // A handle can be re-opened between our close and the rename (a
+            // resumed agent, a lazily opened read handle turned writer); closing
+            // again each round is cheap and is the only thing that helps.
+            await releaseWriters(api.ctx, id);
+            if (await detachSession(api.ctx, id)) detachedLive = true;
+            await sleep(delay);
+            try {
+              await moveDir(from, to);
+              last = null;
+              break;
+            } catch (again) {
+              if (!isBusyError(again)) throw again;
+              last = again;
+            }
+          }
+          if (last) throw last;
         }
       } catch (err) {
         await api.documents.trash
@@ -297,8 +372,14 @@ export async function trashSessions(api, ids) {
       // The bytes are in the bin and DSH no longer accounts for the session in
       // any workspace; now tell the clients and the persistence layer to let go.
       // Idempotent: the lock-retry path above may already have detached it.
-      await detachSession(api.ctx, id);
+      if (await detachSession(api.ctx, id)) detachedLive = true;
+      // A cold session (never opened in this run, which is exactly the row the
+      // sidebar renders from the persisted list) leaves its clients showing a
+      // session that no longer exists — the "无效" tab users report. Emit the
+      // same event DSH would have emitted had there been an instance to dispose.
+      if (!detachedLive) announceSessionRemoved(api.ctx, id);
       await sweepGhostDir(from);
+      await forgetProjcacheRecord(api, id);
 
       await api.documents.trash.mutate((draft) => {
         const stored = draft.entries?.[id];

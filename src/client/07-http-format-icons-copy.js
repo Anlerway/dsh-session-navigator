@@ -73,10 +73,14 @@
       // reaches a second DSH page. The bridge command is the hop that survives
       // the process boundary — a no-op in the panel, which pulls for itself.
       if (method !== "GET" && method !== "HEAD") {
-        publishPeer({ kind: "refresh", path, needsDsh: !canRefreshDsh() });
+        // A delete travels as its own ids: the document that owns DSH's list
+        // applies DSH's removal frame for each one instead of re-pulling a
+        // baseline, which would drop rows the answer does not happen to name.
+        const removed = removedIdsOf(path, body, payload?.result);
+        publishPeer({ kind: "refresh", path, needsDsh: removed.length === 0 && !canRefreshDsh(), removed });
         // Only a detached window needs the bridge: the panel refreshes DSH
         // directly, and a document with no Host at all has nobody to ask.
-        if (windowHost()) void sendBridgeCommand("refresh", {});
+        if (windowHost()) void sendBridgeCommand("refresh", removed.length > 0 ? { removed } : {});
       }
       return payload.result;
     }

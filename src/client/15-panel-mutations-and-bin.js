@@ -35,6 +35,9 @@
       const describeError = useCallback((error) => {
         const code = String(error?.code ?? "");
         const raw = String(error?.message ?? error ?? "").trim();
+        // Whatever the bar ends up saying, the failure itself is kept whole:
+        // the chip is clamped and the copy button hands over this line.
+        lastErrorLog = errorLogOf(error);
         if (code === "session-active") return T("这个会话正在生成回复，暂时不能移动或删除；等这次运行结束（或先停止它）再试");
         if (code === "subagent-unsupported") return T("子智能体跟随父会话，不能单独操作：请选择父会话");
         if (code === "target-exists") return T("目标位置已有同名会话，未覆盖");
@@ -42,9 +45,30 @@
         if (code === "session-not-found") return T("这个会话不存在，或已经被永久删除");
         if (code === "node-not-found") return T("这个位置已经不存在了，刷新后再试");
         if (code === "revision-conflict") return T("数据已被其他窗口修改，已重新载入，请再试一次");
+        if (code === "workspace-path-mismatch") return T("目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可");
         if (!raw) return T("操作失败，请重试");
         return raw;
       }, []);
+
+      /**
+       * Put the whole failure on the clipboard, not the clamped chip.
+       *
+       * `lastErrorLog` is the registry's own sentence when there was one (both
+       * paths, the session id), and the chip's text otherwise. Copying the chip
+       * alone would hand over the half the user can already read.
+       *
+       * @param {string} shown
+       * @returns {Promise<void>}
+       */
+      const copyErrorLog = useCallback(
+        async (shown) => {
+          const detail = String(lastErrorLog || shown || "").trim();
+          if (!detail) return;
+          const copied = await copyText(detail);
+          setHint(copied ? T("错误日志已复制") : T("复制失败，请重试"));
+        },
+        [setHint],
+      );
 
       const mutate = useCallback(
         async (run, successHint, inspect) => {
@@ -504,13 +528,15 @@
           });
           if (!confirmed) return;
           mutate(
-            // DSH's sidebar keeps a row until it re-pulls its
-            // baseline, and a purge is the only write here with no undo — the
-            // row has to leave the sidebar in the same breath, or the next
-            // click lands on a session that no longer exists.
+            // DSH's sidebar keeps a row until it hears about the removal, and a
+            // purge is the only write here with no undo — the row has to leave
+            // the sidebar in the same breath, or the next click lands on a
+            // session that no longer exists. The ids are known, so they travel
+            // as DSH's own removal frame; a baseline pull would also drop rows
+            // this client is still creating.
             async () => {
               const result = await apiSend("POST", "/purge", { ids });
-              await requestDshRefresh();
+              await requestDshRefresh({ removed: ids });
               return result;
             },
             T("已永久删除 {0} 个会话", [ids.length]),

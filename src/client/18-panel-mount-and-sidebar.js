@@ -386,6 +386,10 @@
             archivedInScope > 0 ? h("div", { className: "s-item" }, T("{0} 个已归档", [formatCount(archivedInScope)])) : null,
             h("div", { className: "s-item" }, checked.size > 0 ? T("已选 {0} 项", [formatCount(checked.size)]) : T("未选择")),
             h("div", { className: "s-item" }, T("共 {0}", [formatSize(totalSize) || "0 B"])),
+            // A refusal is one readable line, not a wall: the chip clamps what
+            // it draws, still dismisses on a click, and carries the whole
+            // sentence on its copy button — a status bar that grew to fit a
+            // registry error pushed every counter out of view.
             errorText
               ? h(
                   "div",
@@ -394,7 +398,22 @@
                     title: T("点击关闭"),
                     onClick: () => setErrorText(""),
                   },
-                  errorText,
+                  // The tooltip is the whole sentence: the clamp is for the bar, not
+                  // for the reader who stops to look.
+                  h("span", { className: "s-err-text", title: errorText }, clampErrorText(errorText)),
+                  h(
+                    "button",
+                    {
+                      type: "button",
+                      className: "s-err-copy",
+                      title: T("复制错误日志"),
+                      onClick: (event) => {
+                        event.stopPropagation();
+                        void copyErrorLog(errorText);
+                      },
+                    },
+                    T("复制"),
+                  ),
                 )
               : null,
             hint ? h("div", { className: "s-item clickable on" }, hint) : null,

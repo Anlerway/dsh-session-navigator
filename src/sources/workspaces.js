@@ -107,12 +107,21 @@ export function readWorkspaceService(service) {
   const archivedSessionIds = Array.isArray(service.archivedSessionIds) ? service.archivedSessionIds.map(String) : [];
   const pinnedSessionIds = Array.isArray(service.pinnedSessionIds) ? service.pinnedSessionIds.map(String) : [];
 
+  // The registry keeps defaultWorkspaceId in its private domain state and
+  // exposes no getter for it (DSH's own sidebar reads that same state). Guessing
+  // from list position is wrong precisely in the case that matters: once the
+  // first-use Workspace is deleted its id stays in the state forever
+  // (initializeDefault returns early on it, so automatic creation never happens
+  // again), and the registry is empty of a default rather than re-pointed at
+  // whichever Workspace happens to sort first. Answering null is the truth;
+  // reader.js fills in the durable file's value when it still names a live
+  // Workspace.
   return {
     workspaceIds,
     workspaces,
     archivedSessionIds,
     pinnedSessionIds,
-    defaultWorkspaceId: workspaceIds[0] ?? null,
+    defaultWorkspaceId: null,
   };
 }
 

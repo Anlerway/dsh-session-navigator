@@ -14,12 +14,13 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 八十八个测试文件，各自钉住什么
+## 1. 九十个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
 | `test/tree.test.mjs` | 680 | 树投影的规则 R1–R5：嵌套、计数、降级、环、`sessionHome`、每个节点都带 `homeWorkspaceId`（它属于哪个工作区，与 `workspaceId` 不是一回事） |
 | `test/new-session-workspace.test.mjs` | 130 | 新建会话的工作区解析：树节点 id、窗口传来的裸 uuid、当前目录三个 id 空间落到同一个答案；已知但没有归属的节点回 `null`，不回退当前目录——这个 `null` 就是入口的开关。`canStartDraft` 只认有 `homeWorkspaceId` 的地方（工作区、工作区里的文件夹），根目录 / 未分组 / 工作区外的文件夹全关；`draftFolderOf` 只在「要求的那一行确实是这个工作区里的文件夹」时才给落点：工作区行、固定视图、别的工作区里的文件夹、树里没有的 id 都不给 |
+| `test/default-workspace.test.mjs` | 138 | 「默认工作区」只是一个 id，不是位置：DSH 私有 state 里还留着的那个 id 一旦没有对应的工作区，面板就报「没有默认」而不是把第一个工作区顶上去；只有那个 id 真的还注册着，那一行才带 `default` 标记，别的行显式 `false` |
 | `test/tree-mirror.test.mjs` | 178 | 客户端只持有**遍历**、不持有**规则**——同一问题在两处必须同答案 |
 | `test/sessions.test.mjs` | 229 | 合并视图：一个会话"是什么"的唯一判定处 |
 | `test/store.test.mjs` | 432 | 侧车存储、原子写、revision、损坏隔离，以及改它的两个规则模块 |
@@ -40,9 +41,10 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/session-sync.test.mjs` | 317 | DSH 自己的变更推给面板的代价：一次回复不许变成四次重绘、翻个徽标不许变成一次文件系统遍历；**没有订阅者也照发**（轮询读同一根总线，静默等于让兜底也聋掉）；三档代价分开——structural 才重扫文件系统、content 读缓存但会重画、cosmetic 只改运行集所以客户端连画都不重 |
 | `test/storage-watch.test.mjs` | 214 | 存储目录的轮询：第一次读只是基线不是通知、`storages/workspace.json` 被改写只报一次（带 `refresh`、`structural`、在跑的会话 id）、没变就继续安静、**没有订阅者也照样发布**（否则 `/bridge/poll` 永远问不到东西）；`sessions/` 下多一个或少一个会话目录也算结构变化（`reason: "sessions"`、`structural: true`），而在会话目录里追加日志不算 |
 | `test/subagents.test.mjs` | 80 | 子智能体绑定四问；fork 带 `parentSession` 但是独立会话 |
-| `test/trash.test.mjs` | 585 | 回收站：删除、恢复阶梯、清空、对账，以及 DSH 工作区登记——删除即解绑（拒绝解绑就搬回并撤销条目）、恢复即绑回（绑不回去不算失败）、没有 registry 的宿主照常工作，以及启动时把旧版本留下的幽灵条目从登记里清掉 |
+| `test/trash.test.mjs` | 802 | 回收站：删除、恢复阶梯、清空、对账，以及 DSH 工作区登记——删除即解绑（拒绝解绑就搬回并撤销条目）、恢复即绑回（绑不回去不算失败）、没有 registry 的宿主照常工作，以及启动时把旧版本留下的幽灵条目从登记里清掉；DSH 投影缓存的那一行跟着 payload 一起删（兄弟会话的那行不动），否则被删掉的空会话在下次重启前一直以「无效」的样子回来；开着的会话先停（cancel → whenIdle → 摘登记行 → 冲刷 → 关写句柄）再搬，且**绝不 dispose 它的 fiber**；宿主从没打开过的冷会话删完自己补一条 `api-session/removed` |
 | `test/trash-subagent.test.mjs` | 182 | 子智能体自己进回收站：只搬它自己的 payload、父会话的日志留着、`parentSession` 记在条目上；删父会话时整条链（父 + 子 + 孙）一起走；正在跑的那一条被跳进 `skipped`，整批不因此失败 |
-| `test/move.test.mjs` | 532 | 跨 workspace 移动/复制的三件事一个事务 |
+| `test/move.test.mjs` | 701 | 跨 workspace 移动/复制的三件事一个事务；开着的空会话要先 cancel → whenIdle → 摘登记行 → 冲刷 → 关写句柄再搬（Windows 不许改名一个里面还有打开文件的目录），fiber 一次都不 dispose（dispose 会卸载宿主建 agent 的那个 Cordis scope，下一次新建会话报 `cannot create effect on inactive context`），目录忙时退避重试 |
+| `test/live-session.test.mjs` | 152 | 「把会话从宿主手里拿回来」的三个约定：`stopSession` 只 cancel + 等 idle + 摘登记行，`scope.dispose` 一次都不调（有断言钉住）；`releaseWriters` 只关这个会话的写句柄、等 retirement、同一个句柄只关一次、关不动就如实报 `stillOwned` 而**不抛**；`detachSession` 优先走 carrier entry 的 `detach` 并回报有没有解绑，`announceSessionRemoved` 只在有事件总线时发 `api-session/removed`（DSH 只为活会话转发这条，冷会话没人替它发） |
 | `test/placement-move.test.mjs` | 264 | 往工作区里的文件夹放会话：同工作区只写 placement、日志不动；跨工作区不带 `move:true` 直接 400「这个文件夹只接受它所在工作区里的会话」且一个字没写；带了就先按 /move 把 payload 搬过去再写 placement（header 的 cwd 跟着改）；一批里有一条正在跑，那条进 `failed`、其余照摆；整批都搬不动就抛 `session-active`，revision 不动 |
 | `test/placement-pending.test.mjs` | 108 | 文件夹里新建会话的**意图**路由：工作区里的文件夹与工作区行都能 arm，带上此刻已有的会话 id 当基线；没给 parent、树里没有的节点、装不下会话的容器（根目录、工作区外的文件夹）都在 arm 之前就 400，未分组能装会话但装不进草稿，单独一句 400 |
 | `test/pending-drafts.test.mjs` | 247 | 意图落地的判据（全部是"不是它"的理由）：点击之后出现的那一条才进文件夹；已在基线里、早于意图 3 秒以上、别的工作区、子智能体、回收站、已归档、已经带 placement 的都不碰；没有 `createdAt` 时只靠基线；过了 120 秒作废、父节点在此期间消失就丢弃、同一文件夹只留最新一条、两个文件夹各等各的、host 拒绝一次就放弃（同一个请求会被同样拒绝）、arm 缺参数抛错、cancel / dispose 之后什么都不剩、轮询真的会在没人调 `settle()` 时把会话摆进去 |

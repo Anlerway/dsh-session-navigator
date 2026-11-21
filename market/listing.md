@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.2.1 |
+| 版本 | 1.2.2 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |
@@ -40,15 +40,15 @@
 </p>
 <p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
 
-## 本版更新（1.2.1）
+## 本版更新（1.2.2）
 
-- 修复了移动母会话，子会话还停留在原地的bug
-- 修复了悬浮球因窗口缩放导致的位置变动的问题
-- 解锁了子会话可以拖动、勾选、剪切、复制的功能
-- 修复了会话被打开的过于严格的判断
-- 修复了工作区的（真实）文件夹被删掉，会被当成「工作区不存在」的问题
-- 删除会话时一并清掉插件里属于它的索引及其缓存
-- 新增清除缓存会检查并清理无目标指向的索引及其缓存
+- 修复了删掉空会话之后再也新建不了会话的问题
+- 修复了删除会话后，别的会话在侧栏变成「无效」或直接消失的问题
+- 修复了会话被打开过一次就再也移不动的问题
+- 修复了移动会话后它从侧栏消失、日志又在旧目录里长回来的问题
+- 修复了删掉默认工作区后，第一个的工作区被当成「默认工作区」的问题
+- 新增了报错日志复制按钮
+- 修改了弹窗按钮默认位置
 
 ## 安装
 
@@ -75,10 +75,11 @@ Session Navigator manages DSH sessions the way Windows Explorer manages files: a
 per workspace, tags, notes, favourites and a recycle bin on top of the native session store.
 The "All sessions" view is cut into one band per workspace, each caption foldable.
 Session files never move — all state lives in `~/.dsh-session-navigator/`, a sibling of `~/.dsh`,
-so uninstalling means deleting one folder. Version 1.2.1 moves a parent's child sessions along with it,
-keeps the floating ball where it was when the window is resized, lets child sessions be dragged, ticked,
-cut and copied, moves open-but-idle sessions instead of refusing them, re-creates a workspace folder that
-was deleted, and clears a session's index and cache — orphans included — when the session is deleted.
+so uninstalling means deleting one folder. Version 1.2.2 fixes the four failures that made moving and
+deleting unreliable: a deleted blank session no longer blocks new ones, deleting a session no longer makes
+its neighbours show up as invalid, an opened session can be moved again, and a moved session stays in the
+sidebar instead of leaving its log behind in the old folder. The error bar gained a copy button, and dialog
+buttons now sit at the bottom right.
 Zero runtime dependencies, no build step, MIT.
 
 ```bash

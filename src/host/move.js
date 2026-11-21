@@ -20,9 +20,11 @@
  * A *running* session is refused for a *move*. A generating agent keeps a write
  * handle open on the old path and rebinding it is undocumented internal state;
  * moving the file under a writer that is mid-append corrupts the tail. A session
- * the user has merely opened writes nothing: it is flushed, moved, and then
- * detached from the host so no stale row points at the old path. A *copy* is a
- * different thing: it
+ * the user has merely opened writes nothing: it is flushed, detached from the
+ * host, and only then moved. The detach has to come first — DSH's registry
+ * prefers a live session's frozen header over its own index, so an open session
+ * makes the attach reject the target with the cwd it was opened from. A *copy*
+ * is a different thing: it
  * never touches the source, it reads it. Refusing there made 复制 fail with
  * "close it before moving it" for every session the user had merely opened, and
  * the panel offers no way to close one — so the copy now reads the log as a
@@ -31,15 +33,24 @@
  * reason a move does.
  */
 
-import { cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { getService } from "../capabilities.js";
 import { exists, fileList } from "../fs.js";
 import { dshHomeOf } from "./fsutil.js";
 import { codedError } from "../store/sidecar.js";
-import { detachSession, flushSession, isSessionRunning } from "./live-session.js";
-import { enqueue, holdersOf as workspacesHolding, registryOrNull } from "./registry.js";
+import { isSessionRunning, releaseForMove, releaseWriters, repointSession } from "./live-session.js";
+import { enqueue, holdersOf as workspacesHolding } from "./registry.js";
+import {
+  attachThroughIndex,
+  attachOrExplain,
+  canonicalWorkspacePath,
+  ensureWorkspaceDir,
+  registryOf,
+  relocateReleasing,
+  resolveTarget,
+} from "./workspace-target.js";
 import { FIXED_NODES } from "../constants.js";
 import { patchAnnotation } from "../domain/annotations.js";
 import { shortcutTargetsIn } from "../domain/shortcuts.js";
@@ -66,60 +77,7 @@ function inside(root, target) {
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) && !rel.split(sep).includes("..");
 }
 
-/**
- * Make sure the target workspace's directory exists.
- *
- * The registry is the authority on which workspaces exist; the directory on
- * disk is only where their payload goes. A workspace whose folder was deleted
- * by hand (or whose drive was unmounted) is still a workspace — it still has a
- * row, a title and its other sessions — so refusing the move with "目标工作区
- * 不存在" answers a question nobody asked and leaves the user unable to file
- * anything there. Re-create the directory instead, and only report a missing
- * workspace when the directory cannot be made.
- *
- * @param {string} path absolute workspace path
- * @returns {Promise<void>}
- */
-async function ensureWorkspaceDir(path) {
-  try {
-    await mkdir(path, { recursive: true });
-  } catch (error) {
-    throw codedError("workspace-not-found", `workspace directory ${path} cannot be created: ${messageOf(error)}`);
-  }
-}
 
-/**
- * The workspace registry (native service), or a coded error.
- *
- * @param {any} ctx
- * @returns {any}
- */
-function registryOf(ctx) {
-  const registry = registryOrNull(ctx);
-  if (!registry) {
-    throw codedError("capability-missing", "this DSH build mounts no workspace registry, so sessions cannot be moved");
-  }
-  return registry;
-}
-
-
-/**
- * Resolve a target workspace entity and the canonical directory its sessions
- * must claim.
- *
- * @param {any} registry
- * @param {any} target
- * @returns {{ id: string, title: string, path: string }}
- */
-async function resolveTarget(registry, target) {
-  const workspaceId = typeof target?.workspaceId === "string" ? target.workspaceId : "";
-  if (!workspaceId) throw codedError("bad-request", "a target workspace id is required");
-  const entity = registry.list().find((candidate) => candidate?.id === workspaceId);
-  if (!entity) throw codedError("workspace-not-found", `workspace ${workspaceId} does not exist`);
-  const path = typeof entity.path === "string" ? entity.path : "";
-  if (!path) throw codedError("workspace-not-found", `workspace ${workspaceId} has no directory`);
-  return { id: workspaceId, title: entity.title || workspaceId, path };
-}
 
 
 /**
@@ -185,12 +143,50 @@ async function publishHeader(filePath, header, rest, compressed) {
   const temp = tempPathFor(filePath);
   await writeFile(temp, bytes);
   try {
-    await rename(temp, filePath);
+    await replaceLog(temp, filePath);
   } catch (error) {
     await rm(temp, { force: true }).catch(() => {});
     throw error;
   }
 }
+
+/**
+ * Rename the finished bytes over the log, outlasting a target that is briefly
+ * not replaceable.
+ *
+ * Windows answers this rename with EPERM for reasons that have nothing to do
+ * with the account holder: a virus scanner that started reading the file we
+ * just wrote, a search indexer, or a second DSH process that still has the log
+ * open from before the move. All three let go within a second. Replacing a file
+ * also fails with EACCES when the target is read-only, which survives a copy
+ * from a read-only source and is cheap to clear once. Neither case is worth
+ * reporting as `io-error: EPERM` when the very next attempt succeeds — that
+ * message told the user their move was broken, not that it was late.
+ *
+ * @param {string} temp
+ * @param {string} filePath
+ */
+async function replaceLog(temp, filePath) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(temp, filePath);
+      return;
+    } catch (error) {
+      const code = /** @type {any} */ (error)?.code;
+      const busy = code === "EBUSY" || code === "EPERM" || code === "EACCES";
+      if (!busy) throw error;
+      if (attempt >= BUSY_RETRY_DELAYS_MS.length) {
+        throw codedError(
+          "session-busy",
+          `${filePath} 仍被占用（${code}）— DSH、杀毒或索引服务正持有这个日志；稍后重试这次操作`,
+        );
+      }
+      if (attempt === 0) await chmod(filePath, 0o666).catch(() => {});
+      await sleep(BUSY_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 
 /**
  * Run a compensating step, returning a description of the failure instead of
@@ -218,6 +214,53 @@ function messageOf(error) {
   return String(error?.message ?? error);
 }
 
+/** Backoff for a rename that lost a race with a handle closing. */
+const BUSY_RETRY_DELAYS_MS = [40, 80, 160, 320, 640, 1000];
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+
+/**
+ * Rename, giving a closing handle a moment to let go.
+ *
+ * Windows answers a rename of a directory whose files are still open with
+ * EBUSY, EPERM or EACCES, and "still open" includes a writer that was cancelled
+ * a few milliseconds ago and is finishing its last append. The retire is
+ * asynchronous even after `dispose()` resolves (another process may hold the
+ * file), so a bounded retry turns "cannot move, close the session first" into a
+ * move that simply takes a little longer. Nothing else is worth retrying: a
+ * missing source or a permission the account never had fails the same way on
+ * every attempt.
+ *
+ * @param {string} from
+ * @param {string} to
+ */
+async function renameWithRetry(from, to) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = /** @type {any} */ (error)?.code;
+      const busy = code === "EBUSY" || code === "EPERM" || code === "EACCES";
+      if (!busy) throw error;
+      if (attempt >= BUSY_RETRY_DELAYS_MS.length) {
+        throw codedError(
+          "session-busy",
+          `${from} 仍被占用（${code}）— 还有进程持有其中的文件；稍后重试或先关闭该会话`,
+        );
+      }
+      await sleep(BUSY_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+}
+
 /**
  * Move one session directory. Same volume is one rename; across volumes it is a
  * copy followed by a delete, which is all the filesystem allows.
@@ -227,7 +270,7 @@ function messageOf(error) {
  */
 async function relocate(from, to) {
   try {
-    await rename(from, to);
+    await renameWithRetry(from, to);
     return;
   } catch (error) {
     const code = /** @type {any} */ (error)?.code;
@@ -306,7 +349,9 @@ async function prepare(api, sessionId, action, options = {}) {
         `${sessionId} 正在生成回复，无法移动；等这次运行结束（或先停止它）后再移动`,
       );
     }
-    await flushSession(api.ctx, sessionId);
+    // Locks off, row kept: see `releaseForMove` for why the agent's registry row
+    // is not dropped here even though it would also free the directory.
+    await releaseForMove(api.ctx, sessionId);
   }
   // A live log is still being appended to. Copying it is a snapshot, so the
   // frame or line that is half written is skipped instead of refused — the same
@@ -440,7 +485,13 @@ async function moveOne(api, sessionId, target, options = {}) {
 async function moveOneOnly(api, sessionId, target) {
   const registry = registryOf(api.ctx);
   const resolved = await resolveTarget(registry, target);
-  const { root, stored, artifact, live } = await prepare(api, sessionId, "moved");
+  // A workspace folder deleted from the disk does not delete the workspace:
+  // the registry still lists it and attachSession still accepts it. Put the
+  // directory back, so the payload has somewhere to land — and so the path it
+  // lands under can be compared with the disk before anything moves.
+  await ensureWorkspaceDir(resolved.path);
+  resolved.path = await canonicalWorkspacePath(resolved);
+  const { root, stored, artifact } = await prepare(api, sessionId, "moved");
 
   const fromWorkspaces = workspacesHolding(registry, sessionId);
   // "Already there" is a claim about two things: the registry and the payload.
@@ -460,11 +511,6 @@ async function moveOneOnly(api, sessionId, target) {
       message: "会话已属于目标工作区",
     };
   }
-
-  // A workspace folder deleted from the disk does not delete the workspace:
-  // the registry still lists it and attachSession still accepts it. Put the
-  // directory back, so the payload has somewhere to land.
-  await ensureWorkspaceDir(resolved.path);
 
   const sourceDir = dirname(stored.logPath);
   const directoryName = sourceDir.split(/[\\/]/).pop();
@@ -496,7 +542,30 @@ async function moveOneOnly(api, sessionId, target) {
     startedAt: Date.now(),
   });
 
-  await relocate(sourceDir, targetDir);
+  // A client may have reopened the session between the stop in `prepare` and
+  // here, and a *generating* agent writing into a directory that is about to
+  // move is the corruption case this transaction exists to prevent. A session
+  // merely reopened writes nothing, so only a live run cancels the move.
+  if (isSessionRunning(api.ctx, sessionId)) {
+    throw codedError("session-active", `${sessionId} 又被打开了并在生成回复，本次移动已取消`);
+  }
+  // Re-opening the session also re-opens its writer, and Windows will not
+  // rename a directory that holds an open file. Close it again here, where the
+  // rename is one line away, so the gap between "nobody holds it" and "move it"
+  // is as small as this design allows.
+  await releaseWriters(api.ctx, sessionId);
+  // The session stays open across the move on purpose. `attachSession` reads a
+  // live session's header before the registry index (workspace/src/index.ts
+  // :892-897) and that header is deep-frozen creation metadata
+  // (core/session/src/index.ts:566-574), so it cannot be told the new cwd — but
+  // detaching to dodge that costs every client the row: `detach()` emits
+  // `session/disposed`, which the api relay turns into `api-session/removed`
+  // (api/session-controller/src/index.ts:197-202). Teaching the index and
+  // writing the ledger through the entity instead (see `attachThroughIndex`)
+  // keeps the conversation on screen and still files it under the right
+  // workspace.
+
+  await relocateReleasing(api.ctx, sessionId, relocate, sourceDir, targetDir);
 
   const newline = artifact.text.indexOf("\n");
   const rest = artifact.text.slice(newline + 1);
@@ -513,6 +582,11 @@ async function moveOneOnly(api, sessionId, target) {
     throw error;
   }
 
+  // The stored header is not the only copy of the cwd. The writer handle and the
+  // live session keep their own, and either one reopens the log under the old
+  // project directory on the next append — a second log for one conversation.
+  repointSession(api.ctx, sessionId, header);
+
   try {
     await reindex(registry, header);
     await enqueue(registry, async () => {
@@ -521,7 +595,7 @@ async function moveOneOnly(api, sessionId, target) {
       // a moment, the other leaves it accounted nowhere if the attach fails.
       const targetEntity = registry.list().find((entity) => entity.id === resolved.id);
       if (!targetEntity) throw codedError("workspace-not-found", `workspace ${resolved.id} disappeared during the move`);
-      await targetEntity.attachSession(sessionId);
+      await attachThroughIndex(api.ctx, targetEntity, sessionId, resolved.path, header);
       try {
         for (const entity of registry.list()) {
           if (entity.id === resolved.id) continue;
@@ -544,6 +618,9 @@ async function moveOneOnly(api, sessionId, target) {
       await bestEffort("move the directory back", () => relocate(targetDir, sourceDir)),
       await bestEffort("restore the header", () =>
         publishHeader(stored.logPath, artifact.header, rest, artifact.compressed),
+      ),
+      await bestEffort("restore the header the host holds", () =>
+        repointSession(api.ctx, sessionId, artifact.header),
       ),
       await bestEffort("restore the registry index", () => reindex(registry, stored)),
       // The attach/detach pair may have got as far as detaching this session
@@ -568,12 +645,6 @@ async function moveOneOnly(api, sessionId, target) {
     /* the session moved; its title projection is cosmetic and rebuilt on read */
   });
   api.reader.invalidate();
-  // The host may still hold this session open (it was moved while idle). Its
-  // writer already points at the old path, so let go of it the way a delete
-  // does: `session/disposed` makes every client drop the stale row, and the
-  // next open reads the log where it now lives. Best effort — a profile with
-  // no session store has nothing to detach.
-  if (live) await detachSession(api.ctx, sessionId);
   // The registry now describes the payload, so the journal entry has done its
   // job. Failure to remove it costs one no-op repair at the next start.
   if (api.paths?.dataDir) await forgetMove(api.paths, sessionId).catch(() => {});
@@ -609,6 +680,7 @@ async function copyOne(api, sessionId, target) {
   const { root, stored, artifact } = await prepare(api, sessionId, "copied", { allowLive: true });
 
   await ensureWorkspaceDir(resolved.path);
+  resolved.path = await canonicalWorkspacePath(resolved);
 
   const newId = `session-${randomId()}`;
   const header = { ...artifact.header, id: newId, cwd: resolved.path };
@@ -644,7 +716,7 @@ async function copyOne(api, sessionId, target) {
     await enqueue(registry, async () => {
       const targetEntity = registry.list().find((entity) => entity.id === resolved.id);
       if (!targetEntity) throw codedError("workspace-not-found", `workspace ${resolved.id} disappeared during the copy`);
-      await targetEntity.attachSession(newId);
+      await attachOrExplain(targetEntity, newId, resolved.path);
     });
   } catch (error) {
     await rm(targetDir, { recursive: true, force: true }).catch(() => {});
@@ -806,8 +878,11 @@ export async function moveSessions(api, body) {
   /** @type {object[]} */
   const results = [];
   // A destination that does not resolve is a bad request, not a per-session
-  // failure: nothing should move when the target itself is unknown.
-  await resolveTarget(registryOf(api.ctx), target);
+  // failure: nothing should move when the target itself is unknown, and
+  // nothing should move when DSH could never accept a header written for it.
+  const resolvedTarget = await resolveTarget(registryOf(api.ctx), target);
+  await ensureWorkspaceDir(resolvedTarget.path);
+  await canonicalWorkspacePath(resolvedTarget);
   // One session that cannot move (a locked log, a target directory that already
   // exists) must not discard the ones that did: the caller sent them in one
   // click and needs to know which half landed. A failed entry reports its code
@@ -882,7 +957,9 @@ export async function reconcileMoves(api) {
       await enqueue(registry, async () => {
         const targetEntity = registry.list().find((entity) => entity.id === workspaceId);
         if (!targetEntity) return;
-        await targetEntity.attachSession(sessionId);
+        // The journal already moved the bytes, so a refused attach here is the
+        // same mismatch a live move reports — and it must name it the same way.
+        await attachOrExplain(targetEntity, sessionId, targetEntity.path);
         for (const entity of registry.list()) {
           if (entity.id === workspaceId) continue;
           const raw = Array.isArray(entity?.record?.sessionIds) ? entity.record.sessionIds : [];

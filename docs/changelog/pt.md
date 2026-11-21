@@ -1,11 +1,11 @@
-Notas da versão: V1.2.1
+Notas da versão: V1.2.2
 
 Principais mudanças
 
-* Corrigido: mover uma sessão pai deixava as sessões filhas para trás
-* Corrigido: a bola flutuante mudava de lugar ao redimensionar a janela
-* As sessões filhas já podem ser arrastadas, marcadas, cortadas e copiadas
-* Corrigido: a verificação de sessão aberta era rígida demais
-* Corrigido: um espaço de trabalho cuja pasta (real) foi apagada era tratado como inexistente
-* Apagar uma sessão limpa também o seu índice e a sua cache dentro do plugin
-* «Limpar cache» agora verifica e remove entradas de índice e cache sem destino
+* Corrigido: uma sessão vazia excluída impedia criar sessões novas
+* Corrigido: ao excluir uma sessão, outras apareciam como inválida ou sumiam da barra lateral
+* Corrigido: uma sessão aberta uma vez nunca mais podia ser movida
+* Corrigido: uma sessão movida sumia da barra lateral e o log reaparecia na pasta antiga
+* Corrigido: ao excluir o workspace padrão, o primeiro passava a ser marcado como padrão
+* Adicionado um botão para copiar o log de erros
+* Alterada a posição padrão dos botões dos diálogos

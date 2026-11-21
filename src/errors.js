@@ -144,6 +144,11 @@ export const ERROR_CODES = {
     zh: "这个会话正在生成回复，暂时不能移动或删除；等这次运行结束（或先停止它）再试",
     en: "This session is still generating, so it cannot be moved or deleted yet; let the run finish (or stop it) and try again",
   },
+  "session-busy": {
+    status: 409,
+    zh: "会话目录还被别的进程占用，暂时移不动；稍等几秒再试一次",
+    en: "Another process still holds the session folder, so it cannot be moved yet; try again in a moment",
+  },
   "session-corrupt": {
     status: 409,
     zh: "这个会话的文件读不出来，DSH 也打不开它",
@@ -204,6 +209,17 @@ export const ERROR_CODES = {
     status: 409,
     zh: "DSH 没有把这个会话从工作区列表里移除，删除已撤销",
     en: "DSH did not drop the session from its workspace list, so the delete was undone",
+  },
+  // The workspace record names a folder that resolves to a different string:
+  // another drive letter, a junction, a folder re-created with other
+  // capitalisation. DSH's `attachSession` compares `realpath(header.cwd)` with
+  // that record using `!==` (workspace/src/entity.ts:152), so no header this
+  // plugin can write would satisfy it — the session is not what is wrong, the
+  // workspace record is, and the sentence has to say so.
+  "workspace-path-mismatch": {
+    status: 409,
+    zh: "目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可",
+    en: "That workspace’s stored path no longer matches the folder on disk, so DSH cannot accept it; remove the workspace and add it again",
   },
   // Nothing left to do is not a failure of the request, it is the answer.
   "nothing-pending": {

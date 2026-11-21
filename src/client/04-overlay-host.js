@@ -103,8 +103,16 @@
      *
      * Module scope, not the panel's: a row menu and the header menu delete
      * sessions too, and they are not rendered by the panel.
+     *
+     * @param {{ removed?: string[] }} [options] sessions a trash write took out
+     *   of DSH's tree; when DSH's own removal frame covers them, no baseline is
+     *   pulled at all (see {@link applyDshRemovals})
      */
-    async function refreshDshViews() {
+    async function refreshDshViews(options = {}) {
+      const removed = Array.isArray(options.removed) ? options.removed : [];
+      // A delete has an exact answer, and asking for the whole baseline to learn
+      // it is what loses neighbouring rows.
+      if (removed.length > 0 && applyDshRemovals(removed)) return;
       const pull = async () => {
         const sessions = serviceOf("sessions");
         // A rejected pull is DSH's own business (offline transport, superseded
@@ -118,6 +126,108 @@
       setTimeout(() => {
         void pull();
       }, 900);
+    }
+
+    /**
+     * Apply DSH's own per-session removal frames instead of pulling its list.
+     *
+     * `ClientSessions.handleSessionRemoved` is the frame DSH itself applies when
+     * the Host disposes a session: it records `{ kind: "remove", sessionId }` on
+     * the list snapshot (dropping that one row), ends the session's residency and
+     * prunes its engagement. It is documented as the entry point for a
+     * "remotely forwarded Session removal", which is exactly what a delete in
+     * this plugin is — the Host never emits `session/disposed` for a session the
+     * kernel did not dispose, and emits nothing at all for one that was cold.
+     *
+     * A delete must not become a baseline pull. `sessions.refresh()` merges the
+     * server's answer as a **new baseline**, and that merge drops every identity
+     * the answer does not name — including the placeholder row of a session this
+     * client is in the middle of creating. One delete followed by a pull is
+     * therefore enough to lose an unrelated conversation from the sidebar, which
+     * then refuses to open at all (`sessions.retain: unknown session`) until the
+     * app restarts: the "删了 A，切到 B 就没了" report.
+     *
+     * @param {string[]} ids sessions the Host actually took out of its tree
+     * @returns {boolean} whether DSH's own frame existed and was applied
+     */
+    function applyDshRemovals(ids) {
+      if (windowHost()) return false;
+      const sessions = serviceOf("sessions");
+      if (typeof sessions?.handleSessionRemoved !== "function") return false;
+      const removed = new Set();
+      let applied = false;
+      for (const id of Array.isArray(ids) ? ids : []) {
+        if (typeof id !== "string" || !id) continue;
+        try {
+          sessions.handleSessionRemoved(id);
+          removed.add(id);
+          applied = true;
+        } catch {
+          /* a refusing frame leaves the row to the next baseline pull */
+        }
+      }
+      // The row is half the job: the main view can be standing on the session
+      // that just left, and a view holding a dead id turns the next click into
+      // "会话无效" (see {@link dropRemovedMainView}).
+      if (applied) dropRemovedMainView(removed);
+      return applied;
+    }
+
+    /**
+     * Let go of the main view when the session it was showing has just left.
+     *
+     * `uiWorkspace.archiveSession` already does this after archiving
+     * (`uiworkspace/lib/client.js:1544-1547`): `if (this.mainReference?.sessionId
+     * === sessionId) this.clearMain()`. What `clearMain` does is the whole
+     * requirement - drop the reference, empty the persisted selection
+     * (`dsh.sessions.current`), release the view - so the next navigation does
+     * not start from an id DSH can no longer retain: that is the "删完再切换，
+     * 打开会话显示无效" half of the report.
+     *
+     * Only the *current* session needs it. Deleting some other row must leave
+     * the open conversation exactly where it is, which is what
+     * dsh-session-manager's `test/client-delete-navigation.test.mjs` pins down
+     * for the same reason.
+     *
+     * @param {Set<string>} removed ids the removal frames accepted
+     * @returns {boolean} whether the main view was released
+     */
+    function dropRemovedMainView(removed) {
+      const uiWorkspace = serviceOf("uiWorkspace");
+      if (typeof uiWorkspace?.clearMain !== "function") return false;
+      let current;
+      try {
+        current = uiWorkspace.mainReference?.sessionId ?? uiWorkspace.selection?.getSnapshot?.()?.sessionId;
+      } catch {
+        current = undefined;
+      }
+      if (typeof current !== "string" || !removed.has(current)) return false;
+      try {
+        uiWorkspace.clearMain();
+        return true;
+      } catch {
+        /* a refusing view belongs to DSH's own archive path, not here */
+        return false;
+      }
+    }
+
+    /**
+     * The sessions a trash write actually took out of DSH's tree.
+     *
+     * `/trash` answers with the ids it moved (`trashed`) and the ones it refused
+     * (`skipped`). Only the first list left DSH's store, so only it may be
+     * dropped from DSH's sidebar; a write that threw never reaches here.
+     *
+     * @param {string} path the endpoint the write used
+     * @param {any} body what the write asked for
+     * @param {any} result what the Host answered with (`{ trashed, skipped, errors }`)
+     * @returns {string[]} ids to remove from DSH's list
+     */
+    function removedIdsOf(path, body, result) {
+      if (path !== "/trash") return [];
+      if (Array.isArray(result?.trashed)) return result.trashed.filter((id) => typeof id === "string" && id);
+      const skipped = new Set(Array.isArray(result?.skipped) ? result.skipped : []);
+      return (Array.isArray(body?.ids) ? body.ids : []).filter((id) => typeof id === "string" && id && !skipped.has(id));
     }
 
     /**
@@ -173,9 +283,10 @@
      * @returns {Promise<void>} resolves once the pull this document could do is
      *   done; the bridge hop is fire-and-forget, so a window resolves at once
      */
-    function requestDshRefresh() {
-      if (canRefreshDsh()) return refreshDshViews();
-      void sendBridgeCommand("refresh", {});
+    function requestDshRefresh(options = {}) {
+      const removed = Array.isArray(options.removed) ? options.removed.filter((id) => typeof id === "string" && id) : [];
+      if (canRefreshDsh()) return refreshDshViews({ removed });
+      void sendBridgeCommand("refresh", removed.length > 0 ? { removed } : {});
       return Promise.resolve();
     }
 
@@ -194,7 +305,7 @@
      */
     async function binWrite(method, path, body, options) {
       const result = await apiSend(method, path, body, options);
-      await requestDshRefresh();
+      await requestDshRefresh({ removed: removedIdsOf(path, body, result) });
       return result;
     }
 

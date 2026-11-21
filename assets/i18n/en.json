@@ -739,6 +739,10 @@
     "默认预设": "Default preset",
     "（点按切换）": "(click to switch)",
     "，以及 ": ", and ",
-    "打开独立窗口（需要先下载 Electron 组件）": "Open in a separate window (needs the Electron component)"
+    "打开独立窗口（需要先下载 Electron 组件）": "Open in a separate window (needs the Electron component)",
+    "复制错误日志": "Copy error log",
+    "错误日志已复制": "Error log copied",
+    "复制失败，请重试": "Could not copy; try again",
+    "目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可": "That workspace's stored path no longer matches the folder on disk, so DSH cannot accept it; remove the workspace and add it again"
   }
 }

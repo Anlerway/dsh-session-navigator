@@ -739,6 +739,10 @@
     "默认预设": "Standard-Preset",
     "（点按切换）": "(Klick zum Wechseln)",
     "，以及 ": ", und ",
-    "打开独立窗口（需要先下载 Electron 组件）": "In separatem Fenster öffnen (Electron-Komponente erforderlich)"
+    "打开独立窗口（需要先下载 Electron 组件）": "In separatem Fenster öffnen (Electron-Komponente erforderlich)",
+    "复制错误日志": "Fehlerprotokoll kopieren",
+    "错误日志已复制": "Fehlerprotokoll kopiert",
+    "复制失败，请重试": "Kopieren fehlgeschlagen; bitte erneut versuchen",
+    "目标工作区的路径和磁盘上的真实路径对不上，DSH 认不出这个目录；删掉这个工作区再重新添加一次即可": "Der gespeicherte Pfad des Ziel-Workspace stimmt nicht mit dem Ordner auf der Festplatte überein, DSH kann ihn nicht übernehmen; Workspace entfernen und erneut hinzufügen"
   }
 }

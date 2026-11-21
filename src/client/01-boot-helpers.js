@@ -35,6 +35,48 @@
       }
     }
 
+    /**
+     * The whole text of the last failure the panel put on screen.
+     *
+     * A refusal is drawn as one sentence the user can act on; the technical
+     * half — the registry's own line, both paths in it — is kept here so it can
+     * be copied instead of being pasted across the status bar. It lives at
+     * module level because the surfaces that draw an error (the panel's status
+     * bar, the detached window) do not share a component tree.
+     *
+     * @type {string}
+     */
+    let lastErrorLog = "";
+
+    /**
+     * The copyable log for one entry: its code, then the host's own sentence.
+     *
+     * @param {any} error
+     * @returns {string}
+     */
+    function errorLogOf(error) {
+      const code = String(error?.code ?? "").trim();
+      const message = String(error?.message ?? error ?? "").trim();
+      if (!code) return message;
+      return message ? `${code}: ${message}` : code;
+    }
+
+    /**
+     * One clamped line for a bar that is 28px tall.
+     *
+     * The full sentence is still one click away (the copy button, and the
+     * tooltip), so cutting it here costs nothing but the wall of text that
+     * pushed every other counter in the bar out of sight.
+     *
+     * @param {string} text
+     * @returns {string}
+     */
+    function clampErrorText(text) {
+      const clean = String(text ?? "").replace(/\s+/g, " ").trim();
+      const LIMIT = 120;
+      return clean.length > LIMIT ? clean.slice(0, LIMIT - 1) + "…" : clean;
+    }
+
     const API = "/session-navigator/api";
     const NS = "session-navigator";
     const CSS_ID = "dsh-session-navigator/panel";

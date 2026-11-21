@@ -561,13 +561,17 @@ export function createReader(options) {
       const service = options.workspaceService?.();
       const live = readWorkspaceService(service);
       if (live && live.workspaceIds.length > 0) {
-        // The live service does not expose `defaultWorkspaceId`, but the tree
-        // needs it to label one workspace 默认工作区. The durable file still
-        // carries it, so prefer the file's value when the ids agree.
+        // The live service exposes no `defaultWorkspaceId`, but the tree needs it
+        // to mark one workspace 默认工作区. The durable file still carries it, so
+        // take the file's value — and only when it names a Workspace that is
+        // still registered. A dangling id is not replaced by the first entry:
+        // DSH keeps the deleted first-use Workspace's id in its state forever
+        // (`initializeDefault` returns early on it), so after that deletion the
+        // profile genuinely has no default Workspace and must show none.
         const defaultWorkspaceId =
           file?.defaultWorkspaceId && live.workspaces.has(file.defaultWorkspaceId)
             ? file.defaultWorkspaceId
-            : live.defaultWorkspaceId;
+            : null;
         return { ...live, defaultWorkspaceId };
       }
     } catch {

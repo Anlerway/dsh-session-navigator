@@ -209,7 +209,10 @@
             description ? h("p", { className: "se-dlg-msg" }, description) : null,
             h("div", { className: "se-dlg-stack" }, children),
           ),
-          h("div", { className: "ffoot" }, footer ?? null),
+          // The actions sit at the right edge, where every other dialog in the
+          // app puts them: a left-aligned 取消 confirm pair reads as one more
+          // paragraph of the message.
+          h("div", { className: "ffoot se-dlg-foot" }, footer ?? null),
         ),
       ));
     }

@@ -1,11 +1,11 @@
-Notas de la versión: V1.2.1
+Notas de la versión: V1.2.2
 
 Cambios principales
 
-* Corregido: al mover una sesión padre, las sesiones hijas se quedaban donde estaban
-* Corregido: la bola flotante cambiaba de sitio al redimensionar la ventana
-* Las sesiones hijas ya se pueden arrastrar, marcar, cortar y copiar
-* Corregido: la comprobación de sesión abierta era demasiado estricta
-* Corregido: un espacio de trabajo con la carpeta (real) borrada se trataba como inexistente
-* Al borrar una sesión se limpian también su índice y su caché dentro del plugin
-* «Borrar caché» ahora revisa y quita las entradas de índice y caché sin destino
+* Corregido: una sesión vacía borrada impedía crear sesiones nuevas
+* Corregido: al borrar una sesión, otras aparecían como no válida o desaparecían de la barra lateral
+* Corregido: una sesión abierta una vez ya no se podía mover nunca más
+* Corregido: una sesión movida desaparecía de la barra lateral y su registro volvía al directorio antiguo
+* Corregido: al borrar el espacio de trabajo predeterminado, el primero pasaba a marcarse como predeterminado
+* Añadido un botón para copiar el registro de errores
+* Cambiada la posición por defecto de los botones de los diálogos
