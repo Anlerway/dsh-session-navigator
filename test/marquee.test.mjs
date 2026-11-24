@@ -217,6 +217,64 @@ test("a press on the blank that never moves clears the selection", () => {
   }
 });
 
+test("a press on a row that cannot drag is that row's own click, not a clear", () => {
+  // 全选 + Ctrl: the row under the press is unticked, so it does not drag yet and
+  // the press starts a box instead. Reporting "blank" on mouseup wiped the set
+  // the user had just built, and the row's own click then put one id back —
+  // which is exactly the "先选的全没了" report.
+  const rows = [row("a", 0), row("b", 32)];
+  const list = pane(rows);
+  const rect = box();
+  const context = start();
+  try {
+    api.marqueeDrag({
+      event: {
+        target: { closest: (selector) => (selector === ".row[data-id]" ? rows[1] : null) },
+        clientX: 10,
+        clientY: 40,
+        button: 0,
+        preventDefault() {},
+      },
+      pane: list,
+      rect,
+      canDragRow: () => false,
+      onPick: (ids) => context.picks.push(ids),
+    });
+    assert.equal(list.attrs["data-marquee"], "1", "the press still starts a box");
+    context.fire("mouseup", {});
+    assert.deepEqual(context.picks, [], "a press on a row never reports a clear");
+    assert.equal(rect.style.display, "none", "and the box is gone");
+  } finally {
+    stop(context);
+  }
+});
+
+test("a press on a control is left to that control", () => {
+  const list = pane([row("a", 0)]);
+  const rect = box();
+  const context = start();
+  try {
+    api.marqueeDrag({
+      event: {
+        // The guard asks once with the full list ("button, input, …, .chk, …").
+        target: { closest: (selector) => (selector.includes(".chk") ? { className: "chk" } : null) },
+        clientX: 10,
+        clientY: 10,
+        button: 0,
+        preventDefault() {},
+      },
+      pane: list,
+      rect,
+      onPick: (ids) => context.picks.push(ids),
+    });
+    assert.equal(context.listeners.size, 0, "no box was started");
+    assert.equal(list.attrs["data-marquee"], undefined);
+    assert.deepEqual(context.picks, []);
+  } finally {
+    stop(context);
+  }
+});
+
 /** A press whose target sits inside the row `id` — or on one of its controls. */
 function pressOnRow(id, control = null) {
   const element = { dataset: { id }, getAttribute: () => id };

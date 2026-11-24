@@ -250,6 +250,22 @@
 .se-shell .lh.sorted .sortdot{opacity:.75}
 .se-shell .lh .lhlabel{overflow:hidden;text-overflow:ellipsis}
 .se-shell .pane-list{position:relative;--w-check:32px; --w-name:260px; --w-tags:116px; --w-note:150px; --w-date:104px; --w-size:74px; --w-status:78px;}
+/* 行宽裁剪: a row stops where its last column stops. The pane to the right of
+   the columns is then genuinely empty — a press there is a press on blank
+   space, which clears the selection, and hovering it lights nothing up.
+   Without this the row was a flex box stretched to the pane and its trailing
+   col-fill claimed the leftover width, so that empty half still behaved like
+   part of the row.
+   The sum has to name exactly the columns the row draws: a narrower pane hides
+   some of them (data-cw="mid" drops 状态; "slim" also drops 标签 and 大小), so
+   each mode subtracts its own. --w-name-used carries the 110px floor the name
+   column enforces below, which the drag clamp (64px) can otherwise undercut —
+   the sum must follow the drawn column, not the stored number. */
+.se-shell .pane-list{--w-name-used:max(110px, var(--w-name));--list-w:calc(var(--w-check) + var(--w-name-used) + var(--w-tags) + var(--w-note) + var(--w-date) + var(--w-size) + var(--w-status) + 12px);}
+.se-shell .pane-list[data-cw="mid"]{--list-w:calc(var(--w-check) + var(--w-name-used) + var(--w-tags) + var(--w-note) + var(--w-date) + var(--w-size) + 12px)}
+.se-shell .pane-list[data-cw="slim"]{--list-w:calc(var(--w-check) + var(--w-name-used) + var(--w-note) + var(--w-date) + 12px)}
+.se-shell:not([data-view="icons"]) .pane-list .row,
+.se-shell:not([data-view="icons"]) .pane-list .rowph{width:var(--list-w)}
 .se-shell .col-check{flex:0 0 var(--w-check);width:var(--w-check);padding-left:12px}
 .se-shell .col-name{flex:0 0 var(--w-name);width:var(--w-name);min-width:110px}
 .se-shell .col-fill{flex:1 1 auto;min-width:0}
@@ -331,6 +347,15 @@
 .se-shell .row:hover .chk,.se-shell .row.sel .chk,.se-shell .listbody.has-sel .chk{opacity:1}
 .se-shell .chk.on{background:var(--sm-accent);border-color:var(--sm-accent);color:#04283a}
 .se-shell .chk .ic{width:11px;height:11px}
+/* 全选 lives in the column head, which is not a row: the hover rule above can
+   never reveal it, so it is a permanent, clickable control of its own. It also
+   reports the third state — some of the visible rows are checked — instead of
+   pretending the list is empty of checks. */
+.se-shell .listhead .chk{opacity:1;cursor:pointer}
+.se-shell .listhead .chk:hover{border-color:var(--sm-accent)}
+.se-shell .listhead .chk:focus-visible{outline:1px solid var(--sm-accent);outline-offset:1px}
+.se-shell .listhead .chk.part{border-color:var(--sm-accent)}
+.se-shell .listhead .chk.part::after{content:"";width:7px;height:2px;border-radius:1px;background:var(--sm-accent)}
 .se-shell .row.bound-row .nm{color:var(--sm-text-2)}
 .se-shell .st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--sm-text-2)}
 .se-shell .dot{width:7px;height:7px;border-radius:50%;corner-shape:round;background:var(--sm-text-3)}

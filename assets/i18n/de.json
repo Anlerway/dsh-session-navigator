@@ -602,6 +602,8 @@
     "打开失败：{0}": "Öffnen fehlgeschlagen: {0}",
     "执行统计": "Lauf-Statistik",
     "把下面的选择恢复成默认（仍需点应用筛选生效）": "Setzt die Auswahl unten auf die Standards zurück (wirkt erst nach „Filter anwenden“)",
+    "全选（Ctrl+A）": "Alle auswählen (Ctrl+A)",
+    "取消全选（Ctrl+A）": "Auswahl aufheben (Ctrl+A)",
     "拖动调整列宽": "Zum Ändern der Spaltenbreite ziehen",
     "排序": "Sortieren",
     "排序方式": "Sortieren nach",

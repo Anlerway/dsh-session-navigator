@@ -383,8 +383,10 @@
                 event.preventDefault();
                 event.stopPropagation();
                 // Right-clicking an unselected row selects it first, so the
-                // menu always acts on what the pointer is over (Explorer rule).
-                if (!selected) onSelect(session.id, event);
+                // menu always acts on what the pointer is over (Explorer rule) —
+                // and `preserve` keeps a multi-selection standing, since the
+                // items were built from the set the press arrived on.
+                if (!selected) onSelect(session.id, { preserve: true });
                 onRowContextMenu(event, session);
               }
             : undefined,
@@ -882,7 +884,7 @@
               ? (event) => {
                   event.preventDefault();
                   event.stopPropagation();
-                  if (!selected) onSelect(node.id, event);
+                  if (!selected) onSelect(node.id, { preserve: true });
                   onNodeContextMenu(event, { kind, id: actionId, nodeId: node.id, node, surface: "list" });
                 }
               : undefined,

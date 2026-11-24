@@ -14,7 +14,7 @@ npm run test:render      # node test/render-smoke.mjs
 测试全部用 `node:test` + `node:assert`，没有第三方测试框架、没有 DOM 实现依赖——
 `render-smoke` 自带一个极小的假 document。
 
-## 1. 九十个测试文件，各自钉住什么
+## 1. 九十二个测试文件，各自钉住什么
 
 | 文件 | 行数 | 钉住的东西 |
 |---|---|---|
@@ -64,9 +64,11 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/row-memo.test.mjs` | 200 | 行 memo 的比较器两个方向都钉住：同样的事实、全新的对象必须算同一行（列表每次渲染都换 dragSet / rename / 回调包装，浅比较永不命中），而会话对象、勾选、重命名中的字、剪切标记、拖动集合、搜索命中任何一处动了都必须重画——答"同"错了是静静地显示旧行，答"不同"错了只是多画一次 |
 | `test/list-containers.test.mjs` | 211 | 列表里哪些容器行该出现：搜索放宽到整棵树，筛选变成「含命中」的结果视图；「会话名」关掉后文件夹只能靠装着命中进来；「当前目录」时放宽整棵树这件事也不做 |
 | `test/list-density.test.mjs` | 93 | 拥挤的列表滚动而不压行：`.listbody` 是唯一滚动面（`overflow:auto`、没有自己的 `height`/`max-height`、`overscroll-behavior:contain`）、`.row` / `.trow` / `.grp` 都是 `flex:0 0 auto`（压力落在容器上，不落在行上）、链上两处 `min-height:0` 都不能掉——少一处滚动条就永远不出现 |
+| `test/row-width.test.mjs` | 87 | 行宽裁剪的不变量（直接读 `panel.css`）：行宽的求和必须恰好是「画出来的那些列」——面板变窄时 `data-cw` 收起的列（mid 少「状态」、slim 再少「标签」「大小」）要各自减掉，多一个少一个都会让行在某一列中间断掉、或在自己肚子里留出一截空白；求和末尾那 12px 必须等于 `.row` 真正的右内边距（改了内边距不改求和，行就错位）；名称列用 `max(110px, var(--w-name))` 取画出来的宽度（CSS 有 110px 下限、拖动只拦 64px）；行与占位行共用同一个宽度，图标视图不受影响（卡片自己定 232px） |
 | `test/content-index.test.mjs` | 534 | 会话内容索引：按 `path|size|activityAt` 失效、逐份让出事件循环、两个 `work()` 只读一份、异步读必须 await、命中数与片段、单条正文上限 2 万字符但**开头与结尾都留**（中间才是能丢的那段）；**只索引用户与助手的文字**（真实日志形状：工具输出、注入上下文都不该被搜到）；磁盘缓存**传了 store 就写**（没有开关）、写盘后重启不再读日志、坏版本与写不进去都不阻断搜索、没给 store 就只在内存里；空闲构建器只在开关打开时动手 |
 | `test/search-scope.test.mjs` | 307 | 搜索范围的**位置**（所有位置 / 当前目录）与四个字段：默认三项且位置为所有位置、会话内容只看 host 命中、搜索缺省是整库范围、选了当前目录才收窄、弹窗把位置放在字段之上、「搜索索引设置」一键跳到设置页、面板确实把范围传给了列表 |
-| `test/marquee.test.mjs` | 519 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上，不钉在屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形） |
+| `test/marquee.test.mjs` | 577 | 鼠标框选：矩形归一化（反向拖也成立）、任何重叠都算命中而仅相邻不算、零面积等于点击（什么都不选）、集合没变不重报、按在控件上不起框、**没选中的行是表面（起框）而已选中的行留给自己拖**（`rowDraggable`）、没有复选框的行不进集合、ctrl 是并集、靠近边缘自动滚动且到顶就停、右键不起框也不会被当成清空、被调用方中途停掉不算点击、**列表滚动后不靠 mousemove 也要重算命中**、**起始点钉在行上，不钉在屏幕上（滚一格框就跟着长高，滚两格不重复累加）**、**祖先把面板推走后框仍贴着指针**（每帧重读 pane 矩形）、**按在还不能拖的行上松手不算清空**（只有按在空白处的没动过才算，Ctrl+点未勾行不再先把整集清掉） |
+| `test/selection.test.mjs` | 206 | 勾选与多选的手势只用一双手就说得清：普通点击**只选那一行**（多选被折叠成它，会话与容器同样对待）、右键保留整份多选（菜单要对整批生效）、右键点集合外的行仍然只选中它、Ctrl+点击把第二行**加进去**（而不是把第一行顶掉）、连加到三行、Ctrl+点已勾的行把它取消、Ctrl+点容器把容器并进会话集合、`altKey` 不算修饰键（浏览器会先吃掉它）、列头 `all` 补全可见集、再按一次清空、`checkRow("all", "on")` 幂等、空视图不改动勾选集、`checkRow` 的第三个参数就是面板真正画出来的那一集（会话 + 文件夹/工作区/引用，特殊文件夹不在内），不给时才退回可见会话 |
 | `test/reorder.test.mjs` | 94 | 名次那条路由：workspace 的名次落在 `workspaceOrder`、快捷方式落在自己的 `order`；一个名字对不上任何节点的 id（例如多打一层 `w-`）回 `404 node-not-found`，不给没人画的行写名次；`order` 不是数字不进文档；过期 revision 仍由侧车挡 |
 | `test/bridge-poll.test.mjs` | 201 | 桥的两条路径：独立窗口的刷新只能作为 `refresh` 命令走出进程（面板自己拉、窗口只发命令），而窗口挂载时先发一条 `status-request`、再发 `refresh`（两条命令走同一个 `POST /bridge/commands`，所以断言按 kind 数，不按条数）、轮询按游标追问且同一条 `seq` 不执行两次、**没收到 `ready` 时的第一次轮询只是取位置，不放历史**、`ready` 的游标比本地小就是宿主重启（当作一次 `host-restart` 重载，且不声称谁知道哪些会话在跑）、首次连接吸收游标（不重放挂载前的 `open-session`）；断开时流被关掉 |
 | `test/bridge-events.test.mjs` | 203 | 两份 document 的对等通知：写请求落地后 host 自己发一条 `changed`（读请求不发，`/bridge/`、`/component/`、`/search/`、`/summarize` 这些自己会刷新或自己会重载页面的前缀也不发），发的是匹配到的路由，不是原始 URL；调色板**真的变了**才发 `theme-changed`（同一份重复上报不算，只换了 token 值也算变了）；`POST /bridge/commands` 回包带 `listeners`（窗口自己算一个，用它判断有没有人在听）；`lang-changed` 的 `lang` 走 `normalizeLang`，八种语言码全过、`ja-JP` 归成 `ja`、`pt-BR` 丢掉；`session-status` 的 `rows` 由路由重建——未知的 `pending` 猜成已知就等于凭坏数据挂上「等待审批」，所以那种值单独出现时整行丢掉、带着 `running` 时留下但 `pending` 归 `null`，`id` 截 200、最多 500 行 |
@@ -88,7 +90,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/update.test.mjs` | 135 | 更新检查：数字段比较、release 解析、5 分钟缓存、失败码，不是假"已是最新" |
 | `test/about.test.mjs` | 308 | 链接白名单与降级链，以及缓存清理只清自己的（quarantine 与会话不动，组件在装就跳过，独立窗口的 Chromium profile 要关着窗口才清） |
 | `test/notes-gate.test.mjs` | 125 | 更新说明什么时候说、什么时候闭嘴：每个版本一次，没记过版本的机器首次也播；「已经说过」记在 host 的文件里，不是 localStorage（web GUI 每次启动换端口就是一个新的 origin，空存储会把公告变成每次开机都弹） |
-| `test/notes.test.mjs` | 185 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算、两者必须逐字一致（不一致说明发版会带上旧说明）、十份文件的条目数互相齐平，以及读哪份文件由页面带上来的 `lang` 决定、没带才看设置里的界面语言 |
+| `test/notes.test.mjs` | 193 | 更新说明本身：changelog 解析成块、checkout 与安装副本两份候选文件谁说了算、两者必须逐字一致（不一致说明发版会带上旧说明）、十份文件的条目数与版本号互相齐平（可以写着 package.json 的下一号，但不许落后），以及读哪份文件由页面带上来的 `lang` 决定、没带才看设置里的界面语言 |
 | `test/locale-parity.test.mjs` | 88 | `zh` 与 `en` 两份 `settings` 的键集合一致、占位符一致、英文标签放得下（另外六种语言由 `check-i18n.mjs` 校验）；设置页的 token 块必须自带 `--sm-danger` |
 | `test/panel-copy.test.mjs` | 189 | 面板每一句中文都有英文对照：英文表覆盖全部 `T()`、没有裸中文残留（注释与样式表除外）、占位符不丢；固定目录与默认工作区也走字典；shim 同理（例外是 `L()`） |
 | `test/lang-chain.test.mjs` | 93 | 一份语言清单四处一致：`assets/i18n/` 目录、`src/lang.js` 的 `LANGS`、helper 与 shim 各自抄的常量、产物从词典派生的清单；`LANGS.length` 为 10；`normalizeLang` 把区域码归到基语言、把没有词典的码归成空串；桥与 `/detached/open` 只放行这份清单 |
@@ -105,7 +107,7 @@ npm run test:render      # node test/render-smoke.mjs
 | `test/status-linger.test.mjs` | 85 | 问答状态在行上「留一会儿」的规则：已答的问题不在被页面称为 live 的行上继续压着、没说自己为什么安静的行也留、被页面整个丢掉的行同样留、留到那一轮有机会开口为止、留的期间那一轮停了就落「空闲」、邻居的提问不影响别的会话 |
 | `test/status-merge.test.mjs` | 54 | 状态表合并：每次宣告都交出一张新表、表里带着徽章要的三个字段、同一个状态重播两次行内容不变 |
 | `test/theme-tokens.test.mjs` | 50 | 样式表读的每个 `--sm-*` 变量都得由它自己定义；`<select>` 的选项列表用主题色画，不用深色字面量；token 桥接从主题推导 raised 表面 |
-| `test/render-smoke.mjs` | 1691 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；详情栏的「AI 字段」段必须紧跟在「备注」之后并带着那一枚按钮，存了字段之后要画出标题/描述/标签三行、每个标签都是**已勾选**的开关并写着「合并所选（2）」；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中）；状态点与 DSH 同一阶梯（空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中），「已中断」「异常」两个自造档位不许回来；没进过视口的会话先画成 32px 的 `.rowph` 占位、被观察器看见才换成真行，而选中的那一行与没有 `IntersectionObserver` 的环境一律照常建行 |
+| `test/render-smoke.mjs` | 1698 | 每个组件真实渲染一次（不是 `node --test` 的一部分）；详情栏的「AI 字段」段必须紧跟在「备注」之后并带着那一枚按钮，存了字段之后要画出标题/描述/标签三行、每个标签都是**已勾选**的开关并写着「合并所选（2）」；框选那窗 `.selrect` 必须在树里、空白处按下才起框；没选中的会话/文件夹/工作区行 `draggable` 必须是 false，选中或勾选后仍是 true；真起一次拖动后，勾选集（会话与容器两个半边）必须原样交到落点，浏览器读不到 `DataTransfer` 时仍从载荷里答；双击打开落在**第二次按下**上（一次按下只能选中）；状态点与 DSH 同一阶梯（空闲 / 进行中 / 等待审批 / 计划待审 / 等待回答 / 已完成 / 子智能体运行中），「已中断」「异常」两个自造档位不许回来；没进过视口的会话先画成 32px 的 `.rowph` 占位、被观察器看见才换成真行，而选中的那一行与没有 `IntersectionObserver` 的环境一律照常建行；列头那枚「全选」复选框常驻（不再等悬停才显形），三态（未选 / 全选 / 部分）与 `on`、`part` 两个类对得上，`title` 写着 Ctrl+A 且在两种状态下说反话，按一下填满可见集（会话、文件夹、工作区一起，特殊文件夹除外）、再按一下清空 |
 
 ## 2. 为什么是这些
 
@@ -129,7 +131,8 @@ npm run test:render      # node test/render-smoke.mjs
 
 - 一律用临时目录，通过 `DSH_SE_DATA_DIR` 或直接把 `paths` 传进 `openDocuments()`；
 - 组件的测试用 `mirrorOverride` / `pinnedOverride` 之类注入，不会真的去下 150 MB；
-- `render-smoke.mjs` 自带假 document，不依赖 jsdom。
+- `render-smoke.mjs` 自带假 document，不依赖 jsdom；
+- `test/support/` 放不属于任何单个测试的脚手架：`client-bundle.mjs` 把分片拼成可加载的客户端模块（`loadClientBundle({ expose })` 只交出要断言的符号），`dialog-primitives.mjs` 给出 DSH 弹窗原语的最小替身（`React` 由调用方传进来，不 import 真包），渲染冒烟与组件测试共用同一份。
 
 ## 4. 提交前
 

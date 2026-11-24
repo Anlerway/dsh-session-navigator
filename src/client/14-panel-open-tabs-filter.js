@@ -1109,6 +1109,12 @@
         [effectiveCollapsed],
       );
 
+      // 全选 draws on two surfaces — the header box in the list pane and Ctrl+A
+      // here — and both must fill the *same* set, containers included. The pane
+      // knows which rows it drew, so it leaves their ids in this ref and the
+      // shortcut reads them at press time.
+      const selectAllIdsRef = useRef(null);
+
       // The four row gestures live in 13d-hook-session-selection.js; the state
       // they write stays here because the toolbar reads it too.
       const { selectRow, highlightNode, checkRow, marqueeStart } = useSessionSelection({
@@ -1119,6 +1125,29 @@
         checked,
         selected,
       });
+
+      // Ctrl+A is 全选 for the rows this view lists — the same set the header box
+      // fills, folders and workspaces included, because the ids come back from
+      // the pane rather than from the session list alone. It is claimed here
+      // rather than left to the browser, whose own Ctrl+A selects the panel's
+      // text instead; the key is taken only when the panel would act on it,
+      // never while a field or a dialog owns the keyboard. Alt+A is deliberately
+      // not bound: in a browser it belongs to the window menu and reaches the
+      // page as a text selection, which is nothing like 全选.
+      useEffect(() => {
+        const onSelectAll = (event) => {
+          if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+          if (String(event.key).toLowerCase() !== "a") return;
+          const element = event.target;
+          const typing =
+            element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable);
+          if (typing || dialogOpenRef.current) return;
+          event.preventDefault();
+          checkRow("all", "on", selectAllIdsRef.current);
+        };
+        window.addEventListener("keydown", onSelectAll);
+        return () => window.removeEventListener("keydown", onSelectAll);
+      }, [checkRow]);
 
       /** A column header picks the field; clicking the active one flips direction. */
       const cycleSort = useCallback((key) => {

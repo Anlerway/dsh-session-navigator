@@ -602,6 +602,8 @@
     "打开失败：{0}": "No se pudo abrir: {0}",
     "执行统计": "Estadísticas de ejecución",
     "把下面的选择恢复成默认（仍需点应用筛选生效）": "Devolver las opciones de abajo a su estado predeterminado (aún hay que pulsar Aplicar filtro)",
+    "全选（Ctrl+A）": "Seleccionar todo (Ctrl+A)",
+    "取消全选（Ctrl+A）": "Desmarcar todo (Ctrl+A)",
     "拖动调整列宽": "Arrastra para cambiar el ancho de la columna",
     "排序": "Ordenar",
     "排序方式": "Ordenar por",

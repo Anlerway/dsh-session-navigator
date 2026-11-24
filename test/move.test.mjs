@@ -30,6 +30,7 @@ import {
   readArtifact,
   inheritedCutOf,
   isContiguousLog,
+  retargetDeliveryMarkers,
 } from "../src/sources/artifact.js";
 import { moveSessions, reconcileMoves } from "../src/host/move.js";
 import { recordMove, journalPath } from "../src/host/move-journal.js";
@@ -843,4 +844,78 @@ test("copying writes a second session with a fresh id and the same events", asyn
   } finally {
     await box.cleanup();
   }
+});
+
+// A copied log carries the source's delivery markers verbatim, and each of them
+// names the session the delivery was accepted in. DSH v4 checks exactly that —
+// a marker of the current generation that names another session is fatal — so a
+// straight copy produced a session that refused to open. These two cases pin the
+// rewrite: the copy's own markers follow the copy, inherited ones stay with the
+// session they were accepted under.
+test("a copy's delivery markers are retargeted to the copy", async () => {
+  const box = await sandbox();
+  try {
+    const targetPath = join(box.root, "target-workspace");
+    await mkdir(targetPath, { recursive: true });
+    const registry = fakeRegistry([
+      { id: "w-source", title: "source", path: "C:\\work\\source", sessionIds: ["s1"] },
+      { id: "w-target", title: "target", path: targetPath, sessionIds: [] },
+    ]);
+    const api = apiWith(box.home, registry);
+    const marker = (sessionId) => ({
+      type: "session-log-deepseek/delivery-accepted",
+      time: 3,
+      data: { sessionId, sessionFormatVersion: 4, throughSeq: 0 },
+    });
+    const { log } = await writeSession(box.home, "proj", "s1", {
+      events: [
+        { seq: 0, type: "turn/start", time: 1, data: { turn: 1 } },
+        { seq: 1, ...marker("s1") },
+      ],
+    });
+
+    const result = await moveSessions(api, { ids: ["s1"], copy: true, target: { workspaceId: "w-target" } });
+    const copy = result.results[0];
+    assert.equal(copy.copied, true);
+
+    const duplicated = await readArtifact(copy.artifactTo);
+    const copied = duplicated.events.find((event) => event.type === "session-log-deepseek/delivery-accepted");
+    assert.equal(copied.data.sessionId, copy.sessionId, "the copy's marker names the copy");
+    assert.equal(copied.seq, 1, "the marker keeps its place in the sequence");
+    assert.equal(copied.data.sessionFormatVersion, 4, "the rest of the marker is untouched");
+    assert.equal(copied.data.throughSeq, 0);
+
+    const original = await readArtifact(log);
+    const source = original.events.find((event) => event.type === "session-log-deepseek/delivery-accepted");
+    assert.equal(source.data.sessionId, "s1", "the source session still owns its own marker");
+  } finally {
+    await box.cleanup();
+  }
+});
+
+test("retargeting leaves inherited markers, unrelated lines and the trailing newline alone", () => {
+  const marker = (seq, sessionId) =>
+    JSON.stringify({
+      type: "session-log-deepseek/delivery-accepted",
+      seq,
+      time: seq,
+      data: { sessionId, sessionFormatVersion: 4, throughSeq: seq - 1 },
+    });
+  const lines = [
+    JSON.stringify({ seq: 0, type: "turn/start", time: 1, data: { turn: 1 } }),
+    marker(1, "parent-1"),
+    marker(2, "s1"),
+    "{not a whole line",
+    "",
+  ];
+  const rewritten = retargetDeliveryMarkers(lines.join("\n"), "copy-1", 2).split("\n");
+  assert.equal(rewritten[0], lines[0], "a line without a marker is returned byte for byte");
+  assert.equal(JSON.parse(rewritten[1]).data.sessionId, "parent-1", "an inherited marker keeps its own session");
+  assert.equal(JSON.parse(rewritten[2]).data.sessionId, "copy-1", "this generation's marker follows the copy");
+  assert.equal(JSON.parse(rewritten[2]).data.throughSeq, 1, "only the id changes");
+  assert.equal(rewritten[3], lines[3], "a half-written line is left as it is");
+  assert.equal(rewritten[4], "", "the trailing newline survives");
+
+  const plain = lines[0] + "\n";
+  assert.equal(retargetDeliveryMarkers(plain, "copy-1", 0), plain, "a log with no marker comes back unchanged");
 });

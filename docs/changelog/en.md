@@ -1,11 +1,9 @@
-Release notes: V1.2.2
+Release notes: V1.2.3
 
 Highlights
 
-* Fixed a deleted blank session making new sessions impossible
-* Fixed other sessions turning invalid or vanishing from the sidebar after a delete
-* Fixed a session that had been opened once never moving again
-* Fixed a moved session disappearing from the sidebar while its log came back in the old folder
-* Fixed the first workspace being labelled default after the default one was deleted
-* Added a copy button for the error log
-* Changed where dialog buttons sit by default
+* Fixed a copied session that could occasionally fail to open
+* Added Ctrl+A to select everything, and a select-all checkbox in the list header
+* Added Ctrl+click and box selection to extend a selection
+* Fixed the checkbox drawing wrongly on a row picked with a plain click
+* List rows no longer stretch across the pane; the space to their right is left blank, so a press there clears the selection

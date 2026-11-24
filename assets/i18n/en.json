@@ -602,6 +602,8 @@
     "打开失败：{0}": "Could not open: {0}",
     "执行统计": "Run stats",
     "把下面的选择恢复成默认（仍需点应用筛选生效）": "Reset the choices below to their defaults (still needs Apply filter)",
+    "全选（Ctrl+A）": "Select all (Ctrl+A)",
+    "取消全选（Ctrl+A）": "Deselect all (Ctrl+A)",
     "拖动调整列宽": "Drag to resize the column",
     "排序": "Sort",
     "排序方式": "Sort by",

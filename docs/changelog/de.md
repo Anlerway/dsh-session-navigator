@@ -1,11 +1,9 @@
-Versionshinweise: V1.2.2
+Versionshinweise: V1.2.3
 
 Wichtigste Änderungen
 
-* Behoben: Nach dem Löschen einer leeren Sitzung ließ sich keine neue mehr anlegen
-* Behoben: Nach dem Löschen wurden andere Sitzungen als ungültig markiert oder verschwanden aus der Seitenleiste
-* Behoben: Eine einmal geöffnete Sitzung ließ sich nie wieder verschieben
-* Behoben: Eine verschobene Sitzung verschwand aus der Seitenleiste, während ihr Protokoll im alten Ordner wieder auftauchte
-* Behoben: Nach dem Löschen des Standard-Arbeitsbereichs wurde der erste Arbeitsbereich als Standard bezeichnet
-* Kopierschaltfläche für das Fehlerprotokoll ergänzt
-* Standardposition der Dialogschaltflächen geändert
+* Behoben: Eine kopierte Sitzung ließ sich gelegentlich nicht öffnen
+* Strg+A zum Alles-Auswählen und ein Auswahlkästchen in der Listenkopfzeile ergänzt
+* Strg+Klick und Rahmenauswahl zum Erweitern der Auswahl ergänzt
+* Behoben: Das Auswahlkästchen einer per Klick ausgewählten Zeile wurde falsch dargestellt
+* Listenzeilen reichen nicht mehr bis zum rechten Rand; die Fläche daneben bleibt frei, ein Klick darauf hebt die Auswahl auf

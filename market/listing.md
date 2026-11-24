@@ -6,7 +6,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 包名 | `dsh-session-navigator`（npm） |
-| 版本 | 1.2.2 |
+| 版本 | 1.2.3 |
 | 仓库 | https://github.com/Anlerway/dsh-session-navigator |
 | 发行包 | [Releases 最新版](https://github.com/Anlerway/dsh-session-navigator/releases/latest) |
 | 许可 | MIT |
@@ -40,15 +40,13 @@
 </p>
 <p align="center"><em>分屏：聊天在左，资源管理器停靠在右，两边各自独立</em></p>
 
-## 本版更新（1.2.2）
+## 本版更新（1.2.3）
 
-- 修复了删掉空会话之后再也新建不了会话的问题
-- 修复了删除会话后，别的会话在侧栏变成「无效」或直接消失的问题
-- 修复了会话被打开过一次就再也移不动的问题
-- 修复了移动会话后它从侧栏消失、日志又在旧目录里长回来的问题
-- 修复了删掉默认工作区后，第一个的工作区被当成「默认工作区」的问题
-- 新增了报错日志复制按钮
-- 修改了弹窗按钮默认位置
+- 修复了「复制会话」复制出来的副本有概率打不开的问题
+- 新增了Ctrl+A全选快捷键与列头全选复选框
+- 新增了Ctrl+点击或框选增量选择的功能
+- 修复了单击选中的复选框表现形式异常的问题
+- 列表行不再铺满整行，右侧留出空白供点击空白
 
 ## 安装
 
@@ -75,11 +73,10 @@ Session Navigator manages DSH sessions the way Windows Explorer manages files: a
 per workspace, tags, notes, favourites and a recycle bin on top of the native session store.
 The "All sessions" view is cut into one band per workspace, each caption foldable.
 Session files never move — all state lives in `~/.dsh-session-navigator/`, a sibling of `~/.dsh`,
-so uninstalling means deleting one folder. Version 1.2.2 fixes the four failures that made moving and
-deleting unreliable: a deleted blank session no longer blocks new ones, deleting a session no longer makes
-its neighbours show up as invalid, an opened session can be moved again, and a moved session stays in the
-sidebar instead of leaving its log behind in the old folder. The error bar gained a copy button, and dialog
-buttons now sit at the bottom right.
+so uninstalling means deleting one folder. Version 1.2.3 fixes copying: a duplicated session now opens
+instead of failing validation on inherited delivery markers. Ctrl+A or the header checkbox selects everything
+the pane draws, Ctrl+click and box-dragging add to the selection instead of replacing it, and a row's blank
+right-hand side clears the selection when you press it.
 Zero runtime dependencies, no build step, MIT.
 
 ```bash

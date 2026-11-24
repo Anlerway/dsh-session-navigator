@@ -14,6 +14,7 @@
  */
 import { readFileSync } from "node:fs";
 import { decorateTree } from "../src/domain/tree-rules.js";
+import { dialogPrimitives } from "./support/dialog-primitives.mjs";
 
 // A minimal class base, because PanelBoundary is the one class component in the
 // bundle (an error boundary has no hook equivalent).
@@ -123,50 +124,10 @@ globalThis.fetch = async (url, init) => {
 
 let mod = null;
 
-// DSH's dialog primitives, as the host lends them. The stub keeps the contract
-// SeModal relies on — Modal with {open, onClose, title, description, footer,
-// children}, RiskConfirmation with the acknowledgement pair — and renders real
-// elements, so the assertions can see which layer drew a dialog exactly as the
-// app's own components would. The plugin resolves this package through
-// `require`; a host without it must fall back rather than throw, which the last
-// dialog check exercises by deleting the two members.
-const primitivesStub = {
-  Modal: (props) =>
-    React.createElement(
-      "div",
-      { className: "dsh-modal-stub", "data-title": props.title, "data-open": String(props.open) },
-      React.createElement("h2", { className: "dsh-modal-stub-title" }, props.title),
-      props.description ? React.createElement("p", { className: "dsh-modal-stub-desc" }, props.description) : null,
-      React.createElement("div", { className: "dsh-modal-stub-body" }, props.children),
-      props.footer ? React.createElement("div", { className: "dsh-modal-stub-footer" }, props.footer) : null,
-    ),
-  RiskConfirmation: (props) =>
-    React.createElement(
-      "div",
-      { className: "dsh-modal-stub dsh-risk-stub", "data-title": props.title },
-      props.description ? React.createElement("p", { className: "dsh-risk-desc" }, props.description) : null,
-      React.createElement(
-        "label",
-        { className: "dsh-risk-ack" },
-        React.createElement("input", {
-          type: "checkbox",
-          checked: props.acknowledged === true,
-          onChange: (event) => props.onAcknowledgedChange?.(event.target.checked),
-        }),
-        React.createElement("span", null, props.acknowledgeLabel),
-      ),
-      React.createElement(
-        "div",
-        { className: "dsh-modal-stub-footer" },
-        React.createElement("button", { type: "button", className: "act", onClick: props.onCancel }, props.cancelLabel),
-        React.createElement(
-          "button",
-          { type: "button", className: "act primary", disabled: props.acknowledged !== true, onClick: props.onConfirm },
-          props.confirmLabel,
-        ),
-      ),
-    ),
-};
+// DSH's dialog primitives, as the host lends them: a stub that keeps the
+// contract SeModal relies on and renders real elements, so an assertion can tell
+// which layer drew a dialog (see test/support/dialog-primitives.mjs).
+const primitivesStub = dialogPrimitives(React);
 
 const requireShim = (name) => {
   if (name === "react") return React;
@@ -539,6 +500,46 @@ const listPaneWith = (props) => render({ type: ListPane, props: {
   rename: null, onBeginRename: noop, ...props,
 } });
 console.log("ListPane ok:", Boolean(listPaneWith({ selected: session.id })));
+
+// ── 全选 in the column head ─────────────────────────────────────────────────
+// The box was there but invisible: .chk stays hidden until a row or the list
+// body is hovered, and the column head is neither, so 全选 never appeared. It is
+// a permanent control now, and it reports three states — a half-checked list
+// that looks unchecked cannot be completed with one click.
+const headBox = (props) => {
+  const box = findAll(findAll(listPaneWith(props), hasClass("listhead"))[0], hasClass("chk"))[0];
+  if (!box) throw new Error("the column head must hold the 全选 box");
+  return box;
+};
+const headClasses = (box) => String(box.props?.className ?? "").split(" ");
+// 全选 is every row that draws a box — 会话, 文件夹, 工作区 — and nothing else: a
+// box-less 特殊文件夹 has no row to tick and must stay out of the set 删除 reads.
+const boxedIds = (props) => findAll(listPaneWith(props), hasClass("row"))
+  .filter((row) => findAll(row, hasClass("chk")).length > 0).map((row) => row.props["data-id"]).sort();
+const soloIds = boxedIds({ sessions: [session] });
+if (!soloIds.includes("d-1") || !soloIds.includes("w-ws-1")) throw new Error("the fixture must draw a folder and a workspace box");
+const boxes = {
+  none: headBox({}),
+  all: headBox({ checked: new Set(soloIds) }),
+  part: headBox({ sessions: [session, { ...session, id: "session-2" }], checked: new Set(soloIds) }),
+};
+const states = { none: "false", all: "true", part: "mixed" };
+for (const [name, box] of Object.entries(boxes)) {
+  if (box.props["aria-checked"] !== states[name]) throw new Error("a " + name + " list reports " + box.props["aria-checked"]);
+}
+if (!headClasses(boxes.all).includes("on") || !headClasses(boxes.part).includes("part")) throw new Error("the box must draw the state it reports");
+if (!String(boxes.all.props.title).includes("Ctrl+A") || boxes.all.props.title === boxes.none.props.title) throw new Error("the box must name Ctrl+A and offer the opposite action");
+if (boxes.none.props.role !== "checkbox" || boxes.none.props.tabIndex !== 0) throw new Error("the 全选 box must be focusable");
+// A press fills the view, a second one empties it: the set is asked for through
+// onCheck, so the panel — which owns the state — does the writing.
+const headAsks = [];
+const askHead = (props) => headBox({ ...props, onCheck: (...args) => headAsks.push(args) }).props.onClick();
+askHead({});
+askHead({ checked: new Set(soloIds) });
+if (headAsks[0][0] !== "all" || headAsks[1][0] !== null) throw new Error("a press must fill, a second must clear: " + JSON.stringify(headAsks));
+// The press carries the ids it filled, so Ctrl+A can fill the very same set.
+if (JSON.stringify([...headAsks[0][2]].sort()) !== JSON.stringify(soloIds)) throw new Error("全选 must be the rows that draw a box: " + JSON.stringify(headAsks[0][2]) + " vs " + JSON.stringify(soloIds));
+console.log("ListPane (全选) ok: 3 states, press fills and clears, containers included");
 
 // ── a list that actually holds a subagent ───────────────────────────────────
 // The P32 regression: `nestSessions` was rewritten to call a predicate while

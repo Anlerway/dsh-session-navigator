@@ -216,6 +216,58 @@ export function inheritedCutOf(events) {
 }
 
 /**
+ * The event DSH writes when a model delivery has been accepted.
+ *
+ * Its `data.sessionId` names the session the marker belongs to, and the v4
+ * reader checks it: a marker of the *current* generation that names another
+ * session makes the log corrupt ("current-generation delivery marker names the
+ * wrong Session") and the session refuses to open.
+ */
+const DELIVERY_MARKER = "session-log-deepseek/delivery-accepted";
+
+/**
+ * Point this generation's delivery markers at `sessionId`.
+ *
+ * A duplicate keeps its source's events byte for byte, which leaves every marker
+ * naming the source — so the copy is a session whose own log says it belongs to
+ * somebody else, and DSH rejects it. The new id is therefore the one thing a
+ * copy must rewrite inside the event stream, but only for the markers that
+ * belong to the copy's own generation: markers below `cut` were inherited from
+ * a parent and must keep naming it, which is exactly the shape DSH exempts from
+ * the same check.
+ *
+ * Anything unexpected — a torn line, another event type, a marker that already
+ * names the target — is passed through untouched, so a log this function cannot
+ * read is still the log it was handed.
+ *
+ * @param {string} rest the text after the header line, including its final newline
+ * @param {string} sessionId the id the copy is written under
+ * @param {number} [cut] the first seq of the current generation
+ * @returns {string}
+ */
+export function retargetDeliveryMarkers(rest, sessionId, cut = 0) {
+  const floor = Number.isFinite(cut) ? cut : 0;
+  if (typeof rest !== "string" || !rest.includes(DELIVERY_MARKER)) return rest;
+  const lines = rest.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line.includes(DELIVERY_MARKER)) continue;
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event?.type !== DELIVERY_MARKER) continue;
+    const data = event.data;
+    if (!data || typeof data.sessionId !== "string" || data.sessionId === sessionId) continue;
+    if (Number.isFinite(event.seq) && event.seq < floor) continue;
+    lines[index] = JSON.stringify({ ...event, data: { ...data, sessionId } });
+  }
+  return lines.join("\n");
+}
+
+/**
  * Whether an event list is a contiguous logical log starting at seq 0. A log
  * with packed physical rows or a gap cannot be handed to the projection refold.
  *

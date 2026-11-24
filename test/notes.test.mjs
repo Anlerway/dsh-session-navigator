@@ -8,9 +8,10 @@
  * the candidate files the notes are — docs/changelog/<language>.md, falling back
  * to English and then Chinese when a language has no file yet.
  *
- * The last two tests keep the ten files honest: each one introduces itself with
- * the version being shipped, and the ten say the same amount, so a translation
- * that lost a bullet is caught here instead of by a reader of that language.
+ * The last two tests keep the ten files honest: the ten name one and the same
+ * version — the one being shipped, or the next one the files were written ahead
+ * of the bump for — and they say the same amount, so a translation that lost a
+ * bullet is caught here instead of by a reader of that language.
  */
 
 import test from "node:test";
@@ -23,6 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import { NOTES_MAX_BYTES, notesRuns, parseNotes } from "../src/domain/notes.js";
 import { NOTES_DIR, noteFiles, notesLanguage, readNotes } from "../src/host/changelog.js";
+import { compareVersions } from "../src/host/update.js";
 import { LANGS } from "../src/lang.js";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -163,14 +165,17 @@ test("readNotes answers in the language it was asked for", async () => {
 });
 
 test("every language has notes, and they cover the same ground", async () => {
-  const version = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")).version;
+  const shipped = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8")).version;
   const shapes = new Map();
+  const versions = new Map();
   for (const lang of LANGS) {
     const file = join(NOTES_DIR, `${lang}.md`);
     assert.ok(existsSync(file), `${lang}.md exists`);
     const parsed = parseNotes(await readFile(file, "utf8"));
     assert.ok(parsed.title.length > 0, `${lang} introduces itself`);
-    assert.ok(parsed.title.endsWith(version), `${lang} names the version being shipped`);
+    const named = /([0-9]+(?:\.[0-9]+){2})\s*$/.exec(parsed.title);
+    assert.ok(named, `${lang} names a version in its title`);
+    versions.set(lang, named[1]);
     // The document opens with the 主要改动 heading, and one list under it is the
     // whole change set: the release says what it changed, in the user's words.
     assert.equal(parsed.blocks[0]?.kind, "p", `${lang} opens with the highlights heading`);
@@ -178,5 +183,11 @@ test("every language has notes, and they cover the same ground", async () => {
     // drops one fails here rather than silently telling less.
     shapes.set(lang, parsed.blocks.map((block) => block.kind + (block.kind === "list" ? block.items.length : "")).join(","));
   }
-  assert.deepEqual([...new Set(shapes.values())], ["p,list7"], "every language says the same amount");
+  assert.deepEqual([...new Set(shapes.values())].length, 1, "every language says the same amount");
+  assert.match([...shapes.values()][0], /^p,list[1-9][0-9]*$/, "and it is a heading over one list");
+  // One version for all ten, and never one behind the package: the notes are
+  // written either for what is on npm or for the release they will ship with.
+  assert.equal(new Set(versions.values()).size, 1, "the ten name one version");
+  const [named] = versions.values();
+  assert.ok(compareVersions(named, shipped) >= 0, `notes say ${named}, package says ${shipped}`);
 });

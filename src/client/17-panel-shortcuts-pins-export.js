@@ -594,6 +594,7 @@
             onSelect: selectRow,
             onCheck: checkRow,
             onMarquee: marqueeStart,
+            selectAllIdsRef,
             checked,
             query,
             // 搜索范围: the pane can test 会话名 / 标签 / 备注 from the rows
@@ -748,9 +749,10 @@
       ];
 
       // 更多 is a short list of things that have nowhere else to live. A command
-      // that already has a toolbar button (新建 / 重命名 / 归档 / 全选 / 新建标签页)
-      // does not belong here: a menu that repeats the toolbar is just a slower
-      // toolbar, and it buries the three entries that matter.
+      // that already has a control on screen (新建 / 重命名 / 归档 in the command
+      // bar, 全选 in the column head, 新建标签页 on the tab strip) does not belong
+      // here: a menu that repeats the toolbar is just a slower toolbar, and it
+      // buries the three entries that matter.
       const moreItems = [
         // Undo belongs here as well as on Ctrl+Z: a mouse-only user has no
         // other way to reach it (S6).

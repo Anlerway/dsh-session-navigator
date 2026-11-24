@@ -391,9 +391,13 @@
       };
       const finish = () => {
         teardown();
-        // A press that never moved selected nothing: it is a click on the blank
-        // part of the list, and that clears the selection.
-        if (!moved) onPick(null);
+        // A press that never moved selected nothing — but only a press on the
+        // blank part of the list may say so. A press that landed on a row is
+        // that row's own click, and it arrives right after this: clearing here
+        // first turned every Ctrl+click on an unticked row into "add this one,
+        // drop the rest", because such a row is not draggable yet and its press
+        // had been taken for surface.
+        if (!moved && !pressedId) onPick(null);
       };
 
       pane.setAttribute?.("data-marquee", "1");
@@ -474,6 +478,9 @@
         onSelect,
         onCheck,
         onMarquee,
+        // 全选 is drawn here but Ctrl+A is claimed by the panel: the pane leaves
+        // the ids it drew in this ref so the shortcut fills the same set.
+        selectAllIdsRef,
         checked,
         query,
         // 搜索范围: which fields the box reads, plus the 会话内容 hits
@@ -987,6 +994,30 @@
         "--w-status": `${colWidths.status}px`,
       };
 
+      // 全选: the header box speaks for exactly the rows this view lists — the
+      // ones 筛选 and 搜索 left on screen, not the whole scope. Three states, so a
+      // half-filled list says so instead of looking unchecked, and so a click
+      // that completes a partial selection stays possible.
+      //
+      // Those rows are not only sessions. A folder, a workspace and a reference
+      // each carry a box of their own and each can be deleted or moved in bulk,
+      // so a 全选 that filled the sessions and skipped the containers above them
+      // made the user tick every folder by hand — the one thing 全选 exists to
+      // avoid. The list is the only place that knows which containers it drew
+      // (search, 筛选 and 显示已归档 all change the answer), so the ids are
+      // gathered here and handed back to the panel through the ref, which is how
+      // Ctrl+A ends up filling the same set as the box.
+      // Only the containers that draw a box: 文件夹, 工作区, 收藏. A 特殊文件夹 is
+      // fixed (no box, no rename), and checking one would put 回收站 in a set that
+      // 删除 and 拖动 read as targets.
+      const boxed = (node) => node.kind === "folder" || node.kind === "workspace" || node.kind === "shortcut";
+      const drawn = [...pinned, ...normal, ...archived];
+      const headIds = [...containerNodes.filter(boxed).map((node) => node.id), ...drawn.map((session) => session.id)];
+      if (selectAllIdsRef) selectAllIdsRef.current = headIds;
+      const allChecked = headIds.length > 0 && headIds.every((id) => checked.has(id));
+      const someChecked = !allChecked && headIds.some((id) => checked.has(id));
+      const selectAllLabel = allChecked ? T("取消全选（Ctrl+A）") : T("全选（Ctrl+A）");
+
       return h(
         "main",
         { className: "pane-list", id: "se-listpane", style, ref: paneRef, "data-cw": colMode },
@@ -999,13 +1030,22 @@
             h(
               "span",
               {
-                className: "chk" + (filtered.length > 0 && filtered.every((s) => checked.has(s.id)) ? " on" : ""),
-                onClick: () => {
-                  const all = filtered.length > 0 && filtered.every((s) => checked.has(s.id));
-                  onCheck(all ? null : "all");
+                className: "chk" + (allChecked ? " on" : "") + (someChecked ? " part" : ""),
+                role: "checkbox",
+                tabIndex: 0,
+                "aria-checked": allChecked ? "true" : someChecked ? "mixed" : "false",
+                "aria-label": T("全选（Ctrl+A）"),
+                title: selectAllLabel,
+                // A press that never moved is a click on the header: it fills the
+                // set, or empties it when everything was already in it.
+                onClick: () => onCheck(allChecked ? null : "all", "toggle", headIds),
+                onKeyDown: (event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  onCheck(allChecked ? null : "all", "toggle", headIds);
                 },
               },
-              filtered.length > 0 && filtered.every((s) => checked.has(s.id)) ? h(Icon, { name: "check", size: 10 }) : null,
+              allChecked ? h(Icon, { name: "check", size: 10 }) : null,
             ),
           ),
           COL_ORDER.map((key) => {

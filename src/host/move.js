@@ -63,6 +63,7 @@ import {
   isContiguousLog,
   projectKey,
   readArtifact,
+  retargetDeliveryMarkers,
   tempPathFor,
 } from "../sources/artifact.js";
 
@@ -696,7 +697,15 @@ async function copyOne(api, sessionId, target) {
     time: Date.now(),
     data: { title, messageSeqs: [], source: { kind: "user" } },
   };
-  const rest = artifact.text.slice(newline + 1) + JSON.stringify(titleEvent) + "\n";
+  // The events are copied as they are, with one exception: a delivery marker
+  // records which session a model delivery belongs to, and a marker that still
+  // names the source makes the copy unreadable — DSH rejects a log whose
+  // current-generation marker points at another session. Markers inherited from
+  // a parent stay as they are (that is what a fork looks like to DSH too).
+  const rest =
+    retargetDeliveryMarkers(artifact.text.slice(newline + 1), newId, inheritedCutOf(artifact.events) ?? 0) +
+    JSON.stringify(titleEvent) +
+    "\n";
   const events = [...artifact.events, titleEvent];
   const targetDir = join(root, projectKey(resolved.path), encodeSegment(newId));
   if (!inside(root, targetDir)) throw codedError("bad-request", "refusing to write outside the sessions root");

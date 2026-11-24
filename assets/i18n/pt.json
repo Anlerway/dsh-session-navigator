@@ -602,6 +602,8 @@
     "打开失败：{0}": "Não foi possível abrir: {0}",
     "执行统计": "Estatísticas de execução",
     "把下面的选择恢复成默认（仍需点应用筛选生效）": "Voltar as escolhas abaixo ao padrão (ainda precisa de Aplicar filtro)",
+    "全选（Ctrl+A）": "Selecionar tudo (Ctrl+A)",
+    "取消全选（Ctrl+A）": "Limpar seleção (Ctrl+A)",
     "拖动调整列宽": "Arraste para ajustar a largura da coluna",
     "排序": "Classificar",
     "排序方式": "Classificar por",

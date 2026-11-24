@@ -1,11 +1,9 @@
-Notes de version : V1.2.2
+Notes de version : V1.2.3
 
 Principaux changements
 
-* Correction : une session vide supprimée empêchait toute nouvelle session
-* Correction : après une suppression, d'autres sessions passaient en invalide ou disparaissaient de la barre latérale
-* Correction : une session ouverte une fois ne pouvait plus jamais être déplacée
-* Correction : une session déplacée disparaissait de la barre latérale et son journal réapparaissait dans l'ancien dossier
-* Correction : après la suppression de l'espace de travail par défaut, le premier était marqué par défaut
-* Ajout d'un bouton pour copier le journal d'erreur
-* Position par défaut des boutons des boîtes de dialogue modifiée
+* Correction : une session copiée pouvait ne pas s'ouvrir
+* Ajout de Ctrl+A pour tout sélectionner et d'une case de sélection dans l'en-tête de la liste
+* Ajout de Ctrl+clic et de la sélection au lasso pour compléter la sélection
+* Correction : la case d'une ligne choisie d'un clic s'affichait mal
+* Les lignes ne vont plus jusqu'au bord droit : la zone libre à leur droite permet de désélectionner d'un clic
